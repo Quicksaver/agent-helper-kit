@@ -5,10 +5,8 @@ const importsConfig: Linter.Config = {
     'import/export': 'error',
     'import/extensions': [ 'error', 'ignorePackages', {
       js: 'never',
-      jsx: 'never',
       mjs: 'never',
       ts: 'never',
-      tsx: 'never',
     } ],
     'import/first': 'error',
     'import/named': 'error',
@@ -21,7 +19,9 @@ const importsConfig: Linter.Config = {
       devDependencies: [
         '**/eslint.config.ts',
         'rules/**',
-        '**/stylelint.config.mjs',
+        'src/test/**',
+        '*.config.*',
+        'esbuild.mjs',
       ],
       optionalDependencies: false,
     } ],
@@ -59,15 +59,13 @@ const importsConfig: Linter.Config = {
   },
 
   settings: {
-    'import/core-modules': [],
+    'import/core-modules': [ 'vscode' ],
     'import/extensions': [
       '.js',
       '.mjs',
-      '.jsx',
     ],
     'import/ignore': [
       'node_modules',
-      '\\.(coffee|scss|css|less|hbs|svg|json)$',
     ],
     'import/resolver': {
       node: {

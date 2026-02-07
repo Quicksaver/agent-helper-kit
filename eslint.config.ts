@@ -3,7 +3,6 @@ import js from '@eslint/js';
 import stylistic from '@stylistic/eslint-plugin';
 import type { Linter } from 'eslint';
 import { defineConfig, globalIgnores } from 'eslint/config';
-import nextVitals from 'eslint-config-next/core-web-vitals';
 import perfectionist from 'eslint-plugin-perfectionist';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
@@ -12,8 +11,6 @@ import rulesBestPractices from './rules/best-practices';
 import rulesErrors from './rules/errors';
 import rulesES6 from './rules/es6';
 import rulesImports from './rules/imports';
-import rulesReact from './rules/react';
-import rulesReactA11y from './rules/react-a11y';
 import rulesStrict from './rules/strict';
 import rulesStyle from './rules/style';
 import rulesVariables from './rules/variables';
@@ -22,14 +19,10 @@ const compat = new FlatCompat({
   baseDirectory: import.meta.dirname,
 });
 
-const tsFiles = [ '**/*.ts', '**/*.tsx', '**/*.mts', '**/*.cts' ];
+const tsFiles = [ '**/*.ts', '**/*.mts', '**/*.cts' ];
 
 export default defineConfig([
   js.configs.recommended,
-
-  // Use Next.js core web vitals config as base, but remove their TypeScript config as we'll be adding our own later and
-  // that can lead to plugin definition conflicts.
-  nextVitals.filter(config => config.name !== 'next/typescript'),
 
   ...compat.config({
     extends: [
@@ -45,7 +38,7 @@ export default defineConfig([
     semi: true,
   }),
 
-  // Rules ported from airbnb-config-base and airbnb-config-react, adapted, filtered, and migrated as (un)needed
+  // Rules ported from airbnb-config-base, adapted and filtered for a VS Code extension project
   rulesBestPractices,
   rulesErrors,
   rulesStyle,
@@ -53,14 +46,8 @@ export default defineConfig([
   rulesES6,
   rulesImports,
   rulesStrict,
-  rulesReact,
-  rulesReactA11y,
 
-  // Add `files` to these definitions to ensure only ts files go through the TS parser; while by default the TS
-  // parser could parse JS files, it is much slower, and because we are using some type-aware rules, and thus enable
-  // `projectService`, this would have trouble with some JS files.
-  // Since we keep (m)js files to a minimum (tool config files only), we're not really losing a lot of coverage this
-  // way, if any at all.
+  // Add `files` to these definitions to ensure only ts files go through the TS parser
   tseslint.configs.strictTypeChecked.map(config => {
     const newConfig: Linter.Config = { ...config };
     if (!newConfig.files) {
@@ -83,13 +70,10 @@ export default defineConfig([
       ecmaVersion: 'latest',
 
       globals: {
-        ...globals.browser,
+        ...globals.node,
       },
 
       parserOptions: {
-        ecmaFeatures: {
-          jsx: true,
-        },
         sourceType: 'module',
       },
     },
@@ -104,8 +88,6 @@ export default defineConfig([
         partitionByNewLine: true,
         type: 'natural',
       } ],
-
-      'react-hooks/exhaustive-deps': 'error',
     },
   },
 
@@ -158,7 +140,6 @@ export default defineConfig([
   },
 
   globalIgnores([
-    // node_modules/ and .git/ are ignored by default.
-    // nextVitals ignores .next/, out/, build/, and next-env.d.ts
+    'dist/',
   ]),
 ]);

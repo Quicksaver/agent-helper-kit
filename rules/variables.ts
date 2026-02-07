@@ -1,4 +1,3 @@
-import confusingBrowserGlobals from 'confusing-browser-globals';
 import type { Linter } from 'eslint';
 
 const variablesConfig: Linter.Config = {
@@ -14,7 +13,6 @@ const variablesConfig: Linter.Config = {
         message: 'Use Number.isNaN instead https://github.com/airbnb/javascript#standard-library--isnan',
         name: 'isNaN',
       },
-      ...confusingBrowserGlobals,
     ],
     'no-undef-init': 'error',
   },

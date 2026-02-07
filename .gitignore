@@ -45,6 +45,12 @@ Temporary Items
 node_modules/
 tsconfig.tsbuildinfo
 
+# Build output
+dist/
+
+# Extension packages
+*.vsix
+
 # yarn
 .yarn/*
 !.yarn/patches

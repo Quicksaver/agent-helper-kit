@@ -28,7 +28,6 @@ const styleConfig: Linter.Config = {
       tabLength: 2,
       VariableDeclarator: 1,
     } ],
-    '@stylistic/jsx-max-props-per-line': [ 'error', { maximum: 1 } ],
     '@stylistic/linebreak-style': [ 'error', 'unix' ],
     '@stylistic/max-len': [ 'error', 120, 2, {
       ignoreComments: false,
