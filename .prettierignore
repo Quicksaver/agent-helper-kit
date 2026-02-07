@@ -1,0 +1,18 @@
+**/node_modules
+.prettierignore
+.stylelintignore
+.eslintignore
+yarn.lock
+
+# ESLint as default formatter
+**/*.js
+**/*.json
+**/*.jsx
+**/*.mjs
+**/*.mts
+**/*.ts
+**/*.tsx
+
+# YAML VSCode extension as default formatter
+**/*.yml
+**/*.yaml

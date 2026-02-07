@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "davidanson.vscode-markdownlint",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "redhat.vscode-yaml",
+    "tamasfe.even-better-toml",
+    "yzhang.markdown-all-in-one"
+  ],
+  "unwantedRecommendations": []
+}
