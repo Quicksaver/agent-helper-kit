@@ -5,7 +5,6 @@ import { ReviewComment } from '@/types/ReviewComment';
 import { toUri } from '@/uri';
 
 export async function buildComment(
-  stream: vscode.ChatResponseStream,
   file: FileComments,
   comment: ReviewComment,
 ) {
@@ -17,12 +16,11 @@ export async function buildComment(
 
   // Build the entire comment as a single markdown string
   const markdown = new vscode.MarkdownString();
+  markdown.isTrusted = { enabledCommands: [] };
 
   // Add line number anchor
   const uri = await toUri(file.target, comment.line);
-  stream.anchor(uri);
-
-  markdown.appendText(`Line ${comment.line}`);
+  markdown.appendMarkdown(`[Line ${comment.line}](${uri.toString()})`);
 
   if (comment.severity) {
     markdown.appendMarkdown(` | **${comment.severity}**`);
@@ -31,5 +29,5 @@ export async function buildComment(
   const body = comment.comment.replace(/<\/?(?:details|summary)>/gi, '');
   markdown.appendMarkdown(`\n${body}`);
 
-  stream.markdown(markdown);
+  return markdown;
 }

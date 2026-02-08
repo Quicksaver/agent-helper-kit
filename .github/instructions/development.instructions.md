@@ -18,15 +18,25 @@ applyTo: '**'
 
 Use `yarn` (yarn.lock present)
 
+**Terminal commands vs. VS Code's tools:**
+
+| Action               | Use This                                                | Instead of                        |
+| -------------------- | ------------------------------------------------------- | --------------------------------- |
+| Run tests            | `runTests` tool                                         | `yarn test`, `vitest run`         |
+| Lint and typecheck   | `get_errors` tool                                       | `yarn lint:check`, `tsc --noEmit` |
+| Fix lint/format code | `run_vscode_command` with `workbench.action.files.save` | `yarn lint:fix`, `tsc --noEmit`   |
+
 **Linting Workflow**
 
-1. (VSCode command) ESLint: Fix all auto-fixable problems
-2. (VSCode command) Format Document
-3. Manual fixes
-4. Troubleshooting:
+1. Tool `problems`
+2. Tool `runCommand` with `ESLint: Fix all auto-fixable problems`
+3. Tool `runCommand` with `Format Document`
+4. Manual fixes
+5. Troubleshooting:
 
 - **`import/no-extraneous-dependencies` after install** → Restart ESLint Server
 
 **Testing Workflow**
 
-1. `yarn test`
+1. Tool `runTests`
+2. Fix as necessary

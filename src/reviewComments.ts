@@ -3,8 +3,12 @@ import * as vscode from 'vscode';
 import { buildComment } from '@/chat.js';
 import { type FileComments } from '@/types/FileComments.js';
 import { type ReviewComment } from '@/types/ReviewComment.js';
+import { toUri } from '@/uri';
 
-const queuedPendingComments: { comment: ReviewComment; file: FileComments }[] = [];
+const queuedPendingComments: {
+  comment: ReviewComment;
+  file: FileComments;
+}[] = [];
 
 /** Returns a shallow copy of the current queued pending comments. Exposed for testing. */
 export function getQueuedPendingComments(): { comment: ReviewComment; file: FileComments }[] {
@@ -129,10 +133,36 @@ async function handleCopyCommentToChatRequest(
   }
 
   const comments = queuedPendingComments.splice(0);
+  const byFile = new Map<string, FileComments>();
 
   for (const entry of comments) {
-    // eslint-disable-next-line no-await-in-loop -- sequential writes to stream to preserve ordering
-    await buildComment(stream, entry.file, entry.comment);
+    const { file } = entry;
+
+    if (!byFile.has(file.target)) {
+      byFile.set(file.target, {
+        ...file,
+        comments: [],
+      });
+    }
+
+    byFile.get(file.target)?.comments.push(entry.comment);
+  }
+
+  for (const entry of byFile.entries()) {
+    const [ target, fileComments ] = entry;
+
+    // eslint-disable-next-line no-await-in-loop
+    const uri = await toUri(target);
+    stream.anchor(uri);
+    stream.markdown('\n\n');
+
+    for (const comment of fileComments.comments) {
+      // eslint-disable-next-line no-await-in-loop -- sequential writes to stream to preserve ordering
+      stream.markdown(await buildComment(fileComments, comment));
+      stream.markdown('\n\n');
+    }
+
+    stream.markdown('\n --- \n');
   }
 }
 
