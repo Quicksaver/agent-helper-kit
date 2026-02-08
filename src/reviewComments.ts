@@ -6,9 +6,9 @@ import { type ReviewComment } from '@/types/ReviewComment.js';
 
 const queuedPendingComments: { comment: ReviewComment; file: FileComments }[] = [];
 
-/** Returns the current queued pending comments. Exposed for testing. */
+/** Returns a shallow copy of the current queued pending comments. Exposed for testing. */
 export function getQueuedPendingComments(): { comment: ReviewComment; file: FileComments }[] {
-  return queuedPendingComments;
+  return queuedPendingComments.slice();
 }
 
 /** Extracts the plain text body from a {@link vscode.Comment}, handling both string and MarkdownString values. */
@@ -129,7 +129,11 @@ async function handleCopyCommentToChatRequest(
   }
 
   const comments = queuedPendingComments.splice(0);
-  await Promise.all(comments.map(entry => buildComment(stream, entry.file, entry.comment)));
+
+  for (const entry of comments) {
+    // eslint-disable-next-line no-await-in-loop -- sequential writes to stream to preserve ordering
+    await buildComment(stream, entry.file, entry.comment);
+  }
 }
 
 /** Registers the `@review` chat participant and adds it to the extension context subscriptions. */
