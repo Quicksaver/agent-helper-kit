@@ -6,6 +6,9 @@ const vscode = vi.hoisted(() => ({
   commands: {
     executeCommand: vi.fn(),
   },
+  window: {
+    showInformationMessage: vi.fn(),
+  },
   workspace: {
     asRelativePath: vi.fn((uri: string | { fsPath: string }) => {
       const p = typeof uri === 'string' ? uri : uri.fsPath;
@@ -35,7 +38,7 @@ describe('reviewCommentToChat', () => {
 
     expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
       'workbench.action.chat.open',
-      { isPartialQuery: true, query: '@copyCommentToChat' },
+      { isPartialQuery: true, query: '@bringCommentsToChat' },
     );
 
     const queued = getQueuedPendingComments();
@@ -67,7 +70,7 @@ describe('reviewCommentToChat', () => {
 
     expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
       'workbench.action.chat.open',
-      { isPartialQuery: true, query: '@copyCommentToChat' },
+      { isPartialQuery: true, query: '@bringCommentsToChat' },
     );
 
     const queued = getQueuedPendingComments();
@@ -93,7 +96,7 @@ describe('reviewCommentToChat', () => {
 
     expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
       'workbench.action.chat.open',
-      { isPartialQuery: true, query: '@copyCommentToChat' },
+      { isPartialQuery: true, query: '@bringCommentsToChat' },
     );
 
     const queued = getQueuedPendingComments();
@@ -120,7 +123,7 @@ describe('reviewCommentToChat', () => {
 
     expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
       'workbench.action.chat.open',
-      { isPartialQuery: true, query: '@copyCommentToChat' },
+      { isPartialQuery: true, query: '@bringCommentsToChat' },
     );
 
     const queued = getQueuedPendingComments();
@@ -143,7 +146,7 @@ describe('reviewCommentToChat', () => {
 
     expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
       'workbench.action.chat.open',
-      { isPartialQuery: true, query: '@copyCommentToChat' },
+      { isPartialQuery: true, query: '@bringCommentsToChat' },
     );
 
     const queued = getQueuedPendingComments();
@@ -169,7 +172,7 @@ describe('reviewCommentToChat', () => {
 
     expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
       'workbench.action.chat.open',
-      { isPartialQuery: true, query: '@copyCommentToChat' },
+      { isPartialQuery: true, query: '@bringCommentsToChat' },
     );
 
     const queued = getQueuedPendingComments();
@@ -182,5 +185,77 @@ describe('reviewCommentToChat', () => {
       line: 6,
     });
     expect(pending.comment.severity).toBeUndefined();
+  });
+
+  it('should not add duplicate comments and show already-queued toast', () => {
+    const thread = {
+      comments: [ { body: 'Duplicate me' } ],
+      label: 'Lint | warning',
+      range: { start: { line: 2 } },
+      uri: { fsPath: '/workspace/src/dup.ts' },
+    };
+
+    reviewCommentToChat(thread);
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Lint comment has been queued to chat',
+    );
+
+    const countAfterFirst = getQueuedPendingComments().length;
+
+    // Call again with identical comment
+    reviewCommentToChat(thread);
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Lint comment already queued for chat',
+    );
+
+    expect(getQueuedPendingComments().length).toBe(countAfterFirst);
+  });
+
+  it('should show queued toast with thread label title portion', () => {
+    const thread = {
+      comments: [ { body: 'Toast test' } ],
+      label: 'Security | high',
+      range: { start: { line: 0 } },
+      uri: { fsPath: '/workspace/src/toast.ts' },
+    };
+
+    reviewCommentToChat(thread);
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Security comment has been queued to chat',
+    );
+  });
+
+  it('should use "Review" as title when thread has no label', () => {
+    const thread = {
+      comments: [ { body: 'No label toast' } ],
+      label: undefined,
+      range: { start: { line: 0 } },
+      uri: { fsPath: '/workspace/src/no-label.ts' },
+    };
+
+    reviewCommentToChat(thread);
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Review comment has been queued to chat',
+    );
+  });
+
+  it('should not add duplicate standalone comments', () => {
+    const comment = { body: 'Standalone dup' };
+
+    reviewCommentToChat(comment);
+
+    const countAfterFirst = getQueuedPendingComments().length;
+
+    reviewCommentToChat(comment);
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Review comment already queued for chat',
+    );
+
+    expect(getQueuedPendingComments().length).toBe(countAfterFirst);
   });
 });

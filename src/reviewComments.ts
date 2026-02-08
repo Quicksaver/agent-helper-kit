@@ -15,6 +15,29 @@ export function getQueuedPendingComments(): { comment: ReviewComment; file: File
   return queuedPendingComments.slice();
 }
 
+/** Checks whether a comment with the same body, file, and line is already queued. */
+function isAlreadyQueued(comment: string, file: string, line: number): boolean {
+  return queuedPendingComments.some(
+    entry => entry.comment.comment === comment && entry.comment.file === file && entry.comment.line === line,
+  );
+}
+
+/**
+ * Extracts the title portion from a comment thread label.
+ *
+ * If the label uses the `{title} | {severity}` format, returns the title before the pipe.
+ * Otherwise returns the full label, or `'Review'` if no label is present.
+ */
+function parseTitle(thread: { label?: string }): string {
+  if (!thread.label) {
+    return 'Review';
+  }
+
+  const pipeIndex = thread.label.lastIndexOf('|');
+  const title = pipeIndex === -1 ? thread.label : thread.label.slice(0, pipeIndex).trim();
+  return title || 'Review';
+}
+
 /** Extracts the plain text body from a {@link vscode.Comment}, handling both string and MarkdownString values. */
 function extractCommentBody(comment: vscode.Comment): string {
   return typeof comment.body === 'string' ? comment.body : comment.body.value;
@@ -61,7 +84,7 @@ function resolveCommentThread(arg: unknown): undefined | vscode.CommentThread {
  * Command handler for `custom-vscode.reviewCommentToChat`.
  *
  * Extracts the comment data from the provided {@link vscode.CommentThread} or {@link vscode.Comment},
- * stores it as a pending review comment, and opens the chat panel with the `@copyCommentToChat` participant
+ * stores it as a pending review comment, and opens the chat panel with the `@bringCommentsToChat` participant
  * so the user can review and send.
  */
 export function reviewCommentToChat(arg: unknown): void {
@@ -81,14 +104,23 @@ export function reviewCommentToChat(arg: unknown): void {
       ...(severity && { severity }),
     };
 
+    const title = parseTitle(thread);
+
+    if (isAlreadyQueued(body, relativePath, line)) {
+      void vscode.window.showInformationMessage(`${title} comment already queued for chat`);
+      return;
+    }
+
     queuedPendingComments.push({
       comment: reviewComment,
       file: { comments: [ reviewComment ], target: relativePath },
     });
 
+    void vscode.window.showInformationMessage(`${title} comment has been queued to chat`);
+
     void vscode.commands.executeCommand('workbench.action.chat.open', {
       isPartialQuery: true,
-      query: '@copyCommentToChat',
+      query: '@bringCommentsToChat',
     });
     return;
   }
@@ -104,20 +136,27 @@ export function reviewCommentToChat(arg: unknown): void {
       line: 1,
     };
 
+    if (isAlreadyQueued(body, 'unknown', 1)) {
+      void vscode.window.showInformationMessage('Review comment already queued for chat');
+      return;
+    }
+
     queuedPendingComments.push({
       comment: reviewComment,
       file: { comments: [ reviewComment ], target: 'unknown' },
     });
 
+    void vscode.window.showInformationMessage('Review comment has been queued to chat');
+
     void vscode.commands.executeCommand('workbench.action.chat.open', {
       isPartialQuery: true,
-      query: '@copyCommentToChat',
+      query: '@bringCommentsToChat',
     });
   }
 }
 
 /**
- * Chat participant request handler for `@copyCommentToChat`.
+ * Chat participant request handler for `@bringCommentsToChat`.
  *
  * Reads the pending review comment, formats it via {@link buildComment},
  * and streams the result to the chat response.
@@ -169,7 +208,7 @@ async function handleCopyCommentToChatRequest(
 /** Registers the `@review` chat participant and adds it to the extension context subscriptions. */
 export function registerReviewParticipant(context: vscode.ExtensionContext): void {
   const participant = vscode.chat.createChatParticipant(
-    'custom-vscode.copyCommentToChat',
+    'custom-vscode.bringCommentsToChat',
     handleCopyCommentToChatRequest,
   );
   participant.iconPath = new vscode.ThemeIcon('comment-discussion');

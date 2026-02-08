@@ -47,7 +47,7 @@ describe('Extension', () => {
     activate(context);
 
     expect(vscode.chat.createChatParticipant).toHaveBeenCalledWith(
-      'custom-vscode.copyCommentToChat',
+      'custom-vscode.bringCommentsToChat',
       expect.any(Function),
     );
   });
