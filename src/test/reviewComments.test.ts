@@ -1,5 +1,5 @@
 import {
-  describe, expect, it, vi,
+  beforeEach, describe, expect, it, vi,
 } from 'vitest';
 
 const vscode = vi.hoisted(() => ({
@@ -7,7 +7,7 @@ const vscode = vi.hoisted(() => ({
     executeCommand: vi.fn(),
   },
   window: {
-    showInformationMessage: vi.fn(),
+    showInformationMessage: vi.fn().mockResolvedValue(undefined),
   },
   workspace: {
     asRelativePath: vi.fn((uri: string | { fsPath: string }) => {
@@ -20,9 +20,14 @@ const vscode = vi.hoisted(() => ({
 vi.mock('vscode', () => vscode);
 
 // eslint-disable-next-line import/first -- must follow vi.mock
-import { getQueuedPendingComments, reviewCommentToChat } from '../reviewComments.js';
+import { clearQueuedPendingComments, getQueuedPendingComments, reviewCommentToChat } from '../reviewComments.js';
 
 describe('reviewCommentToChat', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearQueuedPendingComments();
+  });
+
   it('should extract comment body and open chat when given a CommentThread', () => {
     const thread = {
       comments: [
@@ -35,11 +40,6 @@ describe('reviewCommentToChat', () => {
     };
 
     reviewCommentToChat(thread);
-
-    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-      'workbench.action.chat.open',
-      { isPartialQuery: true, query: '@bringCommentsToChat' },
-    );
 
     const queued = getQueuedPendingComments();
     expect(queued.length).toBeGreaterThanOrEqual(1);
@@ -68,11 +68,6 @@ describe('reviewCommentToChat', () => {
 
     reviewCommentToChat(thread);
 
-    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-      'workbench.action.chat.open',
-      { isPartialQuery: true, query: '@bringCommentsToChat' },
-    );
-
     const queued = getQueuedPendingComments();
     expect(queued.length).toBeGreaterThanOrEqual(1);
     const pending = queued[queued.length - 1];
@@ -93,11 +88,6 @@ describe('reviewCommentToChat', () => {
     };
 
     reviewCommentToChat(thread);
-
-    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-      'workbench.action.chat.open',
-      { isPartialQuery: true, query: '@bringCommentsToChat' },
-    );
 
     const queued = getQueuedPendingComments();
     expect(queued.length).toBeGreaterThanOrEqual(1);
@@ -121,11 +111,6 @@ describe('reviewCommentToChat', () => {
 
     reviewCommentToChat(thread);
 
-    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-      'workbench.action.chat.open',
-      { isPartialQuery: true, query: '@bringCommentsToChat' },
-    );
-
     const queued = getQueuedPendingComments();
     expect(queued.length).toBeGreaterThanOrEqual(1);
     const pending = queued[queued.length - 1];
@@ -143,11 +128,6 @@ describe('reviewCommentToChat', () => {
     };
 
     reviewCommentToChat(comment);
-
-    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-      'workbench.action.chat.open',
-      { isPartialQuery: true, query: '@bringCommentsToChat' },
-    );
 
     const queued = getQueuedPendingComments();
     expect(queued.length).toBeGreaterThanOrEqual(1);
@@ -169,11 +149,6 @@ describe('reviewCommentToChat', () => {
     };
 
     reviewCommentToChat(thread);
-
-    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-      'workbench.action.chat.open',
-      { isPartialQuery: true, query: '@bringCommentsToChat' },
-    );
 
     const queued = getQueuedPendingComments();
     expect(queued.length).toBeGreaterThanOrEqual(1);
@@ -198,7 +173,9 @@ describe('reviewCommentToChat', () => {
     reviewCommentToChat(thread);
 
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Lint comment has been queued to chat',
+      'Queued for chat: Lint (1 comment)',
+      'Bring to Chat',
+      'Cancel',
     );
 
     const countAfterFirst = getQueuedPendingComments().length;
@@ -206,16 +183,8 @@ describe('reviewCommentToChat', () => {
     // Call again with identical comment
     reviewCommentToChat(thread);
 
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Lint comment already queued for chat',
-    );
-
-    // Chat panel should still open on duplicate so the user lands where they expect
-    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-      'workbench.action.chat.open',
-      { isPartialQuery: true, query: '@bringCommentsToChat' },
-    );
-
+    // Toast still shown with same count since duplicate was not added
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledTimes(2);
     expect(getQueuedPendingComments().length).toBe(countAfterFirst);
   });
 
@@ -230,7 +199,9 @@ describe('reviewCommentToChat', () => {
     reviewCommentToChat(thread);
 
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Security comment has been queued to chat',
+      'Queued for chat: Security (1 comment)',
+      'Bring to Chat',
+      'Cancel',
     );
   });
 
@@ -245,7 +216,9 @@ describe('reviewCommentToChat', () => {
     reviewCommentToChat(thread);
 
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Review comment has been queued to chat',
+      'Queued for chat: Review (1 comment)',
+      'Bring to Chat',
+      'Cancel',
     );
   });
 
@@ -258,16 +231,8 @@ describe('reviewCommentToChat', () => {
 
     reviewCommentToChat(comment);
 
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Review comment already queued for chat',
-    );
-
-    // Chat panel should still open on duplicate
-    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-      'workbench.action.chat.open',
-      { isPartialQuery: true, query: '@bringCommentsToChat' },
-    );
-
+    // Toast still shown with same count since duplicate was not added
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledTimes(2);
     expect(getQueuedPendingComments().length).toBe(countAfterFirst);
   });
 
@@ -282,7 +247,9 @@ describe('reviewCommentToChat', () => {
     reviewCommentToChat(thread);
 
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Title | Sub comment has been queued to chat',
+      'Queued for chat: Title | Sub (1 comment)',
+      'Bring to Chat',
+      'Cancel',
     );
   });
 
@@ -297,7 +264,9 @@ describe('reviewCommentToChat', () => {
     reviewCommentToChat(thread);
 
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Review comment has been queued to chat',
+      'Queued for chat: Review (1 comment)',
+      'Bring to Chat',
+      'Cancel',
     );
   });
 
@@ -312,7 +281,9 @@ describe('reviewCommentToChat', () => {
     reviewCommentToChat(thread);
 
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Custom Title comment has been queued to chat',
+      'Queued for chat: Custom Title (1 comment)',
+      'Bring to Chat',
+      'Cancel',
     );
   });
 
@@ -327,7 +298,82 @@ describe('reviewCommentToChat', () => {
     reviewCommentToChat(thread);
 
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Foo comment has been queued to chat',
+      'Queued for chat: Foo (1 comment)',
+      'Bring to Chat',
+      'Cancel',
+    );
+  });
+
+  it('should execute chat command when "Bring to Chat" is clicked', async () => {
+    vscode.window.showInformationMessage.mockResolvedValueOnce('Bring to Chat');
+
+    const thread = {
+      comments: [ { body: 'Bring to chat test' } ],
+      label: undefined,
+      range: { start: { line: 0 } },
+      uri: { fsPath: '/workspace/src/bring.ts' },
+    };
+
+    reviewCommentToChat(thread);
+
+    await Promise.resolve();
+
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+      'workbench.action.chat.open',
+      { query: '@bringCommentsToChat' },
+    );
+  });
+
+  it('should clear the queue when "Cancel" is clicked', async () => {
+    vscode.window.showInformationMessage.mockResolvedValueOnce('Cancel');
+
+    const thread = {
+      comments: [ { body: 'Cancel test' } ],
+      label: undefined,
+      range: { start: { line: 0 } },
+      uri: { fsPath: '/workspace/src/cancel.ts' },
+    };
+
+    reviewCommentToChat(thread);
+
+    await Promise.resolve();
+
+    expect(getQueuedPendingComments().length).toBe(0);
+  });
+
+  it('should aggregate multiple titles with counts in the toast message', () => {
+    const securityThread = {
+      comments: [ { body: 'Security issue 1' } ],
+      label: 'Security | critical',
+      range: { start: { line: 0 } },
+      uri: { fsPath: '/workspace/src/a.ts' },
+    };
+
+    const lintThread1 = {
+      comments: [ { body: 'Lint issue 1' } ],
+      label: 'Lint | warning',
+      range: { start: { line: 1 } },
+      uri: { fsPath: '/workspace/src/b.ts' },
+    };
+
+    const lintThread2 = {
+      comments: [ { body: 'Lint issue 2' } ],
+      label: 'Lint | info',
+      range: { start: { line: 5 } },
+      uri: { fsPath: '/workspace/src/c.ts' },
+    };
+
+    reviewCommentToChat(securityThread);
+    reviewCommentToChat(lintThread1);
+    reviewCommentToChat(lintThread2);
+
+    expect(getQueuedPendingComments().length).toBe(3);
+
+    // The last toast should aggregate both titles
+    expect(vscode.window.showInformationMessage).toHaveBeenLastCalledWith(
+      'Queued for chat: Security (1 comment), Lint (2 comments)',
+      'Bring to Chat',
+      'Cancel',
     );
   });
 });

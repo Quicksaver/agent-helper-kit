@@ -12,11 +12,21 @@ const STANDALONE_LINE = 1;
 const queuedPendingComments: {
   comment: ReviewComment;
   file: FileComments;
+  title: string;
 }[] = [];
 
 /** Returns a shallow copy of the current queued pending comments. Exposed for testing. */
-export function getQueuedPendingComments(): { comment: ReviewComment; file: FileComments }[] {
+export function getQueuedPendingComments(): {
+  comment: ReviewComment;
+  file: FileComments;
+  title: string;
+}[] {
   return queuedPendingComments.slice();
+}
+
+/** Clears all queued pending comments. Exposed for testing. */
+export function clearQueuedPendingComments(): void {
+  queuedPendingComments.splice(0);
 }
 
 /** Checks whether a comment with the same body, file, and line is already queued. */
@@ -68,6 +78,35 @@ function parseSeverity(thread: vscode.CommentThread): string | undefined {
   return severity || undefined;
 }
 
+const BRING_TO_CHAT = 'Bring to Chat';
+const CANCEL = 'Cancel';
+
+/** Shows a persistent toast listing all queued comment titles with action buttons. */
+function showQueueToast(): void {
+  const countByTitle = new Map<string, number>();
+
+  for (const entry of queuedPendingComments) {
+    countByTitle.set(entry.title, (countByTitle.get(entry.title) ?? 0) + 1);
+  }
+
+  const parts = [ ...countByTitle.entries() ].map(
+    ([ title, count ]) => `${title} (${count} comment${count === 1 ? '' : 's'})`,
+  );
+  const message = `Queued for chat: ${parts.join(', ')}`;
+
+  void vscode.window.showInformationMessage(message, BRING_TO_CHAT, CANCEL).then(choice => {
+    if (choice === BRING_TO_CHAT) {
+      void vscode.commands.executeCommand('workbench.action.chat.open', {
+        query: '@bringCommentsToChat',
+      });
+    }
+
+    if (choice === CANCEL) {
+      queuedPendingComments.splice(0);
+    }
+  });
+}
+
 /**
  * Attempts to resolve a {@link vscode.CommentThread} from the command argument.
  *
@@ -111,26 +150,17 @@ export function reviewCommentToChat(arg: unknown): void {
     const title = parseTitle(thread);
 
     if (isAlreadyQueued(body, relativePath, line)) {
-      void vscode.window.showInformationMessage(`${title} comment already queued for chat`);
-
-      void vscode.commands.executeCommand('workbench.action.chat.open', {
-        isPartialQuery: true,
-        query: '@bringCommentsToChat',
-      });
+      showQueueToast();
       return;
     }
 
     queuedPendingComments.push({
       comment: reviewComment,
       file: { comments: [ reviewComment ], target: relativePath },
+      title,
     });
 
-    void vscode.window.showInformationMessage(`${title} comment has been queued to chat`);
-
-    void vscode.commands.executeCommand('workbench.action.chat.open', {
-      isPartialQuery: true,
-      query: '@bringCommentsToChat',
-    });
+    showQueueToast();
     return;
   }
 
@@ -146,26 +176,17 @@ export function reviewCommentToChat(arg: unknown): void {
     };
 
     if (isAlreadyQueued(body, STANDALONE_FILE, STANDALONE_LINE)) {
-      void vscode.window.showInformationMessage('Review comment already queued for chat');
-
-      void vscode.commands.executeCommand('workbench.action.chat.open', {
-        isPartialQuery: true,
-        query: '@bringCommentsToChat',
-      });
+      showQueueToast();
       return;
     }
 
     queuedPendingComments.push({
       comment: reviewComment,
       file: { comments: [ reviewComment ], target: STANDALONE_FILE },
+      title: 'Review',
     });
 
-    void vscode.window.showInformationMessage('Review comment has been queued to chat');
-
-    void vscode.commands.executeCommand('workbench.action.chat.open', {
-      isPartialQuery: true,
-      query: '@bringCommentsToChat',
-    });
+    showQueueToast();
   }
 }
 
