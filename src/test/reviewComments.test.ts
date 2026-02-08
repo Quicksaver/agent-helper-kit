@@ -210,6 +210,12 @@ describe('reviewCommentToChat', () => {
       'Lint comment already queued for chat',
     );
 
+    // Chat panel should still open on duplicate so the user lands where they expect
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+      'workbench.action.chat.open',
+      { isPartialQuery: true, query: '@bringCommentsToChat' },
+    );
+
     expect(getQueuedPendingComments().length).toBe(countAfterFirst);
   });
 
@@ -256,6 +262,72 @@ describe('reviewCommentToChat', () => {
       'Review comment already queued for chat',
     );
 
+    // Chat panel should still open on duplicate
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+      'workbench.action.chat.open',
+      { isPartialQuery: true, query: '@bringCommentsToChat' },
+    );
+
     expect(getQueuedPendingComments().length).toBe(countAfterFirst);
+  });
+
+  it('should extract title from label with multiple pipes', () => {
+    const thread = {
+      comments: [ { body: 'Multi-pipe test' } ],
+      label: 'Title | Sub | high',
+      range: { start: { line: 0 } },
+      uri: { fsPath: '/workspace/src/multi-pipe.ts' },
+    };
+
+    reviewCommentToChat(thread);
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Title | Sub comment has been queued to chat',
+    );
+  });
+
+  it('should fallback to "Review" when title before pipe is empty', () => {
+    const thread = {
+      comments: [ { body: 'Empty title test' } ],
+      label: ' | high',
+      range: { start: { line: 0 } },
+      uri: { fsPath: '/workspace/src/empty-title.ts' },
+    };
+
+    reviewCommentToChat(thread);
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Review comment has been queued to chat',
+    );
+  });
+
+  it('should use full label as title when there is no pipe', () => {
+    const thread = {
+      comments: [ { body: 'No pipe title test' } ],
+      label: 'Custom Title',
+      range: { start: { line: 0 } },
+      uri: { fsPath: '/workspace/src/no-pipe-title.ts' },
+    };
+
+    reviewCommentToChat(thread);
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Custom Title comment has been queued to chat',
+    );
+  });
+
+  it('should use title portion when label has trailing pipe with empty severity', () => {
+    const thread = {
+      comments: [ { body: 'Trailing pipe test' } ],
+      label: 'Foo | ',
+      range: { start: { line: 0 } },
+      uri: { fsPath: '/workspace/src/trailing-pipe.ts' },
+    };
+
+    reviewCommentToChat(thread);
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Foo comment has been queued to chat',
+    );
   });
 });

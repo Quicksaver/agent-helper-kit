@@ -5,6 +5,10 @@ import { type FileComments } from '@/types/FileComments.js';
 import { type ReviewComment } from '@/types/ReviewComment.js';
 import { toUri } from '@/uri';
 
+/** Sentinel values used when a standalone comment has no associated file or line. */
+const STANDALONE_FILE = 'unknown';
+const STANDALONE_LINE = 1;
+
 const queuedPendingComments: {
   comment: ReviewComment;
   file: FileComments;
@@ -16,9 +20,9 @@ export function getQueuedPendingComments(): { comment: ReviewComment; file: File
 }
 
 /** Checks whether a comment with the same body, file, and line is already queued. */
-function isAlreadyQueued(comment: string, file: string, line: number): boolean {
+function isAlreadyQueued(commentBody: string, file: string, line: number): boolean {
   return queuedPendingComments.some(
-    entry => entry.comment.comment === comment && entry.comment.file === file && entry.comment.line === line,
+    entry => entry.comment.comment === commentBody && entry.comment.file === file && entry.comment.line === line,
   );
 }
 
@@ -108,6 +112,11 @@ export function reviewCommentToChat(arg: unknown): void {
 
     if (isAlreadyQueued(body, relativePath, line)) {
       void vscode.window.showInformationMessage(`${title} comment already queued for chat`);
+
+      void vscode.commands.executeCommand('workbench.action.chat.open', {
+        isPartialQuery: true,
+        query: '@bringCommentsToChat',
+      });
       return;
     }
 
@@ -132,18 +141,23 @@ export function reviewCommentToChat(arg: unknown): void {
     const body = extractCommentBody(comment);
     const reviewComment: ReviewComment = {
       comment: body,
-      file: 'unknown',
-      line: 1,
+      file: STANDALONE_FILE,
+      line: STANDALONE_LINE,
     };
 
-    if (isAlreadyQueued(body, 'unknown', 1)) {
+    if (isAlreadyQueued(body, STANDALONE_FILE, STANDALONE_LINE)) {
       void vscode.window.showInformationMessage('Review comment already queued for chat');
+
+      void vscode.commands.executeCommand('workbench.action.chat.open', {
+        isPartialQuery: true,
+        query: '@bringCommentsToChat',
+      });
       return;
     }
 
     queuedPendingComments.push({
       comment: reviewComment,
-      file: { comments: [ reviewComment ], target: 'unknown' },
+      file: { comments: [ reviewComment ], target: STANDALONE_FILE },
     });
 
     void vscode.window.showInformationMessage('Review comment has been queued to chat');
