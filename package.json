@@ -23,20 +23,20 @@
       }
     ]
   },
-  "packageManager": "yarn@4.11.0",
+  "packageManager": "yarn@4.12.0",
   "scripts": {
     "build": "node esbuild.mjs",
-    "deploy": "yarn package:build && yarn package:install",
-    "lint:check": "yarn lint:tsc && yarn lint:eslint && yarn lint:prettier",
+    "lint:check": "yarn lint:tsc && yarn lint:eslint --max-warnings 0 && yarn lint:prettier",
     "lint:eslint": "eslint . --ext .js,.ts",
     "lint:fix": "yarn lint:tsc && yarn lint:eslint --fix && yarn lint:prettier --write",
     "lint:prettier": "prettier --log-level=warn --check .",
     "lint:tsc": "tsc --noEmit",
+    "package": "yarn package:build && yarn package:install",
     "package:build": "vsce package --no-dependencies --allow-missing-repository --skip-license",
     "package:install": "code --install-extension $(ls -t *.vsix | head -1)",
     "test": "vitest run",
     "test:watch": "vitest",
-    "vscode:prepublish": "yarn build",
+    "vscode:prepublish": "yarn lint:check && yarn build",
     "watch": "node esbuild.mjs --watch"
   },
   "devDependencies": {
@@ -47,10 +47,12 @@
     "@types/vscode": "^1.109.0",
     "@vscode/vsce": "^3.7.1",
     "esbuild": "^0.27.3",
-    "eslint": "^10.0.0",
+    "eslint": "^9.39.2",
+    "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-perfectionist": "^5.5.0",
     "globals": "^17.3.0",
+    "jiti": "^2.6.1",
     "prettier": "^3.8.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.54.0",

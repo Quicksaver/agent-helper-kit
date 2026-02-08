@@ -15,6 +15,7 @@
   "editor.formatOnSave": true,
   "eslint.enable": true,
   "eslint.format.enable": true,
+  "eslint.runtime": "/Users/luismiguelsousa/.nvm/versions/node/v24.13.0/bin/node",
   "evenBetterToml.formatter.indentEntries": true,
   "evenBetterToml.formatter.reorderKeys": true,
   "evenBetterToml.formatter.trailingNewline": true,

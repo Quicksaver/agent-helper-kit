@@ -71,6 +71,7 @@ const importsConfig: Linter.Config = {
       node: {
         extensions: [ '.mjs', '.js', '.json' ],
       },
+      typescript: true,
     },
   },
 };

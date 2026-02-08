@@ -16,7 +16,7 @@ import rulesStyle from './rules/style';
 import rulesVariables from './rules/variables';
 
 const compat = new FlatCompat({
-  baseDirectory: import.meta.dirname,
+  baseDirectory: __dirname,
 });
 
 const tsFiles = [ '**/*.ts', '**/*.mts', '**/*.cts' ];
@@ -140,6 +140,7 @@ export default defineConfig([
   },
 
   globalIgnores([
+    // node_modules/ and .git/ are ignored by default.
     'dist/',
   ]),
 ]);

@@ -1,11 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
+import {
+  describe, expect, it, vi,
+} from 'vitest';
 
 const vscode = vi.hoisted(() => {
   const disposable = { dispose: vi.fn() };
 
   return {
     commands: {
-      registerCommand: vi.fn((_command: string, _callback: () => void) => disposable),
+      registerCommand: vi.fn(() => disposable),
     },
     window: {
       showInformationMessage: vi.fn(),
@@ -15,8 +17,8 @@ const vscode = vi.hoisted(() => {
 
 vi.mock('vscode', () => vscode);
 
-// Import after mock is set up
-const { activate, deactivate } = await import('../extension');
+// eslint-disable-next-line import/first -- must follow vi.mock
+import { activate } from '../extension.js';
 
 function createMockContext() {
   return {

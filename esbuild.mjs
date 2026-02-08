@@ -18,8 +18,13 @@ const buildOptions = {
 if (isWatch) {
   const ctx = await esbuild.context(buildOptions);
   await ctx.watch();
+
+  // eslint-disable-next-line no-console
   console.log('Watching for changes...');
-} else {
+}
+else {
   await esbuild.build(buildOptions);
+
+  // eslint-disable-next-line no-console
   console.log('Build complete.');
 }
