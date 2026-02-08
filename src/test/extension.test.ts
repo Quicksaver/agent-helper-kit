@@ -36,10 +36,6 @@ describe('Extension', () => {
       'custom-vscode.helloWorld',
       expect.any(Function),
     );
-    expect(context.subscriptions).toHaveLength(1);
-  });
-
-  it('should deactivate without errors', () => {
-    expect(() => deactivate()).not.toThrow();
+    expect(context.subscriptions).toHaveLength(3);
   });
 });

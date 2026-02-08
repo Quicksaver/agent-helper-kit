@@ -2,7 +2,7 @@
   "name": "custom-vscode",
   "displayName": "Custom VS Code",
   "description": "Personal VS Code extension",
-  "version": "0.0.2",
+  "version": "0.0.11",
   "publisher": "Quicksaver",
   "license": "UNLICENSED",
   "private": true,
@@ -20,6 +20,29 @@
         "command": "custom-vscode.helloWorld",
         "title": "Hello World",
         "category": "Custom"
+      },
+      {
+        "command": "custom-vscode.reviewCommentToChat",
+        "title": "Copy to Chat",
+        "category": "Custom",
+        "icon": "$(comment-discussion)"
+      }
+    ],
+    "menus": {
+      "comments/commentThread/title": [
+        {
+          "command": "custom-vscode.reviewCommentToChat",
+          "group": "inline"
+        }
+      ]
+    },
+    "chatParticipants": [
+      {
+        "id": "custom-vscode.copyCommentToChat",
+        "name": "copyCommentToChat",
+        "fullName": "Code Review Comment",
+        "description": "Copy code review comment content to chat, including file path and line number",
+        "isSticky": false
       }
     ]
   },
