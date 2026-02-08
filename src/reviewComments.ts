@@ -4,7 +4,12 @@ import { buildComment } from '@/chat.js';
 import { type FileComments } from '@/types/FileComments.js';
 import { type ReviewComment } from '@/types/ReviewComment.js';
 
-let pendingComment: undefined | { comment: ReviewComment; file: FileComments };
+const queuedPendingComments: { comment: ReviewComment; file: FileComments }[] = [];
+
+/** Returns the current queued pending comments. Exposed for testing. */
+export function getQueuedPendingComments(): { comment: ReviewComment; file: FileComments }[] {
+  return queuedPendingComments;
+}
 
 /** Extracts the plain text body from a {@link vscode.Comment}, handling both string and MarkdownString values. */
 function extractCommentBody(comment: vscode.Comment): string {
@@ -72,12 +77,13 @@ export function reviewCommentToChat(arg: unknown): void {
       ...(severity && { severity }),
     };
 
-    pendingComment = {
+    queuedPendingComments.push({
       comment: reviewComment,
       file: { comments: [ reviewComment ], target: relativePath },
-    };
+    });
 
     void vscode.commands.executeCommand('workbench.action.chat.open', {
+      isPartialQuery: true,
       query: '@copyCommentToChat',
     });
     return;
@@ -94,12 +100,13 @@ export function reviewCommentToChat(arg: unknown): void {
       line: 1,
     };
 
-    pendingComment = {
+    queuedPendingComments.push({
       comment: reviewComment,
       file: { comments: [ reviewComment ], target: 'unknown' },
-    };
+    });
 
     void vscode.commands.executeCommand('workbench.action.chat.open', {
+      isPartialQuery: true,
       query: '@copyCommentToChat',
     });
   }
@@ -116,13 +123,13 @@ async function handleCopyCommentToChatRequest(
   _context: vscode.ChatContext,
   stream: vscode.ChatResponseStream,
 ): Promise<void> {
-  if (!pendingComment) {
+  if (queuedPendingComments.length === 0) {
     stream.markdown('No review comment pending.');
     return;
   }
 
-  await buildComment(stream, pendingComment.file, pendingComment.comment);
-  pendingComment = undefined;
+  const comments = queuedPendingComments.splice(0);
+  await Promise.all(comments.map(entry => buildComment(stream, entry.file, entry.comment)));
 }
 
 /** Registers the `@review` chat participant and adds it to the extension context subscriptions. */

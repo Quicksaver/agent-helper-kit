@@ -6,12 +6,15 @@ const vscode = vi.hoisted(() => {
   const disposable = { dispose: vi.fn() };
 
   return {
+    chat: {
+      createChatParticipant: vi.fn(() => ({
+        iconPath: undefined as unknown,
+      })),
+    },
     commands: {
       registerCommand: vi.fn(() => disposable),
     },
-    window: {
-      showInformationMessage: vi.fn(),
-    },
+    ThemeIcon: vi.fn(),
   };
 });
 
@@ -27,15 +30,33 @@ function createMockContext() {
 }
 
 describe('Extension', () => {
-  it('should register the helloWorld command on activation', () => {
+  it('should register the reviewCommentToChat command on activation', () => {
     const context = createMockContext();
 
     activate(context);
 
     expect(vscode.commands.registerCommand).toHaveBeenCalledWith(
-      'custom-vscode.helloWorld',
+      'custom-vscode.reviewCommentToChat',
       expect.any(Function),
     );
-    expect(context.subscriptions).toHaveLength(3);
+  });
+
+  it('should register the chat participant on activation', () => {
+    const context = createMockContext();
+
+    activate(context);
+
+    expect(vscode.chat.createChatParticipant).toHaveBeenCalledWith(
+      'custom-vscode.copyCommentToChat',
+      expect.any(Function),
+    );
+  });
+
+  it('should push two subscriptions on activation', () => {
+    const context = createMockContext();
+
+    activate(context);
+
+    expect(context.subscriptions).toHaveLength(2);
   });
 });

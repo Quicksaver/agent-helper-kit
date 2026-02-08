@@ -17,11 +17,6 @@
   "contributes": {
     "commands": [
       {
-        "command": "custom-vscode.helloWorld",
-        "title": "Hello World",
-        "category": "Custom"
-      },
-      {
         "command": "custom-vscode.reviewCommentToChat",
         "title": "Copy to Chat",
         "category": "Custom",
