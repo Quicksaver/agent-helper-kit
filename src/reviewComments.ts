@@ -24,9 +24,20 @@ export function getQueuedPendingComments(): {
   return queuedPendingComments.slice();
 }
 
-/** Clears all queued pending comments. Exposed for testing. */
+let dismissCurrentToast: (() => void) | undefined;
+
+/** Dismisses the currently-displayed queue toast, if any. Also exported for testing. */
+export function dismissQueueToast(): void {
+  if (dismissCurrentToast) {
+    dismissCurrentToast();
+    dismissCurrentToast = undefined;
+  }
+}
+
+/** Clears all queued pending comments and dismisses the active toast. Exposed for testing. */
 export function clearQueuedPendingComments(): void {
   queuedPendingComments.splice(0);
+  dismissQueueToast();
 }
 
 /** Checks whether a comment with the same body, file, and line is already queued. */
@@ -78,11 +89,20 @@ function parseSeverity(thread: vscode.CommentThread): string | undefined {
   return severity || undefined;
 }
 
-const BRING_TO_CHAT = 'Bring to Chat';
-const CANCEL = 'Cancel';
-
-/** Shows a persistent toast listing all queued comment titles with action buttons. */
+/**
+ * Shows a persistent notification listing all queued comment titles.
+ *
+ * Uses {@link vscode.window.withProgress} with {@link vscode.ProgressLocation.Notification}
+ * so the toast stays visible until explicitly dismissed and never stacks — each call
+ * replaces the previous notification. Clicking **Cancel** clears the queue.
+ */
 function showQueueToast(): void {
+  dismissQueueToast();
+
+  if (queuedPendingComments.length === 0) {
+    return;
+  }
+
   const countByTitle = new Map<string, number>();
 
   for (const entry of queuedPendingComments) {
@@ -90,20 +110,38 @@ function showQueueToast(): void {
   }
 
   const parts = [ ...countByTitle.entries() ].map(
-    ([ title, count ]) => `${title} (${count} comment${count === 1 ? '' : 's'})`,
+    ([ title, count ]) => `${title}${count > 1 ? ` (x${count})` : ''}`,
   );
   const message = `Queued for chat: ${parts.join(', ')}`;
 
-  void vscode.window.showInformationMessage(message, BRING_TO_CHAT, CANCEL).then(choice => {
-    if (choice === BRING_TO_CHAT) {
-      void vscode.commands.executeCommand('workbench.action.chat.open', {
-        query: '@bringCommentsToChat',
-      });
-    }
+  void vscode.window.withProgress(
+    {
+      cancellable: true,
+      location: vscode.ProgressLocation.Notification,
+      title: message,
+    },
+    (_progress, token) => new Promise<void>(resolve => {
+      let cancellationDisposable: undefined | vscode.Disposable;
 
-    if (choice === CANCEL) {
-      queuedPendingComments.splice(0);
-    }
+      const resolveAndCleanup = (): void => {
+        cancellationDisposable?.dispose();
+        cancellationDisposable = undefined;
+        dismissCurrentToast = undefined;
+        resolve();
+      };
+
+      dismissCurrentToast = resolveAndCleanup;
+
+      cancellationDisposable = token.onCancellationRequested(() => {
+        queuedPendingComments.splice(0);
+        resolveAndCleanup();
+      });
+    }),
+  );
+
+  void vscode.commands.executeCommand('workbench.action.chat.open', {
+    isPartialQuery: true,
+    query: '@bringCommentsToChat',
   });
 }
 
@@ -205,6 +243,8 @@ async function handleCopyCommentToChatRequest(
     stream.markdown('No review comment pending.');
     return;
   }
+
+  dismissQueueToast();
 
   const comments = queuedPendingComments.splice(0);
   const byFile = new Map<string, FileComments>();

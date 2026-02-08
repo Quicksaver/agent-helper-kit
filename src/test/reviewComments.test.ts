@@ -2,30 +2,66 @@ import {
   beforeEach, describe, expect, it, vi,
 } from 'vitest';
 
-const vscode = vi.hoisted(() => ({
-  commands: {
-    executeCommand: vi.fn(),
-  },
-  window: {
-    showInformationMessage: vi.fn().mockResolvedValue(undefined),
-  },
-  workspace: {
-    asRelativePath: vi.fn((uri: string | { fsPath: string }) => {
-      const p = typeof uri === 'string' ? uri : uri.fsPath;
-      return p.replace(/^\/workspace\//, '');
-    }),
-  },
-}));
+const vscode = vi.hoisted(() => {
+  const _cancelHandlers: (() => void)[] = [];
+
+  return {
+    _cancelHandlers,
+    commands: {
+      executeCommand: vi.fn(),
+    },
+    ProgressLocation: {
+      Notification: 15,
+    },
+    window: {
+      withProgress: vi.fn().mockImplementation(
+        (
+          _options: unknown,
+          task: (
+            progress: { report: ReturnType<typeof vi.fn> },
+            token: {
+              isCancellationRequested: boolean;
+              onCancellationRequested: ReturnType<typeof vi.fn>;
+            },
+          ) => Promise<void>,
+        ) => {
+          const progress = { report: vi.fn() };
+          const token = {
+            isCancellationRequested: false,
+            onCancellationRequested: vi.fn((listener: () => void) => {
+              _cancelHandlers.push(listener);
+              return { dispose: vi.fn() };
+            }),
+          };
+          void task(progress, token);
+          return Promise.resolve();
+        },
+      ),
+    },
+    workspace: {
+      asRelativePath: vi.fn((uri: string | { fsPath: string }) => {
+        const p = typeof uri === 'string' ? uri : uri.fsPath;
+        return p.replace(/^\/workspace\//, '');
+      }),
+    },
+  };
+});
 
 vi.mock('vscode', () => vscode);
 
 // eslint-disable-next-line import/first -- must follow vi.mock
-import { clearQueuedPendingComments, getQueuedPendingComments, reviewCommentToChat } from '../reviewComments.js';
+import {
+  clearQueuedPendingComments,
+  dismissQueueToast,
+  getQueuedPendingComments,
+  reviewCommentToChat,
+} from '../reviewComments.js';
 
 describe('reviewCommentToChat', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     clearQueuedPendingComments();
+    vscode._cancelHandlers.splice(0);
   });
 
   it('should extract comment body and open chat when given a CommentThread', () => {
@@ -172,10 +208,9 @@ describe('reviewCommentToChat', () => {
 
     reviewCommentToChat(thread);
 
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Queued for chat: Lint (1 comment)',
-      'Bring to Chat',
-      'Cancel',
+    expect(vscode.window.withProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Queued for chat: Lint' }),
+      expect.any(Function),
     );
 
     const countAfterFirst = getQueuedPendingComments().length;
@@ -184,7 +219,7 @@ describe('reviewCommentToChat', () => {
     reviewCommentToChat(thread);
 
     // Toast still shown with same count since duplicate was not added
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledTimes(2);
+    expect(vscode.window.withProgress).toHaveBeenCalledTimes(2);
     expect(getQueuedPendingComments().length).toBe(countAfterFirst);
   });
 
@@ -198,10 +233,13 @@ describe('reviewCommentToChat', () => {
 
     reviewCommentToChat(thread);
 
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Queued for chat: Security (1 comment)',
-      'Bring to Chat',
-      'Cancel',
+    expect(vscode.window.withProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cancellable: true,
+        location: vscode.ProgressLocation.Notification,
+        title: 'Queued for chat: Security',
+      }),
+      expect.any(Function),
     );
   });
 
@@ -215,10 +253,9 @@ describe('reviewCommentToChat', () => {
 
     reviewCommentToChat(thread);
 
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Queued for chat: Review (1 comment)',
-      'Bring to Chat',
-      'Cancel',
+    expect(vscode.window.withProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Queued for chat: Review' }),
+      expect.any(Function),
     );
   });
 
@@ -232,7 +269,7 @@ describe('reviewCommentToChat', () => {
     reviewCommentToChat(comment);
 
     // Toast still shown with same count since duplicate was not added
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledTimes(2);
+    expect(vscode.window.withProgress).toHaveBeenCalledTimes(2);
     expect(getQueuedPendingComments().length).toBe(countAfterFirst);
   });
 
@@ -246,10 +283,9 @@ describe('reviewCommentToChat', () => {
 
     reviewCommentToChat(thread);
 
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Queued for chat: Title | Sub (1 comment)',
-      'Bring to Chat',
-      'Cancel',
+    expect(vscode.window.withProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Queued for chat: Title | Sub' }),
+      expect.any(Function),
     );
   });
 
@@ -263,10 +299,9 @@ describe('reviewCommentToChat', () => {
 
     reviewCommentToChat(thread);
 
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Queued for chat: Review (1 comment)',
-      'Bring to Chat',
-      'Cancel',
+    expect(vscode.window.withProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Queued for chat: Review' }),
+      expect.any(Function),
     );
   });
 
@@ -280,10 +315,9 @@ describe('reviewCommentToChat', () => {
 
     reviewCommentToChat(thread);
 
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Queued for chat: Custom Title (1 comment)',
-      'Bring to Chat',
-      'Cancel',
+    expect(vscode.window.withProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Queued for chat: Custom Title' }),
+      expect.any(Function),
     );
   });
 
@@ -297,36 +331,56 @@ describe('reviewCommentToChat', () => {
 
     reviewCommentToChat(thread);
 
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      'Queued for chat: Foo (1 comment)',
-      'Bring to Chat',
-      'Cancel',
+    expect(vscode.window.withProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Queued for chat: Foo' }),
+      expect.any(Function),
     );
   });
 
-  it('should execute chat command when "Bring to Chat" is clicked', async () => {
-    vscode.window.showInformationMessage.mockResolvedValueOnce('Bring to Chat');
-
-    const thread = {
-      comments: [ { body: 'Bring to chat test' } ],
+  it('should dismiss previous toast when showing a new one', () => {
+    const thread1 = {
+      comments: [ { body: 'First' } ],
       label: undefined,
       range: { start: { line: 0 } },
-      uri: { fsPath: '/workspace/src/bring.ts' },
+      uri: { fsPath: '/workspace/src/a.ts' },
+    };
+    const thread2 = {
+      comments: [ { body: 'Second' } ],
+      label: undefined,
+      range: { start: { line: 1 } },
+      uri: { fsPath: '/workspace/src/b.ts' },
+    };
+
+    reviewCommentToChat(thread1);
+    reviewCommentToChat(thread2);
+
+    // Two withProgress calls, second replaces the first
+    expect(vscode.window.withProgress).toHaveBeenCalledTimes(2);
+    expect(vscode.window.withProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title: 'Queued for chat: Review (x2)' }),
+      expect.any(Function),
+    );
+  });
+
+  it('should allow external dismissal via dismissQueueToast', () => {
+    const thread = {
+      comments: [ { body: 'Dismissable' } ],
+      label: undefined,
+      range: { start: { line: 0 } },
+      uri: { fsPath: '/workspace/src/dismiss.ts' },
     };
 
     reviewCommentToChat(thread);
+    expect(vscode.window.withProgress).toHaveBeenCalledTimes(1);
 
-    await Promise.resolve();
+    // External dismiss should not throw
+    dismissQueueToast();
 
-    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-      'workbench.action.chat.open',
-      { query: '@bringCommentsToChat' },
-    );
+    // Queue remains intact — dismissQueueToast only dismisses the notification
+    expect(getQueuedPendingComments().length).toBe(1);
   });
 
-  it('should clear the queue when "Cancel" is clicked', async () => {
-    vscode.window.showInformationMessage.mockResolvedValueOnce('Cancel');
-
+  it('should clear the queue when notification is cancelled', () => {
     const thread = {
       comments: [ { body: 'Cancel test' } ],
       label: undefined,
@@ -335,8 +389,11 @@ describe('reviewCommentToChat', () => {
     };
 
     reviewCommentToChat(thread);
+    expect(getQueuedPendingComments().length).toBe(1);
 
-    await Promise.resolve();
+    // Simulate the user clicking Cancel on the withProgress notification
+    const lastHandler = vscode._cancelHandlers[vscode._cancelHandlers.length - 1];
+    lastHandler();
 
     expect(getQueuedPendingComments().length).toBe(0);
   });
@@ -370,10 +427,11 @@ describe('reviewCommentToChat', () => {
     expect(getQueuedPendingComments().length).toBe(3);
 
     // The last toast should aggregate both titles
-    expect(vscode.window.showInformationMessage).toHaveBeenLastCalledWith(
-      'Queued for chat: Security (1 comment), Lint (2 comments)',
-      'Bring to Chat',
-      'Cancel',
+    expect(vscode.window.withProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        title: 'Queued for chat: Security, Lint (x2)',
+      }),
+      expect.any(Function),
     );
   });
 });
