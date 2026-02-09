@@ -56,7 +56,7 @@ import {
   formatQueueParts,
   getQueuedPendingComments,
   reviewCommentToChat,
-} from '../reviewComments.js';
+} from '@/reviewComments';
 
 describe('reviewCommentToChat', () => {
   beforeEach(() => {

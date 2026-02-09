@@ -21,7 +21,7 @@ const vscode = vi.hoisted(() => {
 vi.mock('vscode', () => vscode);
 
 // eslint-disable-next-line import/first -- must follow vi.mock
-import { activate } from '../extension.js';
+import { activate } from '@/extension';
 
 function createMockContext() {
   return {

@@ -33,8 +33,8 @@
     },
     "chatParticipants": [
       {
-        "id": "custom-vscode.copyCommentToChat",
-        "name": "copyCommentToChat",
+        "id": "custom-vscode.bringCommentsToChat",
+        "name": "bringCommentsToChat",
         "fullName": "Code Review Comment",
         "description": "Copy code review comment content to chat, including file path and line number",
         "isSticky": false

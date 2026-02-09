@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { registerReviewParticipant, reviewCommentToChat } from './reviewComments.js';
+import { registerReviewParticipant, reviewCommentToChat } from '@/reviewComments';
 
 export function activate(context: vscode.ExtensionContext): void {
   registerReviewParticipant(context);

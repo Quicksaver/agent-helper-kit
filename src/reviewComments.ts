@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 
-import { buildComment } from '@/chat.js';
-import { type FileComments } from '@/types/FileComments.js';
-import { type ReviewComment } from '@/types/ReviewComment.js';
+import { buildComment } from '@/chat';
+import { type FileComments } from '@/types/FileComments';
+import { type ReviewComment } from '@/types/ReviewComment';
 import { toUri } from '@/uri';
 
 /** Sentinel values used when a standalone comment has no associated file or line. */

@@ -20,11 +20,11 @@ Use `yarn` (yarn.lock present)
 
 **Terminal commands vs. VS Code's tools:**
 
-| Action               | Use This                                                | Instead of                        |
-| -------------------- | ------------------------------------------------------- | --------------------------------- |
-| Run tests            | `runTests` tool                                         | `yarn test`, `vitest run`         |
-| Lint and typecheck   | `get_errors` tool                                       | `yarn lint:check`, `tsc --noEmit` |
-| Fix lint/format code | `run_vscode_command` with `workbench.action.files.save` | `yarn lint:fix`, `tsc --noEmit`   |
+| Action               | Use This                                        | Instead of                        |
+| -------------------- | ----------------------------------------------- | --------------------------------- |
+| Run tests            | `runTests` tool                                 | `yarn test`, `vitest run`         |
+| Lint and typecheck   | `problems` tool                                 | `yarn lint:check`, `tsc --noEmit` |
+| Fix lint/format code | `runCommand` with `workbench.action.files.save` | `yarn lint:fix`, `tsc --noEmit`   |
 
 **Linting Workflow**
 
