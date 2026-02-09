@@ -53,6 +53,7 @@ vi.mock('vscode', () => vscode);
 import {
   clearQueuedPendingComments,
   dismissQueueToast,
+  formatQueueParts,
   getQueuedPendingComments,
   reviewCommentToChat,
 } from '../reviewComments.js';
@@ -433,5 +434,125 @@ describe('reviewCommentToChat', () => {
       }),
       expect.any(Function),
     );
+  });
+
+  it('should simplify "Comment x of y" titles when all comments are present', () => {
+    for (let i = 1; i <= 4; i++) {
+      const thread = {
+        comments: [ { body: `Comment body ${i}` } ],
+        label: `Comment ${i} of 4`,
+        range: { start: { line: i } },
+        uri: { fsPath: `/workspace/src/file${i}.ts` },
+      };
+
+      reviewCommentToChat(thread);
+    }
+
+    expect(vscode.window.withProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        title: 'Queued for chat: All 4 comments',
+      }),
+      expect.any(Function),
+    );
+  });
+
+  it('should simplify "Comment x of y" titles when some comments are present', () => {
+    for (const i of [ 1, 2, 4 ]) {
+      const thread = {
+        comments: [ { body: `Comment body ${i}` } ],
+        label: `Comment ${i} of 4`,
+        range: { start: { line: i } },
+        uri: { fsPath: `/workspace/src/file${i}.ts` },
+      };
+
+      reviewCommentToChat(thread);
+    }
+
+    expect(vscode.window.withProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        title: 'Queued for chat: Comments 1, 2, and 4, of 4',
+      }),
+      expect.any(Function),
+    );
+  });
+
+  it('should keep single "Comment x of y" title as-is', () => {
+    const thread = {
+      comments: [ { body: 'Only one' } ],
+      label: 'Comment 2 of 4',
+      range: { start: { line: 0 } },
+      uri: { fsPath: '/workspace/src/single.ts' },
+    };
+
+    reviewCommentToChat(thread);
+
+    expect(vscode.window.withProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        title: 'Queued for chat: Comment 2 of 4',
+      }),
+      expect.any(Function),
+    );
+  });
+});
+
+describe('formatQueueParts', () => {
+  it('should return regular titles with count suffix', () => {
+    const map = new Map([ [ 'Lint', 3 ], [ 'Security', 1 ] ]);
+    expect(formatQueueParts(map)).toEqual([ 'Lint (x3)', 'Security' ]);
+  });
+
+  it('should return single "Comment x of y" as-is', () => {
+    const map = new Map([ [ 'Comment 2 of 4', 1 ] ]);
+    expect(formatQueueParts(map)).toEqual([ 'Comment 2 of 4' ]);
+  });
+
+  it('should collapse all comments into "All y comments"', () => {
+    const map = new Map([
+      [ 'Comment 1 of 3', 1 ],
+      [ 'Comment 2 of 3', 1 ],
+      [ 'Comment 3 of 3', 1 ],
+    ]);
+    expect(formatQueueParts(map)).toEqual([ 'All 3 comments' ]);
+  });
+
+  it('should list partial comments as "Comments x, y, and z, of total"', () => {
+    const map = new Map([
+      [ 'Comment 1 of 4', 1 ],
+      [ 'Comment 2 of 4', 1 ],
+      [ 'Comment 4 of 4', 1 ],
+    ]);
+    expect(formatQueueParts(map)).toEqual([ 'Comments 1, 2, and 4, of 4' ]);
+  });
+
+  it('should handle two partial comments without Oxford comma', () => {
+    const map = new Map([
+      [ 'Comment 1 of 5', 1 ],
+      [ 'Comment 3 of 5', 1 ],
+    ]);
+    expect(formatQueueParts(map)).toEqual([ 'Comments 1 and 3, of 5' ]);
+  });
+
+  it('should mix "Comment x of y" and regular titles', () => {
+    const map = new Map([
+      [ 'Comment 1 of 3', 1 ],
+      [ 'Comment 3 of 3', 1 ],
+      [ 'Lint', 2 ],
+    ]);
+    const result = formatQueueParts(map);
+    expect(result).toContain('Lint (x2)');
+    expect(result).toContain('Comments 1 and 3, of 3');
+  });
+
+  it('should handle duplicate "Comment x of y" with count > 1', () => {
+    const map = new Map([ [ 'Comment 1 of 4', 2 ] ]);
+    expect(formatQueueParts(map)).toEqual([ 'Comment 1 of 4 (x2)' ]);
+  });
+
+  it('should ignore dupe counts in partial groupings and list unique numbers only', () => {
+    const map = new Map([
+      [ 'Comment 1 of 4', 2 ],
+      [ 'Comment 3 of 4', 1 ],
+    ]);
+    expect(formatQueueParts(map)).toEqual([ 'Comments 1 and 3, of 4' ]);
   });
 });

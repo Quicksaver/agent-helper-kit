@@ -89,6 +89,82 @@ function parseSeverity(thread: vscode.CommentThread): string | undefined {
   return severity || undefined;
 }
 
+/** Regex matching thread titles of the form "Comment x of y". */
+const COMMENT_N_OF_TOTAL = /^Comment (\d+) of (\d+)$/;
+
+/**
+ * Formats a list of numbers using Oxford-comma style.
+ *
+ * - `[1]` → `'1'`
+ * - `[1, 3]` → `'1 and 3'`
+ * - `[1, 2, 4]` → `'1, 2, and 4'`
+ */
+function formatNumberList(nums: number[]): string {
+  if (nums.length <= 2) {
+    return nums.join(' and ');
+  }
+
+  return `${nums.slice(0, -1).join(', ')}, and ${nums[nums.length - 1]}`;
+}
+
+/**
+ * Builds the human-readable parts array for the queue toast.
+ *
+ * Titles matching `Comment x of y` are grouped by their total:
+ * - **Single comment** → kept as-is (e.g. `Comment 2 of 4`).
+ * - **All comments present** → `All y comments`.
+ * - **Some comments present** → `Comments 1, 2, and 4, of y`.
+ *
+ * All other titles use the default `Title (xN)` format.
+ */
+export function formatQueueParts(countByTitle: Map<string, number>): string[] {
+  const parts: string[] = [];
+  const commentGroups = new Map<number, number[]>();
+
+  for (const [ title, count ] of countByTitle.entries()) {
+    const match = COMMENT_N_OF_TOTAL.exec(title);
+
+    if (match) {
+      const num = Number(match[1]);
+      const total = Number(match[2]);
+      const group = commentGroups.get(total) ?? [];
+
+      if (group.length === 0) {
+        commentGroups.set(total, group);
+      }
+
+      // Push `num` once per occurrence so that the single-unique branch
+      // can surface the duplicate count (e.g. "Comment 1 of 4 (x2)").
+      // Multi-unique branches intentionally discard duplicates via Set
+      // since "Comments 1, 2, and 4, of 4" is clearer without per-number counts.
+      for (let i = 0; i < count; i++) {
+        group.push(num);
+      }
+    }
+    else {
+      parts.push(`${title}${count > 1 ? ` (x${count})` : ''}`);
+    }
+  }
+
+  for (const [ total, nums ] of commentGroups.entries()) {
+    const unique = [ ...new Set(nums) ].sort((a, b) => a - b);
+
+    if (unique.length === 1) {
+      const display = `Comment ${unique[0]} of ${total}`;
+      const dupeCount = nums.length;
+      parts.push(dupeCount > 1 ? `${display} (x${dupeCount})` : display);
+    }
+    else if (unique.length === total) {
+      parts.push(`All ${total} comments`);
+    }
+    else {
+      parts.push(`Comments ${formatNumberList(unique)}, of ${total}`);
+    }
+  }
+
+  return parts;
+}
+
 /**
  * Shows a persistent notification listing all queued comment titles.
  *
@@ -109,9 +185,7 @@ function showQueueToast(): void {
     countByTitle.set(entry.title, (countByTitle.get(entry.title) ?? 0) + 1);
   }
 
-  const parts = [ ...countByTitle.entries() ].map(
-    ([ title, count ]) => `${title}${count > 1 ? ` (x${count})` : ''}`,
-  );
+  const parts = formatQueueParts(countByTitle);
   const message = `Queued for chat: ${parts.join(', ')}`;
 
   void vscode.window.withProgress(
