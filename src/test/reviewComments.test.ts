@@ -49,6 +49,11 @@ const vscode = vi.hoisted(() => {
 
 vi.mock('vscode', () => vscode);
 
+const mockUri = (fsPath: string) => ({
+  fsPath,
+  toString: () => `file://${fsPath}`,
+});
+
 // eslint-disable-next-line import/first -- must follow vi.mock
 import {
   clearQueuedPendingComments,
@@ -73,7 +78,7 @@ describe('reviewCommentToChat', () => {
       ],
       label: undefined,
       range: { start: { line: 9 } },
-      uri: { fsPath: '/workspace/src/foo.ts' },
+      uri: mockUri('/workspace/src/foo.ts'),
     };
 
     reviewCommentToChat(thread);
@@ -85,6 +90,7 @@ describe('reviewCommentToChat', () => {
     expect(pending.comment).toEqual({
       comment: 'First comment\nSecond comment',
       file: 'src/foo.ts',
+      fileUri: 'file:///workspace/src/foo.ts',
       line: 10,
     });
     expect(pending.file).toEqual({
@@ -100,7 +106,7 @@ describe('reviewCommentToChat', () => {
       ],
       label: undefined,
       range: { start: { line: 4 } },
-      uri: { fsPath: '/workspace/src/bar.ts' },
+      uri: mockUri('/workspace/src/bar.ts'),
     };
 
     reviewCommentToChat(thread);
@@ -112,6 +118,7 @@ describe('reviewCommentToChat', () => {
     expect(pending.comment).toEqual({
       comment: 'Markdown **body**',
       file: 'src/bar.ts',
+      fileUri: 'file:///workspace/src/bar.ts',
       line: 5,
     });
   });
@@ -121,7 +128,7 @@ describe('reviewCommentToChat', () => {
       comments: [ { body: 'A comment' } ],
       label: 'Review | critical',
       range: { start: { line: 0 } },
-      uri: { fsPath: '/workspace/src/baz.ts' },
+      uri: mockUri('/workspace/src/baz.ts'),
     };
 
     reviewCommentToChat(thread);
@@ -133,6 +140,7 @@ describe('reviewCommentToChat', () => {
     expect(pending.comment).toEqual({
       comment: 'A comment',
       file: 'src/baz.ts',
+      fileUri: 'file:///workspace/src/baz.ts',
       line: 1,
       severity: 'critical',
     });
@@ -143,7 +151,7 @@ describe('reviewCommentToChat', () => {
       comments: [ { body: 'No range' } ],
       label: undefined,
       range: undefined,
-      uri: { fsPath: '/workspace/src/no-range.ts' },
+      uri: mockUri('/workspace/src/no-range.ts'),
     };
 
     reviewCommentToChat(thread);
@@ -155,6 +163,7 @@ describe('reviewCommentToChat', () => {
     expect(pending.comment).toEqual({
       comment: 'No range',
       file: 'src/no-range.ts',
+      fileUri: 'file:///workspace/src/no-range.ts',
       line: 1,
     });
   });
@@ -182,7 +191,7 @@ describe('reviewCommentToChat', () => {
       comments: [ { body: 'A comment' } ],
       label: 'Just a label without pipe',
       range: { start: { line: 5 } },
-      uri: { fsPath: '/workspace/src/no-pipe.ts' },
+      uri: mockUri('/workspace/src/no-pipe.ts'),
     };
 
     reviewCommentToChat(thread);
@@ -194,6 +203,7 @@ describe('reviewCommentToChat', () => {
     expect(pending.comment).toEqual({
       comment: 'A comment',
       file: 'src/no-pipe.ts',
+      fileUri: 'file:///workspace/src/no-pipe.ts',
       line: 6,
     });
     expect(pending.comment.severity).toBeUndefined();
@@ -204,7 +214,7 @@ describe('reviewCommentToChat', () => {
       comments: [ { body: 'Duplicate me' } ],
       label: 'Lint | warning',
       range: { start: { line: 2 } },
-      uri: { fsPath: '/workspace/src/dup.ts' },
+      uri: mockUri('/workspace/src/dup.ts'),
     };
 
     reviewCommentToChat(thread);
@@ -229,7 +239,7 @@ describe('reviewCommentToChat', () => {
       comments: [ { body: 'Toast test' } ],
       label: 'Security | high',
       range: { start: { line: 0 } },
-      uri: { fsPath: '/workspace/src/toast.ts' },
+      uri: mockUri('/workspace/src/toast.ts'),
     };
 
     reviewCommentToChat(thread);
@@ -249,7 +259,7 @@ describe('reviewCommentToChat', () => {
       comments: [ { body: 'No label toast' } ],
       label: undefined,
       range: { start: { line: 0 } },
-      uri: { fsPath: '/workspace/src/no-label.ts' },
+      uri: mockUri('/workspace/src/no-label.ts'),
     };
 
     reviewCommentToChat(thread);
@@ -279,7 +289,7 @@ describe('reviewCommentToChat', () => {
       comments: [ { body: 'Multi-pipe test' } ],
       label: 'Title | Sub | high',
       range: { start: { line: 0 } },
-      uri: { fsPath: '/workspace/src/multi-pipe.ts' },
+      uri: mockUri('/workspace/src/multi-pipe.ts'),
     };
 
     reviewCommentToChat(thread);
@@ -295,7 +305,7 @@ describe('reviewCommentToChat', () => {
       comments: [ { body: 'Empty title test' } ],
       label: ' | high',
       range: { start: { line: 0 } },
-      uri: { fsPath: '/workspace/src/empty-title.ts' },
+      uri: mockUri('/workspace/src/empty-title.ts'),
     };
 
     reviewCommentToChat(thread);
@@ -311,7 +321,7 @@ describe('reviewCommentToChat', () => {
       comments: [ { body: 'No pipe title test' } ],
       label: 'Custom Title',
       range: { start: { line: 0 } },
-      uri: { fsPath: '/workspace/src/no-pipe-title.ts' },
+      uri: mockUri('/workspace/src/no-pipe-title.ts'),
     };
 
     reviewCommentToChat(thread);
@@ -327,7 +337,7 @@ describe('reviewCommentToChat', () => {
       comments: [ { body: 'Trailing pipe test' } ],
       label: 'Foo | ',
       range: { start: { line: 0 } },
-      uri: { fsPath: '/workspace/src/trailing-pipe.ts' },
+      uri: mockUri('/workspace/src/trailing-pipe.ts'),
     };
 
     reviewCommentToChat(thread);
@@ -343,13 +353,13 @@ describe('reviewCommentToChat', () => {
       comments: [ { body: 'First' } ],
       label: undefined,
       range: { start: { line: 0 } },
-      uri: { fsPath: '/workspace/src/a.ts' },
+      uri: mockUri('/workspace/src/a.ts'),
     };
     const thread2 = {
       comments: [ { body: 'Second' } ],
       label: undefined,
       range: { start: { line: 1 } },
-      uri: { fsPath: '/workspace/src/b.ts' },
+      uri: mockUri('/workspace/src/b.ts'),
     };
 
     reviewCommentToChat(thread1);
@@ -368,7 +378,7 @@ describe('reviewCommentToChat', () => {
       comments: [ { body: 'Dismissable' } ],
       label: undefined,
       range: { start: { line: 0 } },
-      uri: { fsPath: '/workspace/src/dismiss.ts' },
+      uri: mockUri('/workspace/src/dismiss.ts'),
     };
 
     reviewCommentToChat(thread);
@@ -386,7 +396,7 @@ describe('reviewCommentToChat', () => {
       comments: [ { body: 'Cancel test' } ],
       label: undefined,
       range: { start: { line: 0 } },
-      uri: { fsPath: '/workspace/src/cancel.ts' },
+      uri: mockUri('/workspace/src/cancel.ts'),
     };
 
     reviewCommentToChat(thread);
@@ -404,21 +414,21 @@ describe('reviewCommentToChat', () => {
       comments: [ { body: 'Security issue 1' } ],
       label: 'Security | critical',
       range: { start: { line: 0 } },
-      uri: { fsPath: '/workspace/src/a.ts' },
+      uri: mockUri('/workspace/src/a.ts'),
     };
 
     const lintThread1 = {
       comments: [ { body: 'Lint issue 1' } ],
       label: 'Lint | warning',
       range: { start: { line: 1 } },
-      uri: { fsPath: '/workspace/src/b.ts' },
+      uri: mockUri('/workspace/src/b.ts'),
     };
 
     const lintThread2 = {
       comments: [ { body: 'Lint issue 2' } ],
       label: 'Lint | info',
       range: { start: { line: 5 } },
-      uri: { fsPath: '/workspace/src/c.ts' },
+      uri: mockUri('/workspace/src/c.ts'),
     };
 
     reviewCommentToChat(securityThread);
@@ -442,7 +452,7 @@ describe('reviewCommentToChat', () => {
         comments: [ { body: `Comment body ${i}` } ],
         label: `Comment ${i} of 4`,
         range: { start: { line: i } },
-        uri: { fsPath: `/workspace/src/file${i}.ts` },
+        uri: mockUri(`/workspace/src/file${i}.ts`),
       };
 
       reviewCommentToChat(thread);
@@ -462,7 +472,7 @@ describe('reviewCommentToChat', () => {
         comments: [ { body: `Comment body ${i}` } ],
         label: `Comment ${i} of 4`,
         range: { start: { line: i } },
-        uri: { fsPath: `/workspace/src/file${i}.ts` },
+        uri: mockUri(`/workspace/src/file${i}.ts`),
       };
 
       reviewCommentToChat(thread);
@@ -481,7 +491,7 @@ describe('reviewCommentToChat', () => {
       comments: [ { body: 'Only one' } ],
       label: 'Comment 2 of 4',
       range: { start: { line: 0 } },
-      uri: { fsPath: '/workspace/src/single.ts' },
+      uri: mockUri('/workspace/src/single.ts'),
     };
 
     reviewCommentToChat(thread);

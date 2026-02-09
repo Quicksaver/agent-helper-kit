@@ -19,7 +19,10 @@ export async function buildComment(
   markdown.isTrusted = { enabledCommands: [] };
 
   // Add line number anchor
-  const uri = await toUri(file.target, comment.line);
+  const { fileUri } = comment;
+  const uri = fileUri
+    ? vscode.Uri.parse(fileUri).with({ fragment: `L${comment.line}` })
+    : await toUri(file.target, comment.line);
   markdown.appendMarkdown(`[Line ${comment.line}](${uri.toString()})`);
 
   if (comment.severity) {

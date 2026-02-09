@@ -226,6 +226,10 @@ function showQueueToast(): void {
  * while `comments/comment/title` passes a `Comment` which has no reliable parent reference.
  */
 function resolveCommentThread(arg: unknown): undefined | vscode.CommentThread {
+  if (!arg || typeof arg !== 'object') {
+    return undefined;
+  }
+
   const obj = arg as Record<string, unknown>;
 
   if (Array.isArray(obj.comments) && 'uri' in obj) {
@@ -255,6 +259,7 @@ export function reviewCommentToChat(arg: unknown): void {
     const reviewComment: ReviewComment = {
       comment: body,
       file: relativePath,
+      fileUri: thread.uri.toString(),
       line,
       ...(severity && { severity }),
     };
@@ -339,8 +344,10 @@ async function handleCopyCommentToChatRequest(
   for (const entry of byFile.entries()) {
     const [ target, fileComments ] = entry;
 
+    const firstComment = fileComments.comments[0];
+    const { fileUri } = firstComment;
     // eslint-disable-next-line no-await-in-loop
-    const uri = await toUri(target);
+    const uri = fileUri ? vscode.Uri.parse(fileUri) : await toUri(target);
     stream.anchor(uri);
     stream.markdown('\n\n');
 
