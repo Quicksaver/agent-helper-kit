@@ -15,6 +15,10 @@ const queuedPendingComments: {
   title: string;
 }[] = [];
 
+const AUTHOR_NAME_REWRITES: Record<string, string> = {
+  'Code Review': 'Copilot Code Review',
+};
+
 /** Returns a shallow copy of the current queued pending comments. Exposed for testing. */
 export function getQueuedPendingComments(): {
   comment: ReviewComment;
@@ -96,11 +100,7 @@ function extractAuthorName(comment: unknown): string | undefined {
     return undefined;
   }
 
-  if (trimmed === 'Code Review') {
-    return 'Copilot Code Review';
-  }
-
-  return trimmed;
+  return AUTHOR_NAME_REWRITES[trimmed] ?? trimmed;
 }
 
 /**
@@ -286,11 +286,13 @@ export function reviewCommentToChat(arg: unknown): void {
 
   if (thread) {
     let firstAuthorName: string | undefined;
+    const distinctAuthors = new Set<string>();
+
     for (const c of thread.comments) {
       const name = extractAuthorName(c);
       if (name) {
-        firstAuthorName = name;
-        break;
+        distinctAuthors.add(name);
+        firstAuthorName ??= name;
       }
     }
     const body = thread.comments.map(c => extractCommentBody(c)).join('\n');
@@ -304,7 +306,9 @@ export function reviewCommentToChat(arg: unknown): void {
       file: relativePath,
       fileUri: thread.uri.toString(),
       line,
-      ...(firstAuthorName && { authorName: firstAuthorName }),
+      // Omit author attribution when multiple distinct authors are present
+      // to avoid implying all aggregated content was authored by one person.
+      ...(distinctAuthors.size <= 1 && firstAuthorName && { authorName: firstAuthorName }),
       ...(severity && { severity }),
     };
 

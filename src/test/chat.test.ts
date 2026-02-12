@@ -3,8 +3,8 @@ import {
 } from 'vitest';
 
 vi.mock('@/uri', () => ({
-  toUri: vi.fn(async (_file: string, lineNo?: number) => ({
-    toString: () => `file:///workspace/mock.ts#L${lineNo ?? 1}`,
+  toUri: vi.fn(async (file: string, lineNo?: number) => ({
+    toString: () => `file:///workspace/${file}#L${lineNo ?? 1}`,
   })),
 }));
 
@@ -90,5 +90,41 @@ describe('buildComment', () => {
     );
 
     expect(markdown.value).toContain('[Line 2](file:///workspace/src/foo.ts#L2) | *A\\*\\[b\\]\\(c\\)\\`d*');
+  });
+
+  it('should escape dollar and angle brackets in authorName', async () => {
+    const markdown = await buildComment(
+      {
+        comments: [],
+        target: 'src/foo.ts',
+      },
+      {
+        authorName: 'A<$cash>$',
+        comment: 'Body',
+        file: 'src/foo.ts',
+        fileUri: 'file:///workspace/src/foo.ts',
+        line: 3,
+      },
+    );
+
+    expect(markdown.value).toContain('[Line 3](file:///workspace/src/foo.ts#L3) | *A\\<\\$cash\\>\\$*');
+  });
+
+  it('should normalize whitespace in authorName before rendering', async () => {
+    const markdown = await buildComment(
+      {
+        comments: [],
+        target: 'src/foo.ts',
+      },
+      {
+        authorName: '  A\n\tB  ',
+        comment: 'Body',
+        file: 'src/foo.ts',
+        fileUri: 'file:///workspace/src/foo.ts',
+        line: 4,
+      },
+    );
+
+    expect(markdown.value).toContain('[Line 4](file:///workspace/src/foo.ts#L4) | *A B*');
   });
 });

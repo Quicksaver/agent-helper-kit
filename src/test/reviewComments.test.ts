@@ -301,6 +301,57 @@ describe('reviewCommentToChat', () => {
     });
   });
 
+  it('should ignore non-string standalone author.name values', () => {
+    const comment = {
+      author: { name: 42 },
+      body: 'Standalone with non-string author',
+    };
+
+    reviewCommentToChat(comment as unknown as { body: string });
+
+    const queued = getQueuedPendingComments();
+    expect(queued.length).toBeGreaterThanOrEqual(1);
+    const pending = queued[queued.length - 1];
+    expect(pending).toBeDefined();
+    expect(pending.comment).toEqual({
+      comment: 'Standalone with non-string author',
+      file: 'unknown',
+      line: 1,
+    });
+  });
+
+  it('should omit authorName when thread includes multiple distinct authors', () => {
+    const thread = {
+      comments: [
+        {
+          author: { name: 'Author A' },
+          body: 'First',
+        },
+        {
+          author: { name: 'Author B' },
+          body: 'Second',
+        },
+      ],
+      label: undefined,
+      range: { start: { line: 1 } },
+      uri: mockUri('/workspace/src/multi-author.ts'),
+    };
+
+    reviewCommentToChat(thread);
+
+    const queued = getQueuedPendingComments();
+    expect(queued.length).toBeGreaterThanOrEqual(1);
+    const pending = queued[queued.length - 1];
+    expect(pending).toBeDefined();
+    expect(pending.comment).toEqual({
+      comment: 'First\nSecond',
+      file: 'src/multi-author.ts',
+      fileUri: 'file:///workspace/src/multi-author.ts',
+      line: 2,
+    });
+    expect(pending.comment.authorName).toBeUndefined();
+  });
+
   it('should not include severity when thread label has no pipe', () => {
     const thread = {
       comments: [ { body: 'A comment' } ],

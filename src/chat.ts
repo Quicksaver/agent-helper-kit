@@ -5,7 +5,8 @@ import { type ReviewComment } from '@/types/ReviewComment';
 import { toUri } from '@/uri';
 
 function escapeMarkdownInlineText(value: string): string {
-  return value.replace(/[\\`*_{}[\]()#+\-.!|>~]/g, '\\$&');
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return normalized.replace(/([\\`*_{}\[\]()#+\-.!|<>~$])/g, '\\$1');
 }
 
 export async function buildComment(
