@@ -68,6 +68,19 @@ function extractCommentBody(comment: vscode.Comment): string {
   return typeof comment.body === 'string' ? comment.body : comment.body.value;
 }
 
+/** Extracts an author name from a comment-like object, if available. */
+function extractAuthorName(comment: vscode.Comment): string | undefined {
+  const maybeAuthor = (comment as unknown as { author?: unknown }).author;
+
+  if (!maybeAuthor || typeof maybeAuthor !== 'object') {
+    return undefined;
+  }
+
+  const maybeName = (maybeAuthor as { name?: unknown }).name;
+
+  return typeof maybeName === 'string' && maybeName.length > 0 ? maybeName : undefined;
+}
+
 /**
  * Parses severity from a comment thread label.
  *
@@ -250,6 +263,7 @@ export function reviewCommentToChat(arg: unknown): void {
   const thread = resolveCommentThread(arg);
 
   if (thread) {
+    const firstAuthorName = thread.comments.map(c => extractAuthorName(c)).find(Boolean);
     const body = thread.comments.map(c => extractCommentBody(c)).join('\n');
     const relativePath = vscode.workspace.asRelativePath(thread.uri);
     const line = thread.range ? thread.range.start.line + 1 : 1;
@@ -261,6 +275,7 @@ export function reviewCommentToChat(arg: unknown): void {
       file: relativePath,
       fileUri: thread.uri.toString(),
       line,
+      ...(firstAuthorName && { authorName: firstAuthorName }),
       ...(severity && { severity }),
     };
 
@@ -286,10 +301,12 @@ export function reviewCommentToChat(arg: unknown): void {
 
   if (comment) {
     const body = extractCommentBody(comment);
+    const authorName = extractAuthorName(comment);
     const reviewComment: ReviewComment = {
       comment: body,
       file: STANDALONE_FILE,
       line: STANDALONE_LINE,
+      ...(authorName && { authorName }),
     };
 
     if (isAlreadyQueued(body, STANDALONE_FILE, STANDALONE_LINE)) {

@@ -123,6 +123,34 @@ describe('reviewCommentToChat', () => {
     });
   });
 
+  it('should include authorName when a thread comment has author.name', () => {
+    const thread = {
+      comments: [
+        {
+          author: { name: 'CodeRabbit' },
+          body: 'Author body',
+        },
+      ],
+      label: undefined,
+      range: { start: { line: 7 } },
+      uri: mockUri('/workspace/src/author.ts'),
+    };
+
+    reviewCommentToChat(thread);
+
+    const queued = getQueuedPendingComments();
+    expect(queued.length).toBeGreaterThanOrEqual(1);
+    const pending = queued[queued.length - 1];
+    expect(pending).toBeDefined();
+    expect(pending.comment).toEqual({
+      authorName: 'CodeRabbit',
+      comment: 'Author body',
+      file: 'src/author.ts',
+      fileUri: 'file:///workspace/src/author.ts',
+      line: 8,
+    });
+  });
+
   it('should parse severity from thread label with pipe separator', () => {
     const thread = {
       comments: [ { body: 'A comment' } ],
@@ -181,6 +209,26 @@ describe('reviewCommentToChat', () => {
     expect(pending).toBeDefined();
     expect(pending.comment).toEqual({
       comment: 'A standalone comment',
+      file: 'unknown',
+      line: 1,
+    });
+  });
+
+  it('should include authorName for standalone Comment fallback when available', () => {
+    const comment = {
+      author: { name: 'Copilot Code Review' },
+      body: 'A standalone authored comment',
+    };
+
+    reviewCommentToChat(comment);
+
+    const queued = getQueuedPendingComments();
+    expect(queued.length).toBeGreaterThanOrEqual(1);
+    const pending = queued[queued.length - 1];
+    expect(pending).toBeDefined();
+    expect(pending.comment).toEqual({
+      authorName: 'Copilot Code Review',
+      comment: 'A standalone authored comment',
       file: 'unknown',
       line: 1,
     });

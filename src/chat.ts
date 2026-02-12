@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
 import { type FileComments } from '@/types/FileComments';
-import { ReviewComment } from '@/types/ReviewComment';
+import { type ReviewComment } from '@/types/ReviewComment';
 import { toUri } from '@/uri';
 
 export async function buildComment(
@@ -24,6 +24,10 @@ export async function buildComment(
     ? vscode.Uri.parse(fileUri).with({ fragment: `L${comment.line}` })
     : await toUri(file.target, comment.line);
   markdown.appendMarkdown(`[Line ${comment.line}](${uri.toString()})`);
+
+  if (comment.authorName) {
+    markdown.appendMarkdown(` | *${comment.authorName}*`);
+  }
 
   if (comment.severity) {
     markdown.appendMarkdown(` | **${comment.severity}**`);
