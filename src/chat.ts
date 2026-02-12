@@ -6,7 +6,7 @@ import { toUri } from '@/uri';
 
 function escapeMarkdownInlineText(value: string): string {
   const normalized = value.replace(/\s+/g, ' ').trim();
-  return normalized.replace(/([\\`*_{}\[\]()#+\-.!|<>~$])/g, '\\$1');
+  return normalized.replace(/([\\`*_{}[\]()#+\-.!|<>~$])/g, '\\$1');
 }
 
 export async function buildComment(
