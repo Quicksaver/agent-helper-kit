@@ -92,7 +92,15 @@ function extractAuthorName(comment: unknown): string | undefined {
   }
 
   const trimmed = maybeName.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+
+  if (trimmed === 'Code Review') {
+    return 'Copilot Code Review';
+  }
+
+  return trimmed;
 }
 
 /**

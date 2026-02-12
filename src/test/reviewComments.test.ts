@@ -151,6 +151,28 @@ describe('reviewCommentToChat', () => {
     });
   });
 
+  it('should rewrite exact author name "Code Review" to "Copilot Code Review"', () => {
+    const thread = {
+      comments: [
+        {
+          author: { name: 'Code Review' },
+          body: 'Author body',
+        },
+      ],
+      label: undefined,
+      range: { start: { line: 7 } },
+      uri: mockUri('/workspace/src/author-rewrite.ts'),
+    };
+
+    reviewCommentToChat(thread);
+
+    const queued = getQueuedPendingComments();
+    expect(queued.length).toBeGreaterThanOrEqual(1);
+    const pending = queued[queued.length - 1];
+    expect(pending).toBeDefined();
+    expect(pending.comment.authorName).toBe('Copilot Code Review');
+  });
+
   it('should use first available authorName when earlier comments have no author', () => {
     const thread = {
       comments: [
