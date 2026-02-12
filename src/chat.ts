@@ -4,6 +4,10 @@ import { type FileComments } from '@/types/FileComments';
 import { type ReviewComment } from '@/types/ReviewComment';
 import { toUri } from '@/uri';
 
+function escapeMarkdownInlineText(value: string): string {
+  return value.replace(/[\\`*_{}[\]()#+\-.!|>~]/g, '\\$&');
+}
+
 export async function buildComment(
   file: FileComments,
   comment: ReviewComment,
@@ -26,7 +30,7 @@ export async function buildComment(
   markdown.appendMarkdown(`[Line ${comment.line}](${uri.toString()})`);
 
   if (comment.authorName) {
-    markdown.appendMarkdown(` | *${comment.authorName}*`);
+    markdown.appendMarkdown(` | *${escapeMarkdownInlineText(comment.authorName)}*`);
   }
 
   if (comment.severity) {

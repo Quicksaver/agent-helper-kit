@@ -151,6 +151,51 @@ describe('reviewCommentToChat', () => {
     });
   });
 
+  it('should use first available authorName when earlier comments have no author', () => {
+    const thread = {
+      comments: [
+        { body: 'No author on first' },
+        {
+          author: { name: 'Later Author' },
+          body: 'Second has author',
+        },
+      ],
+      label: undefined,
+      range: { start: { line: 11 } },
+      uri: mockUri('/workspace/src/later-author.ts'),
+    };
+
+    reviewCommentToChat(thread);
+
+    const queued = getQueuedPendingComments();
+    expect(queued.length).toBeGreaterThanOrEqual(1);
+    const pending = queued[queued.length - 1];
+    expect(pending).toBeDefined();
+    expect(pending.comment.authorName).toBe('Later Author');
+  });
+
+  it('should treat whitespace-only author names as absent', () => {
+    const thread = {
+      comments: [
+        {
+          author: { name: '   ' },
+          body: 'Whitespace author',
+        },
+      ],
+      label: undefined,
+      range: { start: { line: 3 } },
+      uri: mockUri('/workspace/src/whitespace-author.ts'),
+    };
+
+    reviewCommentToChat(thread);
+
+    const queued = getQueuedPendingComments();
+    expect(queued.length).toBeGreaterThanOrEqual(1);
+    const pending = queued[queued.length - 1];
+    expect(pending).toBeDefined();
+    expect(pending.comment.authorName).toBeUndefined();
+  });
+
   it('should parse severity from thread label with pipe separator', () => {
     const thread = {
       comments: [ { body: 'A comment' } ],

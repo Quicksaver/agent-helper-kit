@@ -68,9 +68,18 @@ function extractCommentBody(comment: vscode.Comment): string {
   return typeof comment.body === 'string' ? comment.body : comment.body.value;
 }
 
-/** Extracts an author name from a comment-like object, if available. */
-function extractAuthorName(comment: vscode.Comment): string | undefined {
-  const maybeAuthor = (comment as unknown as { author?: unknown }).author;
+/**
+ * Extracts an author name from a comment-like object, if available.
+ *
+ * Some review providers include an `author.name` field on their comment shape.
+ * This helper safely inspects unknown input and treats whitespace-only names as absent.
+ */
+function extractAuthorName(comment: unknown): string | undefined {
+  if (!comment || typeof comment !== 'object') {
+    return undefined;
+  }
+
+  const maybeAuthor = (comment as { author?: unknown }).author;
 
   if (!maybeAuthor || typeof maybeAuthor !== 'object') {
     return undefined;
@@ -78,7 +87,12 @@ function extractAuthorName(comment: vscode.Comment): string | undefined {
 
   const maybeName = (maybeAuthor as { name?: unknown }).name;
 
-  return typeof maybeName === 'string' && maybeName.length > 0 ? maybeName : undefined;
+  if (typeof maybeName !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = maybeName.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 /**
@@ -263,7 +277,14 @@ export function reviewCommentToChat(arg: unknown): void {
   const thread = resolveCommentThread(arg);
 
   if (thread) {
-    const firstAuthorName = thread.comments.map(c => extractAuthorName(c)).find(Boolean);
+    let firstAuthorName: string | undefined;
+    for (const c of thread.comments) {
+      const name = extractAuthorName(c);
+      if (name) {
+        firstAuthorName = name;
+        break;
+      }
+    }
     const body = thread.comments.map(c => extractCommentBody(c)).join('\n');
     const relativePath = vscode.workspace.asRelativePath(thread.uri);
     const line = thread.range ? thread.range.start.line + 1 : 1;

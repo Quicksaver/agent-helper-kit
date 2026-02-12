@@ -73,4 +73,22 @@ describe('buildComment', () => {
 
     expect(markdown.value).toContain('[Line 34](file:///workspace/src/foo.ts#L34) | *Abc*');
   });
+
+  it('should escape markdown special characters in authorName', async () => {
+    const markdown = await buildComment(
+      {
+        comments: [],
+        target: 'src/foo.ts',
+      },
+      {
+        authorName: 'A*[b](c)`d',
+        comment: 'Body',
+        file: 'src/foo.ts',
+        fileUri: 'file:///workspace/src/foo.ts',
+        line: 2,
+      },
+    );
+
+    expect(markdown.value).toContain('[Line 2](file:///workspace/src/foo.ts#L2) | *A\\*\\[b\\]\\(c\\)\\`d*');
+  });
 });
