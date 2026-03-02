@@ -47,6 +47,13 @@ let backgroundIdCounter = 0;
 let sharedForegroundCwd: string | undefined;
 let lastCommand: string | undefined;
 
+function buildShellEnv(): NodeJS.ProcessEnv {
+  return {
+    ...globalThis.process.env,
+    TERM: globalThis.process.env.TERM ?? 'xterm-256color',
+  };
+}
+
 function appendOutput(current: string, chunk: string): string {
   const next = `${current}${chunk}`;
 
@@ -109,7 +116,7 @@ async function runForegroundCommand(input: RunInTerminalInput): Promise<{
 
   const childProc = childProcess.spawn('/bin/bash', [ '-lc', wrappedCommand ], {
     cwd,
-    env: globalThis.process.env,
+    env: buildShellEnv(),
   });
 
   let output = '';
@@ -165,7 +172,7 @@ function startBackgroundCommand(command: string): string {
   const id = `custom-terminal-${++backgroundIdCounter}`;
   const childProc = childProcess.spawn('/bin/bash', [ '-lc', command ], {
     cwd: getWorkspaceCwd(),
-    env: globalThis.process.env,
+    env: buildShellEnv(),
   });
 
   let output = '';
