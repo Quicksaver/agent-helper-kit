@@ -15,6 +15,7 @@ const vscode = vi.hoisted(() => {
       registerCommand: vi.fn(() => disposable),
     },
     lm: {
+      registerMcpServerDefinitionProvider: vi.fn(() => disposable),
       registerTool: vi.fn(() => disposable),
     },
     ThemeIcon: vi.fn(),
@@ -60,7 +61,18 @@ describe('Extension', () => {
 
     activate(context);
 
-    expect(context.subscriptions).toHaveLength(7);
+    expect(context.subscriptions).toHaveLength(8);
+  });
+
+  it('should register MCP server definition provider on activation', () => {
+    const context = createMockContext();
+
+    activate(context);
+
+    expect(vscode.lm.registerMcpServerDefinitionProvider).toHaveBeenCalledWith(
+      'custom-vscode.terminal-tools-mcp',
+      expect.any(Object),
+    );
   });
 
   it('should register custom terminal tools on activation', () => {

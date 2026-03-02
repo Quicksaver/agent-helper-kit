@@ -52,3 +52,4 @@ This file provides context for AI agents working in this codebase.
 ```
 
 - **[2026-03-02] LM Tool Wiring**: Chat tools must be declared in `contributes.languageModelTools` and also registered at runtime, or they won’t be invokable. See `registerTerminalTools` in src/terminalTools.ts.
+- **[2026-03-02] MCP Provider Wiring**: Dynamic MCP servers require both `contributes.mcpServerDefinitionProviders` and runtime `lm.registerMcpServerDefinitionProvider`; either one missing prevents discovery. See `registerMcpServerProvider` in src/mcpProvider.ts.

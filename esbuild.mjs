@@ -5,11 +5,11 @@ const isWatch = process.argv.includes('--watch');
 /** @type {import('esbuild').BuildOptions} */
 const buildOptions = {
   bundle: true,
-  entryPoints: [ './src/extension.ts' ],
+  entryPoints: [ './src/extension.ts', './src/mcpServer.ts' ],
   external: [ 'vscode' ],
   format: 'cjs',
   minify: !isWatch,
-  outfile: 'dist/extension.js',
+  outdir: 'dist',
   platform: 'node',
   sourcemap: isWatch,
   target: 'node22',

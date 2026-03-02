@@ -28,6 +28,20 @@ The extension contributes and registers these language model tools:
 
 These are extension-scoped copies of the built-in terminal-style tool APIs.
 
+### 3) MCP server provided by this extension
+
+The extension also publishes a local MCP server definition (`Custom Terminal Tools MCP`) through VS Code's MCP provider API.
+
+This server exposes the same tool names:
+
+- `custom_run_in_terminal`
+- `custom_await_terminal`
+- `custom_get_terminal_output`
+- `custom_kill_terminal`
+- `custom_terminal_last_command`
+
+This is intended as a bridge path for agent runtimes that can call MCP tools but do not directly call extension `languageModelTools`.
+
 ## Requirements
 
 - VS Code `^1.109.0`
@@ -148,3 +162,12 @@ Start a long-running background command (e.g. `sleep 30`), then call:
 via `custom_kill_terminal`.
 
 Expected: `{ "killed": true }`, and a subsequent `custom_await_terminal` eventually reports completion.
+
+## Enable the extension MCP server in Chat
+
+After installing/reloading the extension:
+
+1. Open Chat tool settings.
+2. Find the MCP server provider entry labeled `Custom Terminal Tools MCP`.
+3. Enable/connect that server.
+4. Confirm the `custom_*` tools appear in the tools list.
