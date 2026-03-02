@@ -13,7 +13,13 @@
     "Other"
   ],
   "main": "./dist/extension.js",
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguageModelTool:custom_run_in_terminal",
+    "onLanguageModelTool:custom_await_terminal",
+    "onLanguageModelTool:custom_get_terminal_output",
+    "onLanguageModelTool:custom_kill_terminal",
+    "onLanguageModelTool:custom_terminal_last_command"
+  ],
   "contributes": {
     "commands": [
       {
