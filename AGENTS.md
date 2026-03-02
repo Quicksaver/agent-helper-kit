@@ -40,3 +40,15 @@ This file provides context for AI agents working in this codebase.
 - Use `Doc<"tableName">` for document types
 - Use `as const` for literal types
 - Use type annotation when calling functions in same file (circularity workaround)
+
+## Learnings
+
+> **Purpose**: Capture critical insights from task implementations that are NOT obvious from APP_SPECS.md or PLAN.md. Keep entries concise.
+
+**Entry Format**:
+
+```
+- **[Task ID] Topic**: Brief insight (target <= 50 words). See \`SymbolName\` in <path/to/file>.
+```
+
+- **[2026-03-02] LM Tool Wiring**: Chat tools must be declared in `contributes.languageModelTools` and also registered at runtime, or they won’t be invokable. See `registerTerminalTools` in src/terminalTools.ts.

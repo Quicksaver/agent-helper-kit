@@ -39,6 +39,115 @@
         "description": "Copy code review comment content to chat, including file path and line number",
         "isSticky": false
       }
+    ],
+    "languageModelTools": [
+      {
+        "name": "custom_run_in_terminal",
+        "displayName": "Custom Run In Terminal",
+        "modelDescription": "Execute shell commands in a persistent bash terminal session. Supports foreground and background execution with output capture.",
+        "inputSchema": {
+          "type": "object",
+          "required": [
+            "command",
+            "explanation",
+            "goal",
+            "isBackground",
+            "timeout"
+          ],
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "The command to run in the terminal."
+            },
+            "explanation": {
+              "type": "string",
+              "description": "A one-sentence description of what the command does."
+            },
+            "goal": {
+              "type": "string",
+              "description": "A short description of the purpose of the command."
+            },
+            "isBackground": {
+              "type": "boolean",
+              "description": "Whether the command runs as a background process."
+            },
+            "timeout": {
+              "type": "number",
+              "description": "Timeout in milliseconds. Use 0 for no timeout."
+            }
+          }
+        }
+      },
+      {
+        "name": "custom_await_terminal",
+        "displayName": "Custom Await Terminal",
+        "modelDescription": "Wait for a background terminal process to complete and return its output and status.",
+        "inputSchema": {
+          "type": "object",
+          "required": [
+            "id",
+            "timeout"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Background terminal identifier returned by custom_run_in_terminal."
+            },
+            "timeout": {
+              "type": "number",
+              "description": "Timeout in milliseconds. Use 0 for no timeout."
+            }
+          }
+        }
+      },
+      {
+        "name": "custom_get_terminal_output",
+        "displayName": "Custom Get Terminal Output",
+        "modelDescription": "Read current output from a background terminal process.",
+        "inputSchema": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Background terminal identifier returned by custom_run_in_terminal."
+            }
+          }
+        }
+      },
+      {
+        "name": "custom_kill_terminal",
+        "displayName": "Custom Kill Terminal",
+        "modelDescription": "Terminate a running background terminal process.",
+        "inputSchema": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Background terminal identifier returned by custom_run_in_terminal."
+            }
+          }
+        }
+      },
+      {
+        "name": "custom_terminal_last_command",
+        "displayName": "Custom Terminal Last Command",
+        "modelDescription": "Return the last command executed via custom_run_in_terminal.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Optional background terminal identifier to get the last command for a specific terminal."
+            }
+          }
+        }
+      }
     ]
   },
   "packageManager": "yarn@4.12.0",

@@ -14,6 +14,9 @@ const vscode = vi.hoisted(() => {
     commands: {
       registerCommand: vi.fn(() => disposable),
     },
+    lm: {
+      registerTool: vi.fn(() => disposable),
+    },
     ThemeIcon: vi.fn(),
   };
 });
@@ -57,6 +60,33 @@ describe('Extension', () => {
 
     activate(context);
 
-    expect(context.subscriptions).toHaveLength(2);
+    expect(context.subscriptions).toHaveLength(7);
+  });
+
+  it('should register custom terminal tools on activation', () => {
+    const context = createMockContext();
+
+    activate(context);
+
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
+      'custom_run_in_terminal',
+      expect.any(Object),
+    );
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
+      'custom_await_terminal',
+      expect.any(Object),
+    );
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
+      'custom_get_terminal_output',
+      expect.any(Object),
+    );
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
+      'custom_kill_terminal',
+      expect.any(Object),
+    );
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
+      'custom_terminal_last_command',
+      expect.any(Object),
+    );
   });
 });
