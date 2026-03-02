@@ -5,9 +5,6 @@
   "[typescript]": {
     "editor.defaultFormatter": "dbaeumer.vscode-eslint"
   },
-  "chat.tools.terminal.autoApprove": {
-    "yarn install": true
-  },
   "cSpell.words": [],
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "explicit"
