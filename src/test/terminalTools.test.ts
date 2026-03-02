@@ -4,36 +4,40 @@ import {
   beforeEach, describe, expect, it, vi,
 } from 'vitest';
 
-class FakeReadable extends EventEmitter {
-  override on(event: string | symbol, listener: (...args: unknown[]) => void): this {
-    return super.on(event, listener);
-  }
+type FakeReadable = EventEmitter;
+
+interface FakeProcess extends EventEmitter {
+  kill: ReturnType<typeof vi.fn>;
+  stderr: FakeReadable;
+  stdout: FakeReadable;
 }
 
-class FakeProcess extends EventEmitter {
-  kill = vi.fn((signal?: NodeJS.Signals) => {
-    this.emit('close', null, signal ?? 'SIGTERM');
+function createFakeProcess(): FakeProcess {
+  const processEmitter = new EventEmitter();
+  const stdout = new EventEmitter();
+  const stderr = new EventEmitter();
+
+  const kill = vi.fn((signal?: NodeJS.Signals) => {
+    processEmitter.emit('close', null, signal ?? 'SIGTERM');
     return true;
   });
 
-  readonly stderr = new FakeReadable();
-
-  readonly stdout = new FakeReadable();
-
-  override on(event: string | symbol, listener: (...args: unknown[]) => void): this {
-    return super.on(event, listener);
-  }
+  return Object.assign(processEmitter, {
+    kill,
+    stderr,
+    stdout,
+  }) as FakeProcess;
 }
 
 const spawn = vi.hoisted(() => vi.fn());
 
 const vscode = vi.hoisted(() => {
-  class LanguageModelTextPart {
-    constructor(public value: string) {}
+  function LanguageModelTextPart(this: { value: string }, value: string) {
+    this.value = value;
   }
 
-  class LanguageModelToolResult {
-    constructor(public content: unknown[]) {}
+  function LanguageModelToolResult(this: { content: unknown[] }, content: unknown[]) {
+    this.content = content;
   }
 
   return {
@@ -109,7 +113,7 @@ describe('terminal tools', () => {
   });
 
   it('runs a background command and exposes output, await, kill, and last command', async () => {
-    const fakeProcess = new FakeProcess();
+    const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
 
     const context = createContext();
