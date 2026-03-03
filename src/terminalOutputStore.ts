@@ -67,21 +67,43 @@ export function createTerminalOutputFile(terminalId: string): void {
 }
 
 export function overwriteTerminalOutput(terminalId: string, output: string): void {
-  fs.writeFileSync(getTerminalOutputFilePath(terminalId), output, { encoding: 'utf8' });
+  try {
+    fs.writeFileSync(getTerminalOutputFilePath(terminalId), output, { encoding: 'utf8' });
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    globalThis.process.stderr.write(`[custom-vscode] Failed to overwrite terminal output for ${terminalId}: ${message}\n`);
+  }
 }
 
 export function appendTerminalOutput(terminalId: string, chunk: string): void {
-  fs.appendFileSync(getTerminalOutputFilePath(terminalId), chunk, { encoding: 'utf8' });
+  try {
+    fs.appendFileSync(getTerminalOutputFilePath(terminalId), chunk, { encoding: 'utf8' });
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    globalThis.process.stderr.write(`[custom-vscode] Failed to append terminal output for ${terminalId}: ${message}\n`);
+  }
 }
 
-export function readTerminalOutput(terminalId: string): string {
+export async function readTerminalOutput(terminalId: string): Promise<string> {
   const filePath = getTerminalOutputFilePath(terminalId);
 
-  if (!fs.existsSync(filePath)) {
-    return '';
+  try {
+    return await fs.promises.readFile(filePath, { encoding: 'utf8' });
   }
+  catch (error) {
+    if (
+      typeof error === 'object'
+      && error !== null
+      && 'code' in error
+      && error.code === 'ENOENT'
+    ) {
+      return '';
+    }
 
-  return fs.readFileSync(filePath, { encoding: 'utf8' });
+    throw error;
+  }
 }
 
 export function removeTerminalOutputFile(terminalId: string): void {

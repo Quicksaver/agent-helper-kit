@@ -25,6 +25,10 @@ function getWorkspaceCwd(): string {
 }
 
 function toYamlScalar(value: unknown): string {
+  if (value === undefined) {
+    return 'null';
+  }
+
   if (typeof value === 'string') {
     return JSON.stringify(value);
   }
@@ -76,12 +80,20 @@ function buildMarkdownOutputToolResult(payload: Record<string, unknown> & {
   ]);
 }
 
-const terminalRuntime = new TerminalRuntime({
-  getBackgroundCwd: () => getWorkspaceCwd(),
-  getInitialForegroundCwd: () => getWorkspaceCwd(),
-  pwdMarker: '__CUSTOM_VSCODE_PWD__',
-  stateCleanupDelayMs: STATE_CLEANUP_DELAY_MS,
-});
+let terminalRuntime: TerminalRuntime | undefined;
+
+function getTerminalRuntime(): TerminalRuntime {
+  if (!terminalRuntime) {
+    terminalRuntime = new TerminalRuntime({
+      getBackgroundCwd: () => getWorkspaceCwd(),
+      getInitialForegroundCwd: () => getWorkspaceCwd(),
+      pwdMarker: '__CUSTOM_VSCODE_PWD__',
+      stateCleanupDelayMs: STATE_CLEANUP_DELAY_MS,
+    });
+  }
+
+  return terminalRuntime;
+}
 
 const customRunInTerminalTool: vscode.LanguageModelTool<RunInTerminalInput> = {
   async invoke(
@@ -90,11 +102,11 @@ const customRunInTerminalTool: vscode.LanguageModelTool<RunInTerminalInput> = {
     const { input } = options;
 
     if (input.isBackground) {
-      const id = terminalRuntime.startBackgroundCommand(input.command);
+      const id = getTerminalRuntime().startBackgroundCommand(input.command);
       return buildYamlToolResult({ id });
     }
 
-    const result = await terminalRuntime.runForegroundCommand({
+    const result = await getTerminalRuntime().runForegroundCommand({
       command: input.command,
       timeout: input.timeout,
     });
@@ -125,7 +137,7 @@ const customAwaitTerminalTool: vscode.LanguageModelTool<AwaitTerminalInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<AwaitTerminalInput>,
   ): Promise<vscode.LanguageModelToolResult> {
-    const result = await terminalRuntime.awaitBackgroundCommand(options.input);
+    const result = await getTerminalRuntime().awaitBackgroundCommand(options.input);
 
     return buildMarkdownOutputToolResult({
       exitCode: result.exitCode,
@@ -147,14 +159,13 @@ const customGetTerminalOutputTool: vscode.LanguageModelTool<GetTerminalOutputInp
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<GetTerminalOutputInput>,
   ): Promise<vscode.LanguageModelToolResult> {
-    const result = terminalRuntime.readBackgroundOutput(options.input);
+    const result = await getTerminalRuntime().readBackgroundOutput(options.input);
 
     return buildMarkdownOutputToolResult({
       exitCode: result.exitCode,
       isRunning: result.isRunning,
       output: result.output,
       terminationSignal: result.terminationSignal,
-      timedOut: result.timedOut,
     });
   },
   prepareInvocation(
@@ -170,7 +181,7 @@ const customKillTerminalTool: vscode.LanguageModelTool<KillTerminalInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<KillTerminalInput>,
   ): Promise<vscode.LanguageModelToolResult> {
-    terminalRuntime.killBackgroundCommand(options.input.id);
+    getTerminalRuntime().killBackgroundCommand(options.input.id);
 
     return buildYamlToolResult({
       killed: true,
@@ -193,7 +204,7 @@ const customTerminalLastCommandTool: vscode.LanguageModelTool<TerminalLastComman
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<TerminalLastCommandInput>,
   ): Promise<vscode.LanguageModelToolResult> {
-    const command = terminalRuntime.getLastCommand(options.input.id);
+    const command = getTerminalRuntime().getLastCommand(options.input.id);
 
     return buildYamlToolResult({
       command: command ?? null,

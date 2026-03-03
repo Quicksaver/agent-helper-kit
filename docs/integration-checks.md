@@ -16,7 +16,7 @@ Invoke `run_in_terminal_enhanced` with:
 }
 ```
 
-Expected response format: markdown with YAML frontmatter and a fenced text output block.
+Expected response format: Markdown with YAML frontmatter and a fenced text output block.
 
 Example frontmatter:
 
@@ -61,7 +61,7 @@ Invoke `get_terminal_output_enhanced`:
 { "id": "<id-from-step-2>" }
 ```
 
-Expected response format: markdown with YAML frontmatter and a fenced output block.
+Expected response format: Markdown with YAML frontmatter and a fenced output block.
 
 Example frontmatter:
 
@@ -89,6 +89,7 @@ Notes:
 
 - `last_lines` and `regex` are mutually exclusive.
 - If neither is supplied, all available output is returned.
+- `get_terminal_output_enhanced` frontmatter includes `exitCode`, `isRunning`, and `terminationSignal` (it does not include `timedOut`).
 
 ## 3b) Manual long-running check (`isRunning: true` + await behavior)
 

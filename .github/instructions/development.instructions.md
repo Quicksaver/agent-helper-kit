@@ -21,13 +21,9 @@ These are coding standards and guidelines that apply to all files in this projec
 
 - **Precedence rule:** These terminal strict-mode rules override any global autonomy/persistence guidance.
 - Use `timeout: 0` (infinite) for long-running, non-interactive commands.
-- Treat completion as explicit only, always wait for explicit exit code.
-- Never use background mode (`isBackground: false`).
+- Expect exit code; unless explicitly indicated, no exit code means command is still running.
+- Assume empty output with a successful exit code of `0` is a valid/successful completion.
 - Never queue or retry while a job is active — no follow-up `echo 'OK'`, `echo $?`, `grep|tail|head`, liveness probes, log-capture reruns, wrapper reruns, or duplicate runs.
-- Treat output as **ambiguous** when any of the following occurs: missing explicit exit marker/code, truncated output, blank/partial terminal payload, or command text appears without a completion result.
-- If output is ambiguous or truncated, stop execution immediately and ask the user for manual confirmation of completion and output.
-- Required ambiguity response template: `Terminal completion is ambiguous. Please confirm the command finished.` and ask to share the necessary info (exit code, provide last X lines of output, provide specific debug lines in output...)
-- Resume execution only after the user's confirmation.
 
 **Troubleshooting**
 

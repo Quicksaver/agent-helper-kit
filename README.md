@@ -28,6 +28,8 @@ The extension contributes and registers these language model tools:
 
 These are extension-scoped copies of the built-in terminal-style tool APIs.
 
+`get_terminal_output_enhanced` returns Markdown frontmatter with `exitCode`, `isRunning`, and `terminationSignal` plus a fenced output block.
+
 ## Requirements
 
 - VS Code `^1.109.0`
@@ -75,7 +77,7 @@ yarn lint:check
 - For other termination signals (for example `SIGTERM`/`SIGKILL`):
   - if output is still in memory, it remains there until the normal spill time and is purged then (not written to disk)
   - if output is already on disk, it is purged immediately
-- On host startup, temp output files that do not correspond to active terminal ids are purged.
+- On host startup, output-store initialization does not purge when there are zero known active terminal ids (to avoid deleting files owned by other concurrent extension-host processes).
 
 ## How an agent can test terminal tools integration (after install)
 

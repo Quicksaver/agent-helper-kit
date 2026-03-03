@@ -113,7 +113,12 @@ function parseYamlScalar(value: string): unknown {
     return Number(normalized);
   }
 
-  return JSON.parse(normalized) as unknown;
+  try {
+    return JSON.parse(normalized) as unknown;
+  }
+  catch {
+    return normalized;
+  }
 }
 
 function parseYamlObject(raw: string): Record<string, unknown> {
@@ -232,7 +237,6 @@ describe('terminal tools', () => {
     expect(outputPayload.isRunning).toBe(true);
     expect(outputPayload.output).toBe('hello\n');
     expect(outputPayload.terminationSignal).toBeNull();
-    expect(outputPayload.timedOut).toBe(true);
 
     const noNewOutputResult = await getOutputTool.invoke({
       input: { id: terminalId },
@@ -243,7 +247,6 @@ describe('terminal tools', () => {
     expect(noNewOutputPayload.exitCode).toBeNull();
     expect(noNewOutputPayload.output).toBe('');
     expect(noNewOutputPayload.terminationSignal).toBeNull();
-    expect(noNewOutputPayload.timedOut).toBe(true);
 
     fakeProcess.stdout.emit('data', 'world\nmatch-line\n');
 
@@ -329,7 +332,6 @@ describe('terminal tools', () => {
     expect(firstCompletedReadPayload.isRunning).toBe(false);
     expect(firstCompletedReadPayload.output).toBe('');
     expect(firstCompletedReadPayload.terminationSignal).toBe('SIGTERM');
-    expect(firstCompletedReadPayload.timedOut).toBe(false);
 
     const secondCompletedRead = await getOutputTool.invoke({
       input: { id: terminalId },
@@ -340,7 +342,6 @@ describe('terminal tools', () => {
     expect(secondCompletedReadPayload.exitCode).toBeNull();
     expect(secondCompletedReadPayload.output).toBe('hello\nworld\nmatch-line\nnomatch\nonly-match\n');
     expect(secondCompletedReadPayload.terminationSignal).toBe('SIGTERM');
-    expect(secondCompletedReadPayload.timedOut).toBe(false);
 
     const lastResult = await lastCommandTool.invoke({
       input: {},

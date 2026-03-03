@@ -103,7 +103,7 @@ export class TerminalRuntime {
 
     return {
       exitCode: state.completed ? state.exitCode : null,
-      output: this.getBackgroundOutput(input.id, state),
+      output: await this.getBackgroundOutput(input.id, state),
       terminationSignal: state.completed ? state.signal : null,
       timedOut,
     };
@@ -125,15 +125,14 @@ export class TerminalRuntime {
     }
   }
 
-  readBackgroundOutput(input: ReadBackgroundOutputInput): {
+  async readBackgroundOutput(input: ReadBackgroundOutputInput): Promise<{
     exitCode: null | number;
     isRunning: boolean;
     output: string;
     terminationSignal: NodeJS.Signals | null;
-    timedOut: boolean;
-  } {
+  }> {
     const state = this.getBackgroundState(input.id);
-    const fullOutput = this.getBackgroundOutput(input.id, state);
+    const fullOutput = await this.getBackgroundOutput(input.id, state);
     const boundedCursor = Math.max(0, Math.min(state.lastReadCursor, fullOutput.length));
 
     const shouldReturnFullOutput = input.full_output === true
@@ -156,7 +155,6 @@ export class TerminalRuntime {
       isRunning: !state.completed,
       output,
       terminationSignal: state.completed ? state.signal : null,
-      timedOut: !state.completed,
     };
   }
 
@@ -262,6 +260,7 @@ export class TerminalRuntime {
     });
 
     this.scheduleMemoryToFileSpill(id, state);
+    this.backgroundProcesses.set(id, state);
 
     childProc.stdout.on('data', (data: unknown) => {
       const chunk = String(data);
@@ -294,8 +293,6 @@ export class TerminalRuntime {
       state.resolveCompletion();
       this.scheduleBackgroundStateCleanup(id, state);
     });
-
-    this.backgroundProcesses.set(id, state);
 
     return id;
   }
@@ -353,7 +350,7 @@ export class TerminalRuntime {
     };
   }
 
-  private getBackgroundOutput(id: string, state: BackgroundProcessState): string {
+  private async getBackgroundOutput(id: string, state: BackgroundProcessState): Promise<string> {
     if (state.outputInFile) {
       return readTerminalOutput(id);
     }
@@ -383,7 +380,6 @@ export class TerminalRuntime {
 
     if (!state.memoryToFileTimer) {
       state.output = '';
-      state.outputInFile = false;
       return;
     }
 
