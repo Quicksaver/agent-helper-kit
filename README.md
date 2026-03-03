@@ -28,6 +28,12 @@ The extension contributes and registers these language model tools:
 
 These are extension-scoped copies of the built-in terminal-style tool APIs.
 
+`run_in_terminal_enhanced` behavior:
+
+- Foreground (`isBackground: false`) returns YAML metadata by default: `id`, `exitCode`, `terminationSignal`, `timedOut`.
+- Background (`isBackground: true`) returns YAML with `id` by default.
+- In both modes, command output is opt-in via `full_output`, `last_lines`, or `regex`.
+
 `get_terminal_output_enhanced` returns Markdown frontmatter with `exitCode`, `isRunning`, and `terminationSignal` plus a fenced output block.
 
 ## Requirements

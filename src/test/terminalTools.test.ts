@@ -400,6 +400,144 @@ describe('terminal tools', () => {
     expect(awaitPayload.terminationSignal).toBe('SIGINT');
   });
 
+  it('returns only id by default for foreground runs and exposes output via get_terminal_output_enhanced', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+
+    const context = createContext();
+    registerTerminalTools(context);
+
+    const runTool = getRegisteredTool('run_in_terminal_enhanced');
+    const getOutputTool = getRegisteredTool('get_terminal_output_enhanced');
+
+    const runPromise = runTool.invoke({
+      input: {
+        command: 'echo foreground',
+        explanation: 'foreground id-only behavior',
+        goal: 'ensure output is not returned by default',
+        isBackground: false,
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    fakeProcess.stdout.emit('data', 'hello\nworld\n');
+    fakeProcess.emit('close', 0, null);
+
+    const runResult = await runPromise;
+    const runPayload = getResultPayload(runResult);
+    const terminalId = runPayload.id as string;
+
+    expect(terminalId).toContain('custom-terminal-');
+    expect(runPayload).toEqual({
+      exitCode: 0,
+      id: terminalId,
+      terminationSignal: null,
+      timedOut: false,
+    });
+    expect(runPayload).not.toHaveProperty('output');
+
+    const outputResult = await getOutputTool.invoke({
+      input: { id: terminalId },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const outputPayload = getResultPayload(outputResult);
+    expect(outputPayload.isRunning).toBe(false);
+    expect(outputPayload.output).toBe('hello\nworld\n');
+    expect(outputPayload.exitCode).toBe(0);
+    expect(outputPayload.terminationSignal).toBeNull();
+  });
+
+  it('returns opt-in foreground output when full_output, last_lines, or regex is provided', async () => {
+    const context = createContext();
+    registerTerminalTools(context);
+
+    const runTool = getRegisteredTool('run_in_terminal_enhanced');
+
+    const fullOutputProcess = createFakeProcess();
+    spawn.mockReturnValueOnce(fullOutputProcess);
+
+    const fullOutputPromise = runTool.invoke({
+      input: {
+        command: 'echo full',
+        explanation: 'foreground full output behavior',
+        full_output: true,
+        goal: 'return full output inline',
+        isBackground: false,
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    fullOutputProcess.stdout.emit('data', 'a\nb\nc\n');
+    fullOutputProcess.emit('close', 0, null);
+
+    const fullOutputResult = await fullOutputPromise;
+    const fullOutputPayload = getResultPayload(fullOutputResult);
+    expect(fullOutputPayload.id).toMatch(/^custom-terminal-/);
+    expect(fullOutputPayload.output).toBe('a\nb\nc\n');
+
+    const lastLinesProcess = createFakeProcess();
+    spawn.mockReturnValueOnce(lastLinesProcess);
+
+    const lastLinesPromise = runTool.invoke({
+      input: {
+        command: 'echo lines',
+        explanation: 'foreground last lines behavior',
+        goal: 'return only trailing lines inline',
+        isBackground: false,
+        last_lines: 2,
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    lastLinesProcess.stdout.emit('data', 'a\nb\nc\n');
+    lastLinesProcess.emit('close', 0, null);
+
+    const lastLinesResult = await lastLinesPromise;
+    const lastLinesPayload = getResultPayload(lastLinesResult);
+    expect(lastLinesPayload.id).toMatch(/^custom-terminal-/);
+    expect(lastLinesPayload.output).toBe('b\nc\n');
+
+    const regexProcess = createFakeProcess();
+    spawn.mockReturnValueOnce(regexProcess);
+
+    const regexPromise = runTool.invoke({
+      input: {
+        command: 'echo regex',
+        explanation: 'foreground regex behavior',
+        goal: 'return only matching lines inline',
+        isBackground: false,
+        regex: '^b$|^c$',
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    regexProcess.stdout.emit('data', 'a\nb\nc\n');
+    regexProcess.emit('close', 0, null);
+
+    const regexResult = await regexPromise;
+    const regexPayload = getResultPayload(regexResult);
+    expect(regexPayload.id).toMatch(/^custom-terminal-/);
+    expect(regexPayload.output).toBe('b\nc\n');
+
+    await expect(runTool.invoke({
+      input: {
+        command: 'echo invalid',
+        explanation: 'invalid options test',
+        goal: 'reject mutually exclusive filters',
+        isBackground: false,
+        last_lines: 1,
+        regex: 'a',
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {})).rejects.toThrow('mutually exclusive');
+  });
+
   it('purges disk output when process closes with non-SIGINT signal', async () => {
     vi.useFakeTimers();
 

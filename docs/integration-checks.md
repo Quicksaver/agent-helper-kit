@@ -16,17 +16,38 @@ Invoke `run_in_terminal_enhanced` with:
 }
 ```
 
-Expected response format: Markdown with YAML frontmatter and a fenced text output block.
+Expected response format: YAML-only (no output block by default).
 
-Example frontmatter:
+Example response:
 
 ```yaml
+id: 'custom-terminal-...'
 exitCode: 0
 terminationSignal: null
 timedOut: false
 ```
 
-Example output block:
+Then read output by id:
+
+```json
+{ "id": "<id-from-step-1>" }
+```
+
+via `get_terminal_output_enhanced`, or request inline output directly from `run_in_terminal_enhanced` by passing one of:
+
+```json
+{ "full_output": true }
+```
+
+```json
+{ "last_lines": 20 }
+```
+
+```json
+{ "regex": "ready|error" }
+```
+
+When using `full_output` in step 1, example output block:
 
 ```text
 /workspace
@@ -47,7 +68,7 @@ Invoke `run_in_terminal_enhanced` with:
 }
 ```
 
-Expected response format: YAML-only, for example:
+Expected response format: YAML-only (id by default), for example:
 
 ```yaml
 id: 'custom-terminal-...'
@@ -90,6 +111,7 @@ Notes:
 - `last_lines` and `regex` are mutually exclusive.
 - If neither is supplied, all available output is returned.
 - `get_terminal_output_enhanced` frontmatter includes `exitCode`, `isRunning`, and `terminationSignal` (it does not include `timedOut`).
+- In `run_in_terminal_enhanced`, output is opt-in for both foreground and background modes.
 
 ## 3b) Manual long-running check (`isRunning: true` + await behavior)
 

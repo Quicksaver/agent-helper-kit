@@ -162,8 +162,11 @@ export const TERMINAL_TOOL_METADATA = {
 export interface RunInTerminalInput {
   command: string;
   explanation: string;
+  full_output?: boolean;
   goal: string;
   isBackground: boolean;
+  last_lines?: number;
+  regex?: string;
   timeout: number;
 }
 
@@ -190,8 +193,11 @@ export interface TerminalLastCommandInput {
 export const runInTerminalInputSchema = {
   command: z.string(),
   explanation: z.string(),
+  full_output: z.boolean().optional(),
   goal: z.string(),
   isBackground: z.boolean(),
+  last_lines: z.number().int().nonnegative().optional(),
+  regex: z.string().optional(),
   timeout: z.number(),
 } satisfies z.ZodRawShape;
 
@@ -214,6 +220,13 @@ const getTerminalOutputInputValidator = z.object(getTerminalOutputInputSchema).r
   },
 );
 
+const runInTerminalInputValidator = z.object(runInTerminalInputSchema).refine(
+  value => !(typeof value.last_lines === 'number' && typeof value.regex === 'string'),
+  {
+    message: 'last_lines and regex are mutually exclusive',
+  },
+);
+
 export const killTerminalInputSchema = {
   id: z.string(),
 } satisfies z.ZodRawShape;
@@ -224,4 +237,8 @@ export const terminalLastCommandInputSchema = {
 
 export function validateGetTerminalOutputInput(input: GetTerminalOutputInput): GetTerminalOutputInput {
   return getTerminalOutputInputValidator.parse(input);
+}
+
+export function validateRunInTerminalInput(input: RunInTerminalInput): RunInTerminalInput {
+  return runInTerminalInputValidator.parse(input);
 }

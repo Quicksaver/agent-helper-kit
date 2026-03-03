@@ -1,6 +1,7 @@
 import * as os from 'node:os';
 import * as vscode from 'vscode';
 
+import { getFilteredOutput } from '@/terminalOutputFilter';
 import { TerminalRuntime } from '@/terminalRuntime';
 import {
   type AwaitTerminalInput,
@@ -10,6 +11,7 @@ import {
   TERMINAL_TOOL_METADATA,
   TERMINAL_TOOL_NAMES,
   type TerminalLastCommandInput,
+  validateRunInTerminalInput,
 } from '@/terminalToolContracts';
 
 const STATE_CLEANUP_DELAY_MS = 5 * 60 * 1000;
@@ -95,25 +97,69 @@ function getTerminalRuntime(): TerminalRuntime {
   return terminalRuntime;
 }
 
+function hasRunOutputOverrides(input: RunInTerminalInput): boolean {
+  return input.full_output === true
+    || typeof input.last_lines === 'number'
+    || typeof input.regex === 'string';
+}
+
 const customRunInTerminalTool: vscode.LanguageModelTool<RunInTerminalInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<RunInTerminalInput>,
   ): Promise<vscode.LanguageModelToolResult> {
-    const { input } = options;
+    const input = validateRunInTerminalInput(options.input);
+    const shouldReturnOutput = hasRunOutputOverrides(input);
 
     if (input.isBackground) {
       const id = getTerminalRuntime().startBackgroundCommand(input.command);
-      return buildYamlToolResult({ id });
+
+      if (!shouldReturnOutput) {
+        return buildYamlToolResult({ id });
+      }
+
+      const result = await getTerminalRuntime().readBackgroundOutput({
+        full_output: input.full_output,
+        id,
+        last_lines: input.last_lines,
+        regex: input.regex,
+      });
+
+      return buildMarkdownOutputToolResult({
+        exitCode: result.exitCode,
+        id,
+        isRunning: result.isRunning,
+        output: result.output,
+        terminationSignal: result.terminationSignal,
+      });
     }
 
     const result = await getTerminalRuntime().runForegroundCommand({
       command: input.command,
       timeout: input.timeout,
     });
+    const id = getTerminalRuntime().createCompletedCommandRecord(input.command, result);
+
+    if (!shouldReturnOutput) {
+      return buildYamlToolResult({
+        exitCode: result.exitCode,
+        id,
+        terminationSignal: result.terminationSignal,
+        timedOut: result.timedOut,
+      });
+    }
+
+    const filteredOutput = getFilteredOutput(
+      {
+        last_lines: input.last_lines,
+        regex: input.regex,
+      },
+      result.output,
+    );
 
     return buildMarkdownOutputToolResult({
       exitCode: result.exitCode,
-      output: result.output,
+      id,
+      output: filteredOutput,
       terminationSignal: result.terminationSignal,
       timedOut: result.timedOut,
     });

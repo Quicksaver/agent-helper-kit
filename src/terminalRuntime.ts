@@ -18,7 +18,7 @@ const DEFAULT_MEMORY_TO_FILE_DELAY_MS = 2 * 60 * 1000;
 const DEFAULT_STATE_CLEANUP_DELAY_MS = 5 * 60 * 1000;
 
 interface BackgroundProcessState {
-  childProc: childProcess.ChildProcessWithoutNullStreams;
+  childProc?: childProcess.ChildProcessWithoutNullStreams;
   cleanupTimer: NodeJS.Timeout | undefined;
   command: string;
   completed: boolean;
@@ -109,6 +109,31 @@ export class TerminalRuntime {
     };
   }
 
+  createCompletedCommandRecord(command: string, result: RunCommandResult): string {
+    const id = `custom-terminal-${++this.backgroundIdCounter}`;
+
+    const state: BackgroundProcessState = {
+      cleanupTimer: undefined,
+      command,
+      completed: true,
+      completion: Promise.resolve(),
+      exitCode: result.exitCode,
+      lastReadCursor: 0,
+      memoryToFileTimer: undefined,
+      output: result.output,
+      outputInFile: false,
+      purgeOnSpill: false,
+      readsSinceCompletion: 1,
+      resolveCompletion: () => undefined,
+      signal: result.terminationSignal,
+    };
+
+    this.backgroundProcesses.set(id, state);
+    this.scheduleBackgroundStateCleanup(id, state);
+
+    return id;
+  }
+
   getLastCommand(id?: string): string | undefined {
     if (!id) {
       return this.lastCommand;
@@ -120,7 +145,7 @@ export class TerminalRuntime {
   killBackgroundCommand(id: string): void {
     const state = this.getBackgroundState(id);
 
-    if (!state.completed) {
+    if (!state.completed && state.childProc) {
       state.childProc.kill('SIGTERM');
     }
   }
