@@ -52,6 +52,7 @@
         "name": "custom_run_in_terminal",
         "toolReferenceName": "custom_run_in_terminal",
         "displayName": "Custom Run In Terminal",
+        "icon": "$(terminal)",
         "modelDescription": "Execute shell commands in a persistent bash terminal session. Supports foreground and background execution with output capture.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
@@ -91,6 +92,7 @@
         "name": "custom_await_terminal",
         "toolReferenceName": "custom_await_terminal",
         "displayName": "Custom Await Terminal",
+        "icon": "$(clock)",
         "modelDescription": "Wait for a background terminal process to complete and return its output and status.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
@@ -115,6 +117,7 @@
         "name": "custom_get_terminal_output",
         "toolReferenceName": "custom_get_terminal_output",
         "displayName": "Custom Get Terminal Output",
+        "icon": "$(output)",
         "modelDescription": "Read current output from a background terminal process.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
@@ -153,6 +156,7 @@
         "name": "custom_kill_terminal",
         "toolReferenceName": "custom_kill_terminal",
         "displayName": "Custom Kill Terminal",
+        "icon": "$(close)",
         "modelDescription": "Terminate a running background terminal process.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
@@ -172,6 +176,7 @@
         "name": "custom_terminal_last_command",
         "toolReferenceName": "custom_terminal_last_command",
         "displayName": "Custom Terminal Last Command",
+        "icon": "$(history)",
         "modelDescription": "Return the last command executed via custom_run_in_terminal.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
