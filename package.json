@@ -93,7 +93,7 @@
         "toolReferenceName": "awaitTerminalEnhanced",
         "displayName": "Await Terminal",
         "icon": "$(clock)",
-        "modelDescription": "Wait for a background terminal command to finish and return output and status (exitCode, terminationSignal, timedOut).",
+        "modelDescription": "Wait for a background terminal command to finish, then return output and status (exitCode, terminationSignal, timedOut).",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -118,7 +118,7 @@
         "toolReferenceName": "getTerminalOutputEnhanced",
         "displayName": "Get Terminal Output",
         "icon": "$(output)",
-        "modelDescription": "Read output from a background terminal command (only new since last read by default) and status (isRunning, exitCode, terminationSignal, timedOut).",
+        "modelDescription": "Read output and status (isRunning, exitCode, terminationSignal, timedOut) from a background terminal command while it runs (returns only new output since last read by default).",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
