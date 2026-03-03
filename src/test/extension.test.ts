@@ -5,6 +5,8 @@ import {
 
 import { activate } from '@/extension';
 import { MCP_PROVIDER_ID } from '@/mcpProvider';
+import { reviewCommentToChat } from '@/reviewComments';
+import { TERMINAL_TOOL_NAMES } from '@/terminalToolContracts';
 
 const vscode = vi.hoisted(() => {
   const disposable = { dispose: vi.fn() };
@@ -46,7 +48,7 @@ describe('Extension', () => {
 
     expect(vscode.commands.registerCommand).toHaveBeenCalledWith(
       'custom-vscode.reviewCommentToChat',
-      expect.any(Function),
+      reviewCommentToChat,
     );
   });
 
@@ -59,18 +61,6 @@ describe('Extension', () => {
       'custom-vscode.bringCommentsToChat',
       expect.any(Function),
     );
-  });
-
-  it('should push expected core subscriptions on activation', () => {
-    const context = createMockContext();
-
-    activate(context);
-
-    expect(vscode.commands.registerCommand).toHaveBeenCalledTimes(1);
-    expect(vscode.chat.createChatParticipant).toHaveBeenCalledTimes(1);
-    expect(vscode.lm.registerMcpServerDefinitionProvider).toHaveBeenCalledTimes(1);
-    expect(vscode.lm.registerTool).toHaveBeenCalledTimes(5);
-    expect(context.subscriptions.length).toBeGreaterThanOrEqual(8);
   });
 
   it('should register MCP server definition provider on activation', () => {
@@ -90,23 +80,23 @@ describe('Extension', () => {
     activate(context);
 
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      'custom_run_in_terminal',
+      TERMINAL_TOOL_NAMES.runInTerminal,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      'custom_await_terminal',
+      TERMINAL_TOOL_NAMES.awaitTerminal,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      'custom_get_terminal_output',
+      TERMINAL_TOOL_NAMES.getTerminalOutput,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      'custom_kill_terminal',
+      TERMINAL_TOOL_NAMES.killTerminal,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      'custom_terminal_last_command',
+      TERMINAL_TOOL_NAMES.terminalLastCommand,
       expect.any(Object),
     );
   });

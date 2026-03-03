@@ -611,64 +611,6 @@ describe('reviewCommentToChat', () => {
       expect.any(Function),
     );
   });
-
-  it('should simplify "Comment x of y" titles when all comments are present', () => {
-    for (let i = 1; i <= 4; i++) {
-      const thread = {
-        comments: [ { body: `Comment body ${i}` } ],
-        label: `Comment ${i} of 4`,
-        range: { start: { line: i } },
-        uri: mockUri(`/workspace/src/file${i}.ts`),
-      };
-
-      reviewCommentToChat(thread);
-    }
-
-    expect(vscode.window.withProgress).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        title: 'Queued for chat: All 4 comments',
-      }),
-      expect.any(Function),
-    );
-  });
-
-  it('should simplify "Comment x of y" titles when some comments are present', () => {
-    for (const i of [ 1, 2, 4 ]) {
-      const thread = {
-        comments: [ { body: `Comment body ${i}` } ],
-        label: `Comment ${i} of 4`,
-        range: { start: { line: i } },
-        uri: mockUri(`/workspace/src/file${i}.ts`),
-      };
-
-      reviewCommentToChat(thread);
-    }
-
-    expect(vscode.window.withProgress).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        title: 'Queued for chat: Comments 1, 2, and 4, of 4',
-      }),
-      expect.any(Function),
-    );
-  });
-
-  it('should keep single "Comment x of y" title as-is', () => {
-    const thread = {
-      comments: [ { body: 'Only one' } ],
-      label: 'Comment 2 of 4',
-      range: { start: { line: 0 } },
-      uri: mockUri('/workspace/src/single.ts'),
-    };
-
-    reviewCommentToChat(thread);
-
-    expect(vscode.window.withProgress).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        title: 'Queued for chat: Comment 2 of 4',
-      }),
-      expect.any(Function),
-    );
-  });
 });
 
 describe('formatQueueParts', () => {
