@@ -206,10 +206,14 @@ export class TerminalRuntime {
 
     const shellInvocation = this.createShellInvocation(command);
     const id = `custom-terminal-${++this.backgroundIdCounter}`;
-    const childProc = childProcess.spawn(shellInvocation.shell, [ ...shellInvocation.shellArgs, shellInvocation.command ], {
-      cwd: this.options.getBackgroundCwd(),
-      env: this.buildShellEnv(),
-    });
+    const childProc = childProcess.spawn(
+      shellInvocation.shell,
+      [ ...shellInvocation.shellArgs, shellInvocation.command ],
+      {
+        cwd: this.options.getBackgroundCwd(),
+        env: this.buildShellEnv(),
+      },
+    );
 
     const state: BackgroundProcessState = {
       childProc,

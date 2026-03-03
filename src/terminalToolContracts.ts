@@ -17,7 +17,7 @@ interface ContributedLanguageModelTool {
   name: string;
 }
 
-const DEFAULT_TOOL_METADATA: Record<string, { description: string; title: string }> = {
+const DEFAULT_TOOL_METADATA: Partial<Record<string, { description: string; title: string }>> = {
   [TERMINAL_TOOL_NAMES.awaitTerminal]: {
     description: 'Wait for a background terminal process to complete and return its output and status.',
     title: 'Custom Await Terminal',
@@ -44,7 +44,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-let packageJsonManifestCache: undefined | unknown;
+let packageJsonManifestCache: unknown;
 
 function readPackageJsonManifest(): unknown {
   if (packageJsonManifestCache !== undefined) {
