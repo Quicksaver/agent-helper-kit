@@ -8,8 +8,8 @@ These are coding standards and guidelines that apply to all files in this projec
 
 **Acceptance criteria:**
 
-- Lint (`#problems` / `get_errors`)
 - Files formatted and saved (`run_vscode_command("workbench.action.files.save")`, see **Format-on-save guard** below)
+- Lint (`yarn lint:check`)
 - All tests must pass - tool `runTests`, fix as necessary
 
 **Format-on-save guard:**
