@@ -54,7 +54,7 @@
         "toolReferenceName": "runInSyncTerminal",
         "displayName": "Run In Sync Terminal",
         "icon": "$(terminal)",
-        "modelDescription": "Run a shell command synchronously in a persistent bash session. Returns an id plus status metadata (exitCode, terminationSignal, timedOut) by default; provide full_output, last_lines, or regex to include output in the response.",
+        "modelDescription": "Run a shell command synchronously in a persistent bash session. Returns an id and status metadata (exitCode, terminationSignal, timedOut); provide full_output, last_lines, or regex to include output in the response.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -112,7 +112,7 @@
         "toolReferenceName": "runInAsyncTerminal",
         "displayName": "Run In Async Terminal",
         "icon": "$(terminal)",
-        "modelDescription": "Run a shell command asynchronously in a persistent bash session. Returns only a terminal id.",
+        "modelDescription": "Run a shell command asynchronously in a persistent bash session. Returns a terminal id to await or retrieve output.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
