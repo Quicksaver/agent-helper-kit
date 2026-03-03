@@ -130,8 +130,27 @@
             "id": {
               "type": "string",
               "description": "Background terminal identifier returned by custom_run_in_terminal."
+            },
+            "last_lines": {
+              "type": "number",
+              "description": "Optional number of trailing lines to return. Mutually exclusive with regex.",
+              "minimum": 0
+            },
+            "regex": {
+              "type": "string",
+              "description": "Optional regex filter expression to return only matching lines. Mutually exclusive with last_lines."
             }
-          }
+          },
+          "allOf": [
+            {
+              "not": {
+                "required": [
+                  "last_lines",
+                  "regex"
+                ]
+              }
+            }
+          ]
         }
       },
       {

@@ -127,6 +127,51 @@ Invoke `custom_get_terminal_output`:
 
 Expected: `isRunning` boolean and partial/complete `output`.
 
+Optional output filters:
+
+```json
+{ "id": "<id-from-step-2>", "last_lines": 20 }
+```
+
+```json
+{ "id": "<id-from-step-2>", "regex": "error|warning" }
+```
+
+Notes:
+
+- `last_lines` and `regex` are mutually exclusive.
+- If neither is supplied, all available output is returned.
+
+### 3b) Manual long-running check (`isRunning: true` + await behavior)
+
+Start a longer background command:
+
+```json
+{
+  "command": "for i in 1 2 3 4 5; do echo slow-tick-$i; sleep 2; done",
+  "explanation": "manual running-state verification",
+  "goal": "verify output polling while still running",
+  "isBackground": true,
+  "timeout": 0
+}
+```
+
+Immediately call `custom_get_terminal_output` with that new id:
+
+```json
+{ "id": "<id-from-long-running-command>" }
+```
+
+Expected (if called quickly): `isRunning: true` and partial output (for example, only the first tick(s)).
+
+Then call `custom_await_terminal` with:
+
+```json
+{ "id": "<id-from-long-running-command>", "timeout": 0 }
+```
+
+Expected: this waits until all ticks complete and then returns final status with `timedOut: false` and terminal completion details.
+
 ### 4) Wait for completion
 
 Invoke `custom_await_terminal`:
@@ -171,3 +216,9 @@ After installing/reloading the extension:
 2. Find the MCP server provider entry labeled `Custom Terminal Tools MCP`.
 3. Enable/connect that server.
 4. Confirm the `custom_*` tools appear in the tools list.
+
+## Output persistence and cleanup
+
+- Output from each terminal command is written to a per-command file in the system temp directory.
+- In-memory terminal state is purged after a short retention window (a few minutes) after command completion.
+- On host startup, temp output files that do not correspond to active terminal ids are purged.

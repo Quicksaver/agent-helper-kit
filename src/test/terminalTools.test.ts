@@ -157,6 +157,39 @@ describe('terminal tools', () => {
     expect(outputPayload.isRunning).toBe(true);
     expect(outputPayload.output).toBe('hello\n');
 
+    fakeProcess.stdout.emit('data', 'world\nmatch-line\n');
+
+    const lastLinesResult = await getOutputTool.invoke({
+      input: {
+        id: terminalId,
+        last_lines: 2,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const lastLinesPayload = getResultPayload(lastLinesResult);
+    expect(lastLinesPayload.output).toBe('world\nmatch-line\n');
+
+    const regexResult = await getOutputTool.invoke({
+      input: {
+        id: terminalId,
+        regex: 'match',
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const regexPayload = getResultPayload(regexResult);
+    expect(regexPayload.output).toBe('match-line');
+
+    await expect(getOutputTool.invoke({
+      input: {
+        id: terminalId,
+        last_lines: 1,
+        regex: 'hello',
+      },
+      toolInvocationToken: undefined,
+    }, {})).rejects.toThrow('mutually exclusive');
+
     const timedAwaitResult = await awaitTool.invoke({
       input: {
         id: terminalId,
