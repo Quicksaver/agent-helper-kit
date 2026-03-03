@@ -4,11 +4,11 @@ import * as path from 'node:path';
 import { z } from 'zod';
 
 export const TERMINAL_TOOL_NAMES = {
-  awaitTerminal: 'custom_await_terminal',
-  getTerminalOutput: 'custom_get_terminal_output',
-  killTerminal: 'custom_kill_terminal',
-  runInTerminal: 'custom_run_in_terminal',
-  terminalLastCommand: 'custom_terminal_last_command',
+  awaitTerminal: 'await_terminal_enhanced',
+  getTerminalOutput: 'get_terminal_output_enhanced',
+  killTerminal: 'kill_terminal_enhanced',
+  runInTerminal: 'run_in_terminal_enhanced',
+  terminalLastCommand: 'terminal_last_command_enhanced',
 } as const;
 
 interface ContributedLanguageModelTool {
@@ -16,29 +16,6 @@ interface ContributedLanguageModelTool {
   modelDescription: string;
   name: string;
 }
-
-const DEFAULT_TOOL_METADATA: Partial<Record<string, { description: string; title: string }>> = {
-  [TERMINAL_TOOL_NAMES.awaitTerminal]: {
-    description: 'Wait for a background terminal process to complete and return its output and status.',
-    title: 'Custom Await Terminal',
-  },
-  [TERMINAL_TOOL_NAMES.getTerminalOutput]: {
-    description: 'Read current output from a background terminal process.',
-    title: 'Custom Get Terminal Output',
-  },
-  [TERMINAL_TOOL_NAMES.killTerminal]: {
-    description: 'Terminate a running background terminal process.',
-    title: 'Custom Kill Terminal',
-  },
-  [TERMINAL_TOOL_NAMES.runInTerminal]: {
-    description: 'Execute shell commands in a persistent bash terminal session. Supports foreground and background execution with output capture.',
-    title: 'Custom Run In Terminal',
-  },
-  [TERMINAL_TOOL_NAMES.terminalLastCommand]: {
-    description: 'Return the last command executed via custom_run_in_terminal.',
-    title: 'Custom Terminal Last Command',
-  },
-};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -143,16 +120,10 @@ function getToolMetadata(name: string): {
   const manifestTool = contributedLanguageModelTools.find(candidate => candidate.name === name);
 
   if (!manifestTool) {
-    const fallback = DEFAULT_TOOL_METADATA[name];
-
-    if (!fallback) {
-      return {
-        description: '',
-        title: name,
-      };
-    }
-
-    return fallback;
+    return {
+      description: '',
+      title: name,
+    };
   }
 
   return {

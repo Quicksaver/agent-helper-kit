@@ -16,15 +16,15 @@ Personal VS Code extension focused on improving in-editor workflows with chat in
 - Chat participant: `@bringCommentsToChat` (`custom-vscode.bringCommentsToChat`)
 - Purpose: copy review comment content into chat with file/line context.
 
-### 2) Custom terminal tools for agents
+### 2) Enhanced terminal tools for agents
 
 The extension contributes and registers these language model tools:
 
-- `custom_run_in_terminal`
-- `custom_await_terminal`
-- `custom_get_terminal_output`
-- `custom_kill_terminal`
-- `custom_terminal_last_command`
+- `run_in_terminal_enhanced`
+- `await_terminal_enhanced`
+- `get_terminal_output_enhanced`
+- `kill_terminal_enhanced`
+- `terminal_last_command_enhanced`
 
 These are extension-scoped copies of the built-in terminal-style tool APIs.
 
@@ -34,11 +34,11 @@ The extension also publishes a local MCP server definition (`Custom Terminal Too
 
 This server exposes the same tool names:
 
-- `custom_run_in_terminal`
-- `custom_await_terminal`
-- `custom_get_terminal_output`
-- `custom_kill_terminal`
-- `custom_terminal_last_command`
+- `run_in_terminal_enhanced`
+- `await_terminal_enhanced`
+- `get_terminal_output_enhanced`
+- `kill_terminal_enhanced`
+- `terminal_last_command_enhanced`
 
 This is intended as a bridge path for agent runtimes that can call MCP tools but do not directly call extension `languageModelTools`.
 
@@ -88,7 +88,7 @@ After installing/reloading the extension:
 1. Open Chat tool settings.
 2. Find the MCP server provider entry labeled `Custom Terminal Tools MCP`.
 3. Enable/connect that server.
-4. Confirm the `custom_*` tools appear in the tools list.
+4. Confirm the `*_enhanced` tools appear in the tools list.
 
 ## Output persistence and cleanup
 

@@ -178,11 +178,11 @@ describe('terminal tools', () => {
 
     registerTerminalTools(context);
 
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith('custom_run_in_terminal', expect.any(Object));
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith('custom_await_terminal', expect.any(Object));
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith('custom_get_terminal_output', expect.any(Object));
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith('custom_kill_terminal', expect.any(Object));
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith('custom_terminal_last_command', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_terminal_enhanced', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('await_terminal_enhanced', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('get_terminal_output_enhanced', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('kill_terminal_enhanced', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('terminal_last_command_enhanced', expect.any(Object));
     expect(context.subscriptions).toHaveLength(5);
   });
 
@@ -193,11 +193,11 @@ describe('terminal tools', () => {
     const context = createContext();
     registerTerminalTools(context);
 
-    const runTool = getRegisteredTool('custom_run_in_terminal');
-    const getOutputTool = getRegisteredTool('custom_get_terminal_output');
-    const awaitTool = getRegisteredTool('custom_await_terminal');
-    const killTool = getRegisteredTool('custom_kill_terminal');
-    const lastCommandTool = getRegisteredTool('custom_terminal_last_command');
+    const runTool = getRegisteredTool('run_in_terminal_enhanced');
+    const getOutputTool = getRegisteredTool('get_terminal_output_enhanced');
+    const awaitTool = getRegisteredTool('await_terminal_enhanced');
+    const killTool = getRegisteredTool('kill_terminal_enhanced');
+    const lastCommandTool = getRegisteredTool('terminal_last_command_enhanced');
 
     expect(runTool).toBeDefined();
     expect(getOutputTool).toBeDefined();
@@ -366,8 +366,8 @@ describe('terminal tools', () => {
     const context = createContext();
     registerTerminalTools(context);
 
-    const runTool = getRegisteredTool('custom_run_in_terminal');
-    const awaitTool = getRegisteredTool('custom_await_terminal');
+    const runTool = getRegisteredTool('run_in_terminal_enhanced');
+    const awaitTool = getRegisteredTool('await_terminal_enhanced');
 
     const runResult = await runTool.invoke({
       input: {
@@ -409,8 +409,8 @@ describe('terminal tools', () => {
       const context = createContext();
       registerTerminalTools(context);
 
-      const runTool = getRegisteredTool('custom_run_in_terminal');
-      const awaitTool = getRegisteredTool('custom_await_terminal');
+      const runTool = getRegisteredTool('run_in_terminal_enhanced');
+      const awaitTool = getRegisteredTool('await_terminal_enhanced');
 
       const runResult = await runTool.invoke({
         input: {

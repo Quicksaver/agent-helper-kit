@@ -15,11 +15,11 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished",
-    "onLanguageModelTool:custom_run_in_terminal",
-    "onLanguageModelTool:custom_await_terminal",
-    "onLanguageModelTool:custom_get_terminal_output",
-    "onLanguageModelTool:custom_kill_terminal",
-    "onLanguageModelTool:custom_terminal_last_command"
+    "onLanguageModelTool:run_in_terminal_enhanced",
+    "onLanguageModelTool:await_terminal_enhanced",
+    "onLanguageModelTool:get_terminal_output_enhanced",
+    "onLanguageModelTool:kill_terminal_enhanced",
+    "onLanguageModelTool:terminal_last_command_enhanced"
   ],
   "contributes": {
     "commands": [
@@ -49,9 +49,9 @@
     ],
     "languageModelTools": [
       {
-        "name": "custom_run_in_terminal",
-        "toolReferenceName": "custom_run_in_terminal",
-        "displayName": "Custom Run In Terminal",
+        "name": "run_in_terminal_enhanced",
+        "toolReferenceName": "run_in_terminal_enhanced",
+        "displayName": "Run In Terminal",
         "icon": "$(terminal)",
         "modelDescription": "Execute shell commands in a persistent bash terminal session. Supports foreground (returns output upon completion, exitCode, terminationSignal, and indicates if command timed out) and background execution (returns id for async tracking).",
         "canBeReferencedInPrompt": true,
@@ -89,9 +89,9 @@
         }
       },
       {
-        "name": "custom_await_terminal",
-        "toolReferenceName": "custom_await_terminal",
-        "displayName": "Custom Await Terminal",
+        "name": "await_terminal_enhanced",
+        "toolReferenceName": "await_terminal_enhanced",
+        "displayName": "Await Terminal",
         "icon": "$(clock)",
         "modelDescription": "Wait for a background terminal process to complete and returns its output, exitCode, terminationSignal if applicable, and timedOut.",
         "canBeReferencedInPrompt": true,
@@ -104,7 +104,7 @@
           "properties": {
             "id": {
               "type": "string",
-              "description": "Background terminal identifier returned by custom_run_in_terminal."
+              "description": "Background terminal identifier returned by run_in_terminal_enhanced."
             },
             "timeout": {
               "type": "number",
@@ -114,9 +114,9 @@
         }
       },
       {
-        "name": "custom_get_terminal_output",
-        "toolReferenceName": "custom_get_terminal_output",
-        "displayName": "Custom Get Terminal Output",
+        "name": "get_terminal_output_enhanced",
+        "toolReferenceName": "get_terminal_output_enhanced",
+        "displayName": "Get Terminal Output",
         "icon": "$(output)",
         "modelDescription": "Read stream-like output from a background terminal process (new output since last read by default), returning exitCode, terminationSignal if applicable, timedOut, and isRunning.",
         "canBeReferencedInPrompt": true,
@@ -128,7 +128,7 @@
           "properties": {
             "id": {
               "type": "string",
-              "description": "Background terminal identifier returned by custom_run_in_terminal."
+              "description": "Background terminal identifier returned by run_in_terminal_enhanced."
             },
             "full_output": {
               "type": "boolean",
@@ -157,9 +157,9 @@
         }
       },
       {
-        "name": "custom_kill_terminal",
-        "toolReferenceName": "custom_kill_terminal",
-        "displayName": "Custom Kill Terminal",
+        "name": "kill_terminal_enhanced",
+        "toolReferenceName": "kill_terminal_enhanced",
+        "displayName": "Kill Terminal",
         "icon": "$(close)",
         "modelDescription": "Terminate a running background terminal process.",
         "canBeReferencedInPrompt": true,
@@ -171,17 +171,17 @@
           "properties": {
             "id": {
               "type": "string",
-              "description": "Background terminal identifier returned by custom_run_in_terminal."
+              "description": "Background terminal identifier returned by run_in_terminal_enhanced."
             }
           }
         }
       },
       {
-        "name": "custom_terminal_last_command",
-        "toolReferenceName": "custom_terminal_last_command",
-        "displayName": "Custom Terminal Last Command",
+        "name": "terminal_last_command_enhanced",
+        "toolReferenceName": "terminal_last_command_enhanced",
+        "displayName": "Terminal Last Command",
         "icon": "$(history)",
-        "modelDescription": "Return the last command executed via custom_run_in_terminal.",
+        "modelDescription": "Return the last command executed via run_in_terminal_enhanced.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",

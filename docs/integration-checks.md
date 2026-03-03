@@ -4,7 +4,7 @@ Use the VS Code Chat tool-calling flow (or an agent capable of invoking extensio
 
 ## 1) Run a foreground command
 
-Invoke `custom_run_in_terminal` with:
+Invoke `run_in_terminal_enhanced` with:
 
 ```json
 {
@@ -35,7 +35,7 @@ ready
 
 ## 2) Start a background command
 
-Invoke `custom_run_in_terminal` with:
+Invoke `run_in_terminal_enhanced` with:
 
 ```json
 {
@@ -55,7 +55,7 @@ id: 'custom-terminal-...'
 
 ## 3) Poll output while running
 
-Invoke `custom_get_terminal_output`:
+Invoke `get_terminal_output_enhanced`:
 
 ```json
 { "id": "<id-from-step-2>" }
@@ -104,7 +104,7 @@ Start a longer background command:
 }
 ```
 
-Immediately call `custom_get_terminal_output` with that new id:
+Immediately call `get_terminal_output_enhanced` with that new id:
 
 ```json
 { "id": "<id-from-long-running-command>" }
@@ -112,7 +112,7 @@ Immediately call `custom_get_terminal_output` with that new id:
 
 Expected (if called quickly): frontmatter includes `isRunning: true` and output is partial (for example, only first tick(s)).
 
-Then call `custom_await_terminal` with:
+Then call `await_terminal_enhanced` with:
 
 ```json
 { "id": "<id-from-long-running-command>", "timeout": 0 }
@@ -122,7 +122,7 @@ Expected: markdown+frontmatter with `timedOut: false` and output containing term
 
 ## 4) Wait for completion
 
-Invoke `custom_await_terminal`:
+Invoke `await_terminal_enhanced`:
 
 ```json
 { "id": "<id-from-step-2>", "timeout": 5000 }
@@ -132,9 +132,9 @@ Expected: markdown+frontmatter result with `exitCode`/`timedOut` in frontmatter 
 
 ## 5) Verify last command tracking
 
-Invoke `custom_terminal_last_command` with `{}`.
+Invoke `terminal_last_command_enhanced` with `{}`.
 
-Expected response format: YAML-only with `command`, which equals the last command passed to `custom_run_in_terminal`.
+Expected response format: YAML-only with `command`, which equals the last command passed to `run_in_terminal_enhanced`.
 
 To query a specific background terminal instead, pass an optional `id`:
 
@@ -152,7 +152,7 @@ Start a long-running background command (e.g. `sleep 30`), then call:
 { "id": "<id>" }
 ```
 
-via `custom_kill_terminal`.
+via `kill_terminal_enhanced`.
 
 Expected response format: YAML-only, for example:
 
@@ -160,4 +160,4 @@ Expected response format: YAML-only, for example:
 killed: true
 ```
 
-A subsequent `custom_await_terminal` eventually reports completion in markdown+frontmatter format.
+A subsequent `await_terminal_enhanced` eventually reports completion in markdown+frontmatter format.
