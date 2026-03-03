@@ -2,7 +2,7 @@
   "name": "custom-vscode",
   "displayName": "Custom VS Code",
   "description": "Personal VS Code extension",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "publisher": "Quicksaver",
   "license": "UNLICENSED",
   "private": true,
