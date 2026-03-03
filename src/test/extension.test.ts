@@ -4,7 +4,6 @@ import {
 } from 'vitest';
 
 import { activate } from '@/extension';
-import { MCP_PROVIDER_ID } from '@/mcpProvider';
 import { reviewCommentToChat } from '@/reviewComments';
 import { TERMINAL_TOOL_NAMES } from '@/terminalToolContracts';
 
@@ -21,7 +20,6 @@ const vscode = vi.hoisted(() => {
       registerCommand: vi.fn(() => disposable),
     },
     lm: {
-      registerMcpServerDefinitionProvider: vi.fn(() => disposable),
       registerTool: vi.fn(() => disposable),
     },
     ThemeIcon: vi.fn(),
@@ -60,17 +58,6 @@ describe('Extension', () => {
     expect(vscode.chat.createChatParticipant).toHaveBeenCalledWith(
       'custom-vscode.bringCommentsToChat',
       expect.any(Function),
-    );
-  });
-
-  it('should register MCP server definition provider on activation', () => {
-    const context = createMockContext();
-
-    activate(context);
-
-    expect(vscode.lm.registerMcpServerDefinitionProvider).toHaveBeenCalledWith(
-      MCP_PROVIDER_ID,
-      expect.any(Object),
     );
   });
 

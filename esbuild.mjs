@@ -5,7 +5,7 @@ const isWatch = process.argv.includes('--watch');
 /** @type {import('esbuild').BuildOptions} */
 const buildOptions = {
   bundle: true,
-  entryPoints: [ './src/extension.ts', './src/mcpServer.ts' ],
+  entryPoints: [ './src/extension.ts' ],
   external: [ 'vscode' ],
   format: 'cjs',
   minify: !isWatch,

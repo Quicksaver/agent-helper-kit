@@ -15,7 +15,6 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished",
-    "onMcpServerDefinitionProvider:custom-vscode.terminal-tools-mcp",
     "onLanguageModelTool:custom_run_in_terminal",
     "onLanguageModelTool:custom_await_terminal",
     "onLanguageModelTool:custom_get_terminal_output",
@@ -46,12 +45,6 @@
         "fullName": "Code Review Comment",
         "description": "Copy code review comment content to chat, including file path and line number",
         "isSticky": false
-      }
-    ],
-    "mcpServerDefinitionProviders": [
-      {
-        "id": "custom-vscode.terminal-tools-mcp",
-        "label": "Custom Terminal Tools MCP"
       }
     ],
     "languageModelTools": [
@@ -229,7 +222,6 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.27.1",
     "zod": "^4.3.6"
   }
 }
