@@ -202,6 +202,7 @@ export interface AwaitTerminalInput {
 }
 
 export interface GetTerminalOutputInput {
+  full_output?: boolean;
   id: string;
   last_lines?: number;
   regex?: string;
@@ -229,6 +230,7 @@ export const awaitTerminalInputSchema = {
 } satisfies z.ZodRawShape;
 
 export const getTerminalOutputInputSchema = {
+  full_output: z.boolean().optional(),
   id: z.string(),
   last_lines: z.number().int().nonnegative().optional(),
   regex: z.string().optional(),

@@ -24,10 +24,12 @@ interface BackgroundProcessState {
   completed: boolean;
   completion: Promise<void>;
   exitCode: null | number;
+  lastReadCursor: number;
   memoryToFileTimer: NodeJS.Timeout | undefined;
   output: string;
   outputInFile: boolean;
   purgeOnSpill: boolean;
+  readsSinceCompletion: number;
   resolveCompletion: () => void;
   signal: NodeJS.Signals | null;
 }
@@ -56,6 +58,7 @@ export interface AwaitBackgroundInput {
 }
 
 export interface ReadBackgroundOutputInput extends TerminalOutputFilterInput {
+  full_output?: boolean;
   id: string;
 }
 
@@ -127,11 +130,27 @@ export class TerminalRuntime {
     output: string;
   } {
     const state = this.getBackgroundState(input.id);
-    const storedOutput = this.getBackgroundOutput(input.id, state);
+    const fullOutput = this.getBackgroundOutput(input.id, state);
+    const boundedCursor = Math.max(0, Math.min(state.lastReadCursor, fullOutput.length));
+
+    const shouldReturnFullOutput = input.full_output === true
+      || (state.completed && state.readsSinceCompletion === 1);
+
+    const sourceOutput = shouldReturnFullOutput
+      ? fullOutput
+      : fullOutput.slice(boundedCursor);
+
+    const output = getFilteredOutput(input, sourceOutput);
+
+    state.lastReadCursor = fullOutput.length;
+
+    if (state.completed) {
+      state.readsSinceCompletion += 1;
+    }
 
     return {
       isRunning: !state.completed,
-      output: getFilteredOutput(input, storedOutput),
+      output,
     };
   }
 
@@ -222,10 +241,12 @@ export class TerminalRuntime {
       completed: false,
       completion: Promise.resolve(),
       exitCode: null,
+      lastReadCursor: 0,
       memoryToFileTimer: undefined,
       output: '',
       outputInFile: false,
       purgeOnSpill: false,
+      readsSinceCompletion: 0,
       resolveCompletion: () => undefined,
       signal: null,
     };
@@ -249,6 +270,7 @@ export class TerminalRuntime {
     childProc.on('close', (code: null | number, signal: NodeJS.Signals | null) => {
       state.completed = true;
       state.exitCode = code;
+      state.readsSinceCompletion = 0;
       state.signal = signal;
 
       if (signal) {
@@ -262,6 +284,7 @@ export class TerminalRuntime {
     childProc.on('error', (error: Error) => {
       state.completed = true;
       this.appendBackgroundOutput(id, state, `\n${String(error)}\n`);
+      state.readsSinceCompletion = 0;
       state.resolveCompletion();
       this.scheduleBackgroundStateCleanup(id, state);
     });

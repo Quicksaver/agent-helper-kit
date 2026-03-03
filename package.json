@@ -118,7 +118,7 @@
         "toolReferenceName": "custom_get_terminal_output",
         "displayName": "Custom Get Terminal Output",
         "icon": "$(output)",
-        "modelDescription": "Read partial/complete output from a background terminal process, and whether command is still running.",
+        "modelDescription": "Read stream-like output from a background terminal process (new output since last read by default), and whether command is still running.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -129,6 +129,10 @@
             "id": {
               "type": "string",
               "description": "Background terminal identifier returned by custom_run_in_terminal."
+            },
+            "full_output": {
+              "type": "boolean",
+              "description": "When true, returns output from the beginning instead of only output since the last read."
             },
             "last_lines": {
               "type": "number",

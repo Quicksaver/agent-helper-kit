@@ -186,7 +186,7 @@ describe('terminal tools', () => {
     expect(context.subscriptions).toHaveLength(5);
   });
 
-  it('runs a background command and exposes output, await, kill, and last command', async () => {
+  it('runs a background command and exposes incremental output, await, kill, and last command', async () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
 
@@ -231,6 +231,14 @@ describe('terminal tools', () => {
     expect(outputPayload.isRunning).toBe(true);
     expect(outputPayload.output).toBe('hello\n');
 
+    const noNewOutputResult = await getOutputTool.invoke({
+      input: { id: terminalId },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const noNewOutputPayload = getResultPayload(noNewOutputResult);
+    expect(noNewOutputPayload.output).toBe('');
+
     fakeProcess.stdout.emit('data', 'world\nmatch-line\n');
 
     const lastLinesResult = await getOutputTool.invoke({
@@ -244,16 +252,29 @@ describe('terminal tools', () => {
     const lastLinesPayload = getResultPayload(lastLinesResult);
     expect(lastLinesPayload.output).toBe('world\nmatch-line\n');
 
+    fakeProcess.stdout.emit('data', 'nomatch\nonly-match\n');
+
     const regexResult = await getOutputTool.invoke({
       input: {
         id: terminalId,
-        regex: 'match',
+        regex: '^only-match$',
       },
       toolInvocationToken: undefined,
     }, {});
 
     const regexPayload = getResultPayload(regexResult);
-    expect(regexPayload.output).toBe('match-line\n');
+    expect(regexPayload.output).toBe('only-match\n');
+
+    const fullOutputResult = await getOutputTool.invoke({
+      input: {
+        full_output: true,
+        id: terminalId,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const fullOutputPayload = getResultPayload(fullOutputResult);
+    expect(fullOutputPayload.output).toBe('hello\nworld\nmatch-line\nnomatch\nonly-match\n');
 
     await expect(getOutputTool.invoke({
       input: {
@@ -291,6 +312,23 @@ describe('terminal tools', () => {
     const completedAwaitPayload = getResultPayload(completedAwaitResult);
     expect(completedAwaitPayload.timedOut).toBe(false);
     expect(fakeProcess.kill).toHaveBeenCalledWith('SIGTERM');
+
+    const firstCompletedRead = await getOutputTool.invoke({
+      input: { id: terminalId },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const firstCompletedReadPayload = getResultPayload(firstCompletedRead);
+    expect(firstCompletedReadPayload.isRunning).toBe(false);
+    expect(firstCompletedReadPayload.output).toBe('');
+
+    const secondCompletedRead = await getOutputTool.invoke({
+      input: { id: terminalId },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const secondCompletedReadPayload = getResultPayload(secondCompletedRead);
+    expect(secondCompletedReadPayload.output).toBe('hello\nworld\nmatch-line\nnomatch\nonly-match\n');
 
     const lastResult = await lastCommandTool.invoke({
       input: {},
