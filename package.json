@@ -53,7 +53,7 @@
         "toolReferenceName": "custom_run_in_terminal",
         "displayName": "Custom Run In Terminal",
         "icon": "$(terminal)",
-        "modelDescription": "Execute shell commands in a persistent bash terminal session. Supports foreground (captures output, exit code, termination signal if applicable, and if command timed out) and background execution.",
+        "modelDescription": "Execute shell commands in a persistent bash terminal session. Supports foreground (returns output upon completion, exitCode, terminationSignal, and indicates if command timed out) and background execution (returns id for async tracking).",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -93,7 +93,7 @@
         "toolReferenceName": "custom_await_terminal",
         "displayName": "Custom Await Terminal",
         "icon": "$(clock)",
-        "modelDescription": "Wait for a background terminal process to complete and returns its output, exit code, termination signal if applicable, and indicates if command timed out.",
+        "modelDescription": "Wait for a background terminal process to complete and returns its output, exitCode, terminationSignal if applicable, and timedOut.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -118,7 +118,7 @@
         "toolReferenceName": "custom_get_terminal_output",
         "displayName": "Custom Get Terminal Output",
         "icon": "$(output)",
-        "modelDescription": "Read stream-like output from a background terminal process (new output since last read by default), returning exitCode, signal, timedOut, and isRunning.",
+        "modelDescription": "Read stream-like output from a background terminal process (new output since last read by default), returning exitCode, terminationSignal if applicable, timedOut, and isRunning.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",

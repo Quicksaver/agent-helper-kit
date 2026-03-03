@@ -22,7 +22,7 @@ Example frontmatter:
 
 ```yaml
 exitCode: 0
-signal: null
+terminationSignal: null
 timedOut: false
 ```
 

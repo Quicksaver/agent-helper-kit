@@ -42,7 +42,7 @@ export interface RunForegroundCommandInput {
 export interface RunCommandResult {
   exitCode: null | number;
   output: string;
-  signal: NodeJS.Signals | null;
+  terminationSignal: NodeJS.Signals | null;
   timedOut: boolean;
 }
 
@@ -104,7 +104,7 @@ export class TerminalRuntime {
     return {
       exitCode: state.completed ? state.exitCode : null,
       output: this.getBackgroundOutput(input.id, state),
-      signal: state.completed ? state.signal : null,
+      terminationSignal: state.completed ? state.signal : null,
       timedOut,
     };
   }
@@ -129,7 +129,7 @@ export class TerminalRuntime {
     exitCode: null | number;
     isRunning: boolean;
     output: string;
-    signal: NodeJS.Signals | null;
+    terminationSignal: NodeJS.Signals | null;
     timedOut: boolean;
   } {
     const state = this.getBackgroundState(input.id);
@@ -155,7 +155,7 @@ export class TerminalRuntime {
       exitCode: state.completed ? state.exitCode : null,
       isRunning: !state.completed,
       output,
-      signal: state.completed ? state.signal : null,
+      terminationSignal: state.completed ? state.signal : null,
       timedOut: !state.completed,
     };
   }
@@ -221,7 +221,7 @@ export class TerminalRuntime {
     return {
       exitCode: closeResult.code,
       output: parsedOutput.outputWithoutMarker,
-      signal: closeResult.signal,
+      terminationSignal: closeResult.signal,
       timedOut,
     };
   }

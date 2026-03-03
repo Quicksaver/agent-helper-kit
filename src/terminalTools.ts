@@ -102,7 +102,7 @@ const customRunInTerminalTool: vscode.LanguageModelTool<RunInTerminalInput> = {
     return buildMarkdownOutputToolResult({
       exitCode: result.exitCode,
       output: result.output,
-      signal: result.signal,
+      terminationSignal: result.terminationSignal,
       timedOut: result.timedOut,
     });
   },
@@ -130,7 +130,7 @@ const customAwaitTerminalTool: vscode.LanguageModelTool<AwaitTerminalInput> = {
     return buildMarkdownOutputToolResult({
       exitCode: result.exitCode,
       output: result.output,
-      signal: result.signal,
+      terminationSignal: result.terminationSignal,
       timedOut: result.timedOut,
     });
   },
@@ -153,7 +153,7 @@ const customGetTerminalOutputTool: vscode.LanguageModelTool<GetTerminalOutputInp
       exitCode: result.exitCode,
       isRunning: result.isRunning,
       output: result.output,
-      signal: result.signal,
+      terminationSignal: result.terminationSignal,
       timedOut: result.timedOut,
     });
   },

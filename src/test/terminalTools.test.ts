@@ -231,7 +231,7 @@ describe('terminal tools', () => {
     expect(outputPayload.exitCode).toBeNull();
     expect(outputPayload.isRunning).toBe(true);
     expect(outputPayload.output).toBe('hello\n');
-    expect(outputPayload.signal).toBeNull();
+    expect(outputPayload.terminationSignal).toBeNull();
     expect(outputPayload.timedOut).toBe(true);
 
     const noNewOutputResult = await getOutputTool.invoke({
@@ -242,7 +242,7 @@ describe('terminal tools', () => {
     const noNewOutputPayload = getResultPayload(noNewOutputResult);
     expect(noNewOutputPayload.exitCode).toBeNull();
     expect(noNewOutputPayload.output).toBe('');
-    expect(noNewOutputPayload.signal).toBeNull();
+    expect(noNewOutputPayload.terminationSignal).toBeNull();
     expect(noNewOutputPayload.timedOut).toBe(true);
 
     fakeProcess.stdout.emit('data', 'world\nmatch-line\n');
@@ -328,7 +328,7 @@ describe('terminal tools', () => {
     expect(firstCompletedReadPayload.exitCode).toBeNull();
     expect(firstCompletedReadPayload.isRunning).toBe(false);
     expect(firstCompletedReadPayload.output).toBe('');
-    expect(firstCompletedReadPayload.signal).toBe('SIGTERM');
+    expect(firstCompletedReadPayload.terminationSignal).toBe('SIGTERM');
     expect(firstCompletedReadPayload.timedOut).toBe(false);
 
     const secondCompletedRead = await getOutputTool.invoke({
@@ -339,7 +339,7 @@ describe('terminal tools', () => {
     const secondCompletedReadPayload = getResultPayload(secondCompletedRead);
     expect(secondCompletedReadPayload.exitCode).toBeNull();
     expect(secondCompletedReadPayload.output).toBe('hello\nworld\nmatch-line\nnomatch\nonly-match\n');
-    expect(secondCompletedReadPayload.signal).toBe('SIGTERM');
+    expect(secondCompletedReadPayload.terminationSignal).toBe('SIGTERM');
     expect(secondCompletedReadPayload.timedOut).toBe(false);
 
     const lastResult = await lastCommandTool.invoke({
@@ -396,7 +396,7 @@ describe('terminal tools', () => {
 
     const awaitPayload = getResultPayload(awaitResult);
     expect(awaitPayload.output).toContain('before-int');
-    expect(awaitPayload.signal).toBe('SIGINT');
+    expect(awaitPayload.terminationSignal).toBe('SIGINT');
   });
 
   it('purges disk output when process closes with non-SIGINT signal', async () => {
@@ -447,7 +447,7 @@ describe('terminal tools', () => {
 
       const awaitPayload = getResultPayload(awaitResult);
       expect(awaitPayload.output).toBe('');
-      expect(awaitPayload.signal).toBe('SIGTERM');
+      expect(awaitPayload.terminationSignal).toBe('SIGTERM');
     }
     finally {
       vi.useRealTimers();
