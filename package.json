@@ -50,7 +50,7 @@
     "languageModelTools": [
       {
         "name": "run_in_terminal_enhanced",
-        "toolReferenceName": "run_in_terminal_enhanced",
+        "toolReferenceName": "runInTerminalEnhanced",
         "displayName": "Run In Terminal",
         "icon": "$(terminal)",
         "modelDescription": "Run a shell command in a persistent bash session. Foreground returns output and status (exitCode, terminationSignal, timedOut); background returns a terminal id.",
@@ -90,7 +90,7 @@
       },
       {
         "name": "await_terminal_enhanced",
-        "toolReferenceName": "await_terminal_enhanced",
+        "toolReferenceName": "awaitTerminalEnhanced",
         "displayName": "Await Terminal",
         "icon": "$(clock)",
         "modelDescription": "Wait for a background terminal command to finish and return output and status (exitCode, terminationSignal, timedOut).",
@@ -115,7 +115,7 @@
       },
       {
         "name": "get_terminal_output_enhanced",
-        "toolReferenceName": "get_terminal_output_enhanced",
+        "toolReferenceName": "getTerminalOutputEnhanced",
         "displayName": "Get Terminal Output",
         "icon": "$(output)",
         "modelDescription": "Read output from a background terminal command (only new since last read by default) and status (isRunning, exitCode, terminationSignal, timedOut).",
@@ -158,7 +158,7 @@
       },
       {
         "name": "kill_terminal_enhanced",
-        "toolReferenceName": "kill_terminal_enhanced",
+        "toolReferenceName": "killTerminalEnhanced",
         "displayName": "Kill Terminal",
         "icon": "$(close)",
         "modelDescription": "Stop a running background terminal command.",
@@ -178,7 +178,7 @@
       },
       {
         "name": "terminal_last_command_enhanced",
-        "toolReferenceName": "terminal_last_command_enhanced",
+        "toolReferenceName": "terminalLastCommandEnhanced",
         "displayName": "Terminal Last Command",
         "icon": "$(history)",
         "modelDescription": "Get the last command executed via run_in_terminal_enhanced.",
