@@ -118,7 +118,7 @@
         "toolReferenceName": "custom_get_terminal_output",
         "displayName": "Custom Get Terminal Output",
         "icon": "$(output)",
-        "modelDescription": "Read stream-like output from a background terminal process (new output since last read by default), and whether command is still running.",
+        "modelDescription": "Read stream-like output from a background terminal process (new output since last read by default), returning exitCode, signal, timedOut, and isRunning.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",

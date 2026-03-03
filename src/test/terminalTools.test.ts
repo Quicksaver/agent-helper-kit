@@ -228,8 +228,11 @@ describe('terminal tools', () => {
     }, {});
 
     const outputPayload = getResultPayload(outputResult);
+    expect(outputPayload.exitCode).toBeNull();
     expect(outputPayload.isRunning).toBe(true);
     expect(outputPayload.output).toBe('hello\n');
+    expect(outputPayload.signal).toBeNull();
+    expect(outputPayload.timedOut).toBe(true);
 
     const noNewOutputResult = await getOutputTool.invoke({
       input: { id: terminalId },
@@ -237,7 +240,10 @@ describe('terminal tools', () => {
     }, {});
 
     const noNewOutputPayload = getResultPayload(noNewOutputResult);
+    expect(noNewOutputPayload.exitCode).toBeNull();
     expect(noNewOutputPayload.output).toBe('');
+    expect(noNewOutputPayload.signal).toBeNull();
+    expect(noNewOutputPayload.timedOut).toBe(true);
 
     fakeProcess.stdout.emit('data', 'world\nmatch-line\n');
 
@@ -319,8 +325,11 @@ describe('terminal tools', () => {
     }, {});
 
     const firstCompletedReadPayload = getResultPayload(firstCompletedRead);
+    expect(firstCompletedReadPayload.exitCode).toBeNull();
     expect(firstCompletedReadPayload.isRunning).toBe(false);
     expect(firstCompletedReadPayload.output).toBe('');
+    expect(firstCompletedReadPayload.signal).toBe('SIGTERM');
+    expect(firstCompletedReadPayload.timedOut).toBe(false);
 
     const secondCompletedRead = await getOutputTool.invoke({
       input: { id: terminalId },
@@ -328,7 +337,10 @@ describe('terminal tools', () => {
     }, {});
 
     const secondCompletedReadPayload = getResultPayload(secondCompletedRead);
+    expect(secondCompletedReadPayload.exitCode).toBeNull();
     expect(secondCompletedReadPayload.output).toBe('hello\nworld\nmatch-line\nnomatch\nonly-match\n');
+    expect(secondCompletedReadPayload.signal).toBe('SIGTERM');
+    expect(secondCompletedReadPayload.timedOut).toBe(false);
 
     const lastResult = await lastCommandTool.invoke({
       input: {},

@@ -150,8 +150,11 @@ const customGetTerminalOutputTool: vscode.LanguageModelTool<GetTerminalOutputInp
     const result = terminalRuntime.readBackgroundOutput(options.input);
 
     return buildMarkdownOutputToolResult({
+      exitCode: result.exitCode,
       isRunning: result.isRunning,
       output: result.output,
+      signal: result.signal,
+      timedOut: result.timedOut,
     });
   },
   prepareInvocation(

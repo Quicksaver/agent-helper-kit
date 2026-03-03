@@ -126,8 +126,11 @@ export class TerminalRuntime {
   }
 
   readBackgroundOutput(input: ReadBackgroundOutputInput): {
+    exitCode: null | number;
     isRunning: boolean;
     output: string;
+    signal: NodeJS.Signals | null;
+    timedOut: boolean;
   } {
     const state = this.getBackgroundState(input.id);
     const fullOutput = this.getBackgroundOutput(input.id, state);
@@ -149,8 +152,11 @@ export class TerminalRuntime {
     }
 
     return {
+      exitCode: state.completed ? state.exitCode : null,
       isRunning: !state.completed,
       output,
+      signal: state.completed ? state.signal : null,
+      timedOut: !state.completed,
     };
   }
 
