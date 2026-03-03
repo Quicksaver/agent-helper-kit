@@ -530,6 +530,30 @@ describe('terminal tools', () => {
       },
       toolInvocationToken: undefined,
     }, {})).rejects.toThrow('mutually exclusive');
+
+    await expect(runTool.invoke({
+      input: {
+        command: 'echo invalid-full-lines',
+        explanation: 'invalid options test',
+        full_output: true,
+        goal: 'reject mutually exclusive output options',
+        last_lines: 1,
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {})).rejects.toThrow('mutually exclusive');
+
+    await expect(runTool.invoke({
+      input: {
+        command: 'echo invalid-full-regex',
+        explanation: 'invalid options test',
+        full_output: true,
+        goal: 'reject mutually exclusive output options',
+        regex: 'a',
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {})).rejects.toThrow('mutually exclusive');
   });
 
   it('purges disk output when process closes with non-SIGINT signal', async () => {

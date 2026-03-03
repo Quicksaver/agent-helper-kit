@@ -103,6 +103,22 @@
                   "regex"
                 ]
               }
+            },
+            {
+              "not": {
+                "required": [
+                  "full_output",
+                  "last_lines"
+                ]
+              }
+            },
+            {
+              "not": {
+                "required": [
+                  "full_output",
+                  "regex"
+                ]
+              }
             }
           ]
         }

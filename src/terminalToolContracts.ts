@@ -242,9 +242,13 @@ const getTerminalOutputInputValidator = z.object(getTerminalOutputInputSchema).r
 const runInAsyncTerminalInputValidator = z.object(runInAsyncTerminalInputSchema);
 
 const runInSyncTerminalInputValidator = z.object(runInSyncTerminalInputSchema).refine(
-  value => !(typeof value.last_lines === 'number' && typeof value.regex === 'string'),
+  value => !(
+    (typeof value.last_lines === 'number' && typeof value.regex === 'string')
+    || (value.full_output === true && typeof value.last_lines === 'number')
+    || (value.full_output === true && typeof value.regex === 'string')
+  ),
   {
-    message: 'last_lines and regex are mutually exclusive',
+    message: 'full_output, last_lines, and regex are mutually exclusive options',
   },
 );
 

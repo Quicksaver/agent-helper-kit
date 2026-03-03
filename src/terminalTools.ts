@@ -139,12 +139,13 @@ const customRunInSyncTerminalTool: vscode.LanguageModelTool<RunInSyncTerminalInp
   ): Promise<vscode.LanguageModelToolResult> {
     const input = validateRunInSyncTerminalInput(options.input);
     const shouldReturnOutput = hasRunOutputOverrides(input);
+    const terminalRuntimeInstance = getTerminalRuntime();
 
-    const result = await getTerminalRuntime().runForegroundCommand({
+    const result = await terminalRuntimeInstance.runForegroundCommand({
       command: input.command,
       timeout: input.timeout,
     });
-    const id = getTerminalRuntime().createCompletedCommandRecord(input.command, result);
+    const id = terminalRuntimeInstance.createCompletedCommandRecord(input.command, result);
 
     if (!shouldReturnOutput) {
       return buildYamlToolResult({
@@ -155,18 +156,20 @@ const customRunInSyncTerminalTool: vscode.LanguageModelTool<RunInSyncTerminalInp
       });
     }
 
-    const filteredOutput = getFilteredOutput(
-      {
-        last_lines: input.last_lines,
-        regex: input.regex,
-      },
-      result.output,
-    );
+    const output = input.full_output === true
+      ? result.output
+      : getFilteredOutput(
+        {
+          last_lines: input.last_lines,
+          regex: input.regex,
+        },
+        result.output,
+      );
 
     return buildMarkdownOutputToolResult({
       exitCode: result.exitCode,
       id,
-      output: filteredOutput,
+      output,
       terminationSignal: result.terminationSignal,
       timedOut: result.timedOut,
     });
@@ -234,10 +237,10 @@ const customKillTerminalTool: vscode.LanguageModelTool<KillTerminalInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<KillTerminalInput>,
   ): Promise<vscode.LanguageModelToolResult> {
-    getTerminalRuntime().killBackgroundCommand(options.input.id);
+    const killed = getTerminalRuntime().killBackgroundCommand(options.input.id);
 
     return buildYamlToolResult({
-      killed: true,
+      killed,
     });
   },
   prepareInvocation(

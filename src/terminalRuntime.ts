@@ -16,6 +16,7 @@ import {
 const DEFAULT_OUTPUT_LIMIT = 60 * 1024;
 const DEFAULT_MEMORY_TO_FILE_DELAY_MS = 2 * 60 * 1000;
 const DEFAULT_STATE_CLEANUP_DELAY_MS = 5 * 60 * 1000;
+const READS_SINCE_COMPLETION_FOR_SYNC_RECORD = 1;
 
 interface BackgroundProcessState {
   childProc?: childProcess.ChildProcessWithoutNullStreams;
@@ -123,7 +124,7 @@ export class TerminalRuntime {
       output: result.output,
       outputInFile: false,
       purgeOnSpill: false,
-      readsSinceCompletion: 1,
+      readsSinceCompletion: READS_SINCE_COMPLETION_FOR_SYNC_RECORD,
       resolveCompletion: () => undefined,
       signal: result.terminationSignal,
     };
@@ -142,12 +143,15 @@ export class TerminalRuntime {
     return this.getBackgroundState(id).command;
   }
 
-  killBackgroundCommand(id: string): void {
+  killBackgroundCommand(id: string): boolean {
     const state = this.getBackgroundState(id);
 
     if (!state.completed && state.childProc) {
       state.childProc.kill('SIGTERM');
+      return true;
     }
+
+    return false;
   }
 
   async readBackgroundOutput(input: ReadBackgroundOutputInput): Promise<{

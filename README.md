@@ -31,9 +31,8 @@ These are extension-scoped copies of the built-in terminal-style tool APIs.
 
 Run tool behavior:
 
-- `run_in_sync_terminal` returns YAML metadata by default: `id`, `exitCode`, `terminationSignal`, `timedOut`.
+- `run_in_sync_terminal` returns YAML metadata by default (`id`, `exitCode`, `terminationSignal`, `timedOut`) and supports inline output options via `full_output`, `last_lines`, or `regex`.
 - `run_in_async_terminal` returns YAML with `id` by default.
-- `run_in_sync_terminal` supports output options via `full_output`, `last_lines`, or `regex`.
 - `run_in_async_terminal` is id-only; use `get_terminal_output_enhanced` for output.
 
 `get_terminal_output_enhanced` returns Markdown frontmatter with `exitCode`, `isRunning`, and `terminationSignal` plus a fenced output block.
