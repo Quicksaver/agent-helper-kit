@@ -56,6 +56,10 @@ export function createTerminalOutputFile(terminalId: string): void {
   fs.writeFileSync(getOutputFilePath(terminalId), '', { encoding: 'utf8' });
 }
 
+export function overwriteTerminalOutput(terminalId: string, output: string): void {
+  fs.writeFileSync(getOutputFilePath(terminalId), output, { encoding: 'utf8' });
+}
+
 export function appendTerminalOutput(terminalId: string, chunk: string): void {
   fs.appendFileSync(getOutputFilePath(terminalId), chunk, { encoding: 'utf8' });
 }
@@ -68,4 +72,8 @@ export function readTerminalOutput(terminalId: string): string {
   }
 
   return fs.readFileSync(filePath, { encoding: 'utf8' });
+}
+
+export function removeTerminalOutputFile(terminalId: string): void {
+  fs.rmSync(getOutputFilePath(terminalId), { force: true });
 }
