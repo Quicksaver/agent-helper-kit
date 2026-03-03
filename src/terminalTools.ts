@@ -24,9 +24,55 @@ function getWorkspaceCwd(): string {
   return os.homedir();
 }
 
-function buildToolResult(payload: object): vscode.LanguageModelToolResult {
+function toYamlScalar(value: unknown): string {
+  if (typeof value === 'string') {
+    return JSON.stringify(value);
+  }
+
+  if (
+    typeof value === 'number'
+    || typeof value === 'boolean'
+    || value === null
+  ) {
+    return String(value);
+  }
+
+  return JSON.stringify(value);
+}
+
+function toYaml(payload: Record<string, unknown>): string {
+  return Object.entries(payload)
+    .map(([ key, value ]) => `${key}: ${toYamlScalar(value)}`)
+    .join('\n');
+}
+
+function buildYamlToolResult(payload: Record<string, unknown>): vscode.LanguageModelToolResult {
   return new vscode.LanguageModelToolResult([
-    new vscode.LanguageModelTextPart(JSON.stringify(payload)),
+    new vscode.LanguageModelTextPart(toYaml(payload)),
+  ]);
+}
+
+function buildMarkdownOutputToolResult(payload: Record<string, unknown> & {
+  output: string;
+}): vscode.LanguageModelToolResult {
+  const {
+    output,
+    ...frontmatter
+  } = payload;
+
+  const normalizedOutput = output === '' || output.endsWith('\n') ? output : `${output}\n`;
+  const markdown = [
+    '---',
+    toYaml(frontmatter),
+    '---',
+    '',
+    '````text',
+    normalizedOutput,
+    '````',
+  ].join('\n');
+
+  return new vscode.LanguageModelToolResult([
+    new vscode.LanguageModelTextPart(markdown),
   ]);
 }
 
@@ -45,7 +91,7 @@ const customRunInTerminalTool: vscode.LanguageModelTool<RunInTerminalInput> = {
 
     if (input.isBackground) {
       const id = terminalRuntime.startBackgroundCommand(input.command);
-      return buildToolResult({ id });
+      return buildYamlToolResult({ id });
     }
 
     const result = await terminalRuntime.runForegroundCommand({
@@ -53,7 +99,7 @@ const customRunInTerminalTool: vscode.LanguageModelTool<RunInTerminalInput> = {
       timeout: input.timeout,
     });
 
-    return buildToolResult({
+    return buildMarkdownOutputToolResult({
       exitCode: result.exitCode,
       output: result.output,
       signal: result.signal,
@@ -81,7 +127,7 @@ const customAwaitTerminalTool: vscode.LanguageModelTool<AwaitTerminalInput> = {
   ): Promise<vscode.LanguageModelToolResult> {
     const result = await terminalRuntime.awaitBackgroundCommand(options.input);
 
-    return buildToolResult({
+    return buildMarkdownOutputToolResult({
       exitCode: result.exitCode,
       output: result.output,
       signal: result.signal,
@@ -103,7 +149,7 @@ const customGetTerminalOutputTool: vscode.LanguageModelTool<GetTerminalOutputInp
   ): Promise<vscode.LanguageModelToolResult> {
     const result = terminalRuntime.readBackgroundOutput(options.input);
 
-    return buildToolResult({
+    return buildMarkdownOutputToolResult({
       isRunning: result.isRunning,
       output: result.output,
     });
@@ -123,7 +169,7 @@ const customKillTerminalTool: vscode.LanguageModelTool<KillTerminalInput> = {
   ): Promise<vscode.LanguageModelToolResult> {
     terminalRuntime.killBackgroundCommand(options.input.id);
 
-    return buildToolResult({
+    return buildYamlToolResult({
       killed: true,
     });
   },
@@ -146,7 +192,7 @@ const customTerminalLastCommandTool: vscode.LanguageModelTool<TerminalLastComman
   ): Promise<vscode.LanguageModelToolResult> {
     const command = terminalRuntime.getLastCommand(options.input.id);
 
-    return buildToolResult({
+    return buildYamlToolResult({
       command: command ?? null,
     });
   },

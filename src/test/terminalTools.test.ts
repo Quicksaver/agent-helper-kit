@@ -94,8 +94,74 @@ function getRegisteredTool(name: string) {
   };
 }
 
+function parseYamlScalar(value: string): unknown {
+  const normalized = value.trim();
+
+  if (normalized === 'null') {
+    return null;
+  }
+
+  if (normalized === 'true') {
+    return true;
+  }
+
+  if (normalized === 'false') {
+    return false;
+  }
+
+  if (/^-?\d+(\.\d+)?$/.test(normalized)) {
+    return Number(normalized);
+  }
+
+  return JSON.parse(normalized) as unknown;
+}
+
+function parseYamlObject(raw: string): Record<string, unknown> {
+  const lines = raw
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  return lines.reduce<Record<string, unknown>>((acc, line) => {
+    const separatorIndex = line.indexOf(':');
+
+    if (separatorIndex < 0) {
+      return acc;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line.slice(separatorIndex + 1).trim();
+
+    acc[key] = parseYamlScalar(value);
+    return acc;
+  }, {});
+}
+
 function getResultPayload(result: { content: [{ value: string }] }): Record<string, unknown> {
-  return JSON.parse(result.content[0].value) as Record<string, unknown>;
+  const raw = result.content[0].value;
+
+  if (raw.startsWith('---\n')) {
+    const closingIndex = raw.indexOf('\n---\n', 4);
+
+    if (closingIndex < 0) {
+      throw new Error('Invalid frontmatter result format');
+    }
+
+    const frontmatterRaw = raw.slice(4, closingIndex);
+    const markdownBody = raw.slice(closingIndex + 5);
+    const outputMatch = /^\n````text\n([\s\S]*?)\n````$/.exec(markdownBody);
+
+    if (!outputMatch) {
+      throw new Error('Invalid markdown output block format');
+    }
+
+    return {
+      ...parseYamlObject(frontmatterRaw),
+      output: outputMatch[1],
+    };
+  }
+
+  return parseYamlObject(raw);
 }
 
 describe('terminal tools', () => {

@@ -16,7 +16,22 @@ Invoke `custom_run_in_terminal` with:
 }
 ```
 
-Expected: result contains `output`, `exitCode`, `signal`, and `timedOut`.
+Expected response format: markdown with YAML frontmatter and a fenced text output block.
+
+Example frontmatter:
+
+```yaml
+exitCode: 0
+signal: null
+timedOut: false
+```
+
+Example output block:
+
+```text
+/workspace
+ready
+```
 
 ## 2) Start a background command
 
@@ -32,7 +47,11 @@ Invoke `custom_run_in_terminal` with:
 }
 ```
 
-Expected: result includes an `id` like `custom-terminal-...`.
+Expected response format: YAML-only, for example:
+
+```yaml
+id: 'custom-terminal-...'
+```
 
 ## 3) Poll output while running
 
@@ -42,7 +61,19 @@ Invoke `custom_get_terminal_output`:
 { "id": "<id-from-step-2>" }
 ```
 
-Expected: `isRunning` boolean and partial/complete `output`.
+Expected response format: markdown with YAML frontmatter and a fenced output block.
+
+Example frontmatter:
+
+```yaml
+isRunning: true
+```
+
+Example output:
+
+```text
+tick-1
+```
 
 Optional output filters:
 
@@ -79,7 +110,7 @@ Immediately call `custom_get_terminal_output` with that new id:
 { "id": "<id-from-long-running-command>" }
 ```
 
-Expected (if called quickly): `isRunning: true` and partial output (for example, only the first tick(s)).
+Expected (if called quickly): frontmatter includes `isRunning: true` and output is partial (for example, only first tick(s)).
 
 Then call `custom_await_terminal` with:
 
@@ -87,7 +118,7 @@ Then call `custom_await_terminal` with:
 { "id": "<id-from-long-running-command>", "timeout": 0 }
 ```
 
-Expected: this waits until all ticks complete and then returns final status with `timedOut: false` and terminal completion details.
+Expected: markdown+frontmatter with `timedOut: false` and output containing terminal completion details.
 
 ## 4) Wait for completion
 
@@ -97,13 +128,13 @@ Invoke `custom_await_terminal`:
 { "id": "<id-from-step-2>", "timeout": 5000 }
 ```
 
-Expected: either completed status with `exitCode`/`output`, or `timedOut: true`.
+Expected: markdown+frontmatter result with `exitCode`/`timedOut` in frontmatter and captured text in the fenced output block.
 
 ## 5) Verify last command tracking
 
 Invoke `custom_terminal_last_command` with `{}`.
 
-Expected: `command` equals the last command passed to `custom_run_in_terminal`.
+Expected response format: YAML-only with `command`, which equals the last command passed to `custom_run_in_terminal`.
 
 To query a specific background terminal instead, pass an optional `id`:
 
@@ -111,7 +142,7 @@ To query a specific background terminal instead, pass an optional `id`:
 { "id": "<id-from-step-2>" }
 ```
 
-Expected: `command` equals the command used to create that terminal id.
+Expected: YAML-only `command` equals the command used to create that terminal id.
 
 ## 6) Verify kill behavior (optional)
 
@@ -123,4 +154,10 @@ Start a long-running background command (e.g. `sleep 30`), then call:
 
 via `custom_kill_terminal`.
 
-Expected: `{ "killed": true }`, and a subsequent `custom_await_terminal` eventually reports completion.
+Expected response format: YAML-only, for example:
+
+```yaml
+killed: true
+```
+
+A subsequent `custom_await_terminal` eventually reports completion in markdown+frontmatter format.
