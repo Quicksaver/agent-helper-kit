@@ -53,3 +53,5 @@ This file provides context for AI agents working in this codebase.
 
 - **[2026-03-02] LM Tool Wiring**: Chat tools must be declared in `contributes.languageModelTools` and also registered at runtime, or they won’t be invokable. See `registerTerminalTools` in src/terminalTools.ts.
 - **[2026-03-02] MCP Provider Wiring**: Dynamic MCP servers require both `contributes.mcpServerDefinitionProviders` and runtime `lm.registerMcpServerDefinitionProvider`; either one missing prevents discovery. See `registerMcpServerProvider` in src/mcpProvider.ts.
+- **[2026-03-03] Shared Terminal Runtime**: Keep terminal execution lifecycle (cwd persistence, spill-to-file, signal cleanup) centralized to guarantee MCP server and VS Code LM tools stay behavior-identical. See `TerminalRuntime` in src/terminalRuntime.ts.
+- **[2026-03-03] Terminal Metadata Source**: Keep terminal tool display names and model descriptions sourced from `package.json` `contributes.languageModelTools` to avoid drift across MCP and LM registrations. See `TERMINAL_TOOL_METADATA` in src/terminalToolContracts.ts.

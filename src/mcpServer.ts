@@ -1,320 +1,24 @@
-import * as childProcess from 'node:child_process';
 import * as process from 'node:process';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from 'zod';
 
+import { TerminalRuntime } from '@/terminalRuntime';
 import {
-  appendTerminalOutput,
-  initializeTerminalOutputStore,
-  overwriteTerminalOutput,
-  readTerminalOutput,
-  removeTerminalOutputFile,
-} from '@/terminalOutputStore';
+  awaitTerminalInputSchema,
+  getTerminalOutputInputSchema,
+  killTerminalInputSchema,
+  runInTerminalInputSchema,
+  TERMINAL_TOOL_METADATA,
+  TERMINAL_TOOL_NAMES,
+  terminalLastCommandInputSchema,
+} from '@/terminalToolContracts';
 
-const OUTPUT_LIMIT = 60 * 1024;
-const MEMORY_TO_FILE_DELAY_MS = 2 * 60 * 1000;
-const STATE_CLEANUP_DELAY_MS = 5 * 60 * 1000;
-const PWD_MARKER = '__CUSTOM_VSCODE_MCP_PWD__';
-
-interface BackgroundProcessState {
-  childProc: childProcess.ChildProcessWithoutNullStreams;
-  cleanupTimer: NodeJS.Timeout | undefined;
-  command: string;
-  completed: boolean;
-  completion: Promise<void>;
-  exitCode: null | number;
-  memoryToFileTimer: NodeJS.Timeout | undefined;
-  output: string;
-  outputInFile: boolean;
-  purgeOnSpill: boolean;
-  resolveCompletion: () => void;
-  signal: NodeJS.Signals | null;
-}
-
-const backgroundProcesses = new Map<string, BackgroundProcessState>();
-let backgroundIdCounter = 0;
-let sharedForegroundCwd: string | undefined;
-let lastCommand: string | undefined;
-
-initializeTerminalOutputStore(new Set(backgroundProcesses.keys()));
-
-function buildShellEnv(): NodeJS.ProcessEnv {
-  return {
-    ...process.env,
-    TERM: process.env.TERM ?? 'xterm-256color',
-  };
-}
-
-function appendOutput(current: string, chunk: string): string {
-  const next = `${current}${chunk}`;
-
-  if (next.length <= OUTPUT_LIMIT) {
-    return next;
-  }
-
-  return next.slice(-OUTPUT_LIMIT);
-}
-
-function parseOutputAndPwd(output: string): {
-  outputWithoutMarker: string;
-  resolvedCwd: string | undefined;
-} {
-  const markerIndex = output.lastIndexOf(PWD_MARKER);
-
-  if (markerIndex === -1) {
-    return {
-      outputWithoutMarker: output,
-      resolvedCwd: undefined,
-    };
-  }
-
-  const before = output.slice(0, markerIndex);
-  const after = output.slice(markerIndex + PWD_MARKER.length);
-  const lineBreakIndex = after.indexOf('\n');
-  const cwdValue = lineBreakIndex === -1 ? after : after.slice(0, lineBreakIndex);
-  const rest = lineBreakIndex === -1 ? '' : after.slice(lineBreakIndex + 1);
-
-  return {
-    outputWithoutMarker: `${before}${rest}`,
-    resolvedCwd: cwdValue.trim() || undefined,
-  };
-}
-
-function getFilteredOutput(input: {
-  last_lines?: number;
-  regex?: string;
-}, output: string): string {
-  const hasLastLines = typeof input.last_lines === 'number';
-  const hasRegex = typeof input.regex === 'string';
-
-  if (hasLastLines && hasRegex) {
-    throw new Error('last_lines and regex are mutually exclusive');
-  }
-
-  if (!hasLastLines && !hasRegex) {
-    return output;
-  }
-
-  const lines = output.endsWith('\n')
-    ? output.slice(0, -1).split('\n')
-    : output.split('\n');
-
-  if (hasLastLines) {
-    const count = Math.max(Math.floor(input.last_lines ?? 0), 0);
-
-    if (count === 0) {
-      return '';
-    }
-
-    return `${lines.slice(-count).join('\n')}\n`;
-  }
-
-  const expression = new RegExp(input.regex ?? '');
-  return lines.filter(line => expression.test(line)).join('\n');
-}
-
-function scheduleBackgroundStateCleanup(id: string, state: BackgroundProcessState): void {
-  state.cleanupTimer = setTimeout(() => {
-    backgroundProcesses.delete(id);
-  }, STATE_CLEANUP_DELAY_MS);
-}
-
-function scheduleMemoryToFileSpill(id: string, state: BackgroundProcessState): void {
-  state.memoryToFileTimer = setTimeout(() => {
-    if (state.purgeOnSpill) {
-      state.output = '';
-      return;
-    }
-
-    overwriteTerminalOutput(id, state.output);
-    state.output = '';
-    state.outputInFile = true;
-  }, MEMORY_TO_FILE_DELAY_MS);
-}
-
-function appendBackgroundOutput(id: string, state: BackgroundProcessState, chunk: string): void {
-  if (state.outputInFile) {
-    appendTerminalOutput(id, chunk);
-    return;
-  }
-
-  state.output = `${state.output}${chunk}`;
-}
-
-function getBackgroundOutput(id: string, state: BackgroundProcessState): string {
-  if (state.outputInFile) {
-    return readTerminalOutput(id);
-  }
-
-  return state.output;
-}
-
-function purgeBackgroundOutput(id: string, state: BackgroundProcessState): void {
-  state.output = '';
-  state.outputInFile = false;
-  removeTerminalOutputFile(id);
-
-  if (state.memoryToFileTimer) {
-    clearTimeout(state.memoryToFileTimer);
-    state.memoryToFileTimer = undefined;
-  }
-}
-
-function handleSignalTermination(id: string, state: BackgroundProcessState, signal: NodeJS.Signals): void {
-  if (signal === 'SIGINT') {
-    return;
-  }
-
-  if (state.outputInFile) {
-    purgeBackgroundOutput(id, state);
-    return;
-  }
-
-  state.purgeOnSpill = true;
-}
-
-async function runForegroundCommand(input: {
-  command: string;
-  timeout: number;
-}): Promise<{
-  exitCode: null | number;
-  output: string;
-  signal: NodeJS.Signals | null;
-  timedOut: boolean;
-}> {
-  const cwd = sharedForegroundCwd ?? process.cwd();
-  const wrappedCommand = `${input.command}\nprintf "\\n${PWD_MARKER}%s\\n" "$PWD"`;
-
-  const childProc = childProcess.spawn('/bin/bash', [ '-lc', wrappedCommand ], {
-    cwd,
-    env: buildShellEnv(),
-  });
-
-  let output = '';
-  let timedOut = false;
-  let timeoutHandle: NodeJS.Timeout | undefined;
-
-  childProc.stdout.on('data', (data: unknown) => {
-    const chunk = String(data);
-    output = appendOutput(output, chunk);
-  });
-
-  childProc.stderr.on('data', (data: unknown) => {
-    const chunk = String(data);
-    output = appendOutput(output, chunk);
-  });
-
-  if (input.timeout > 0) {
-    timeoutHandle = setTimeout(() => {
-      timedOut = true;
-      childProc.kill('SIGTERM');
-    }, input.timeout);
-  }
-
-  const closeResult = await new Promise<{
-    code: null | number;
-    signal: NodeJS.Signals | null;
-  }>(resolve => {
-    childProc.on('close', (code: null | number, signal: NodeJS.Signals | null) => {
-      resolve({
-        code,
-        signal,
-      });
-    });
-  });
-
-  if (timeoutHandle) {
-    clearTimeout(timeoutHandle);
-  }
-
-  const parsedOutput = parseOutputAndPwd(output);
-
-  if (parsedOutput.resolvedCwd) {
-    sharedForegroundCwd = parsedOutput.resolvedCwd;
-  }
-
-  return {
-    exitCode: closeResult.code,
-    output: parsedOutput.outputWithoutMarker,
-    signal: closeResult.signal,
-    timedOut,
-  };
-}
-
-function startBackgroundCommand(command: string): string {
-  const id = `custom-terminal-${++backgroundIdCounter}`;
-  const childProc = childProcess.spawn('/bin/bash', [ '-lc', command ], {
-    cwd: process.cwd(),
-    env: buildShellEnv(),
-  });
-
-  const state: BackgroundProcessState = {
-    childProc,
-    cleanupTimer: undefined,
-    command,
-    completed: false,
-    completion: Promise.resolve(),
-    exitCode: null,
-    memoryToFileTimer: undefined,
-    output: '',
-    outputInFile: false,
-    purgeOnSpill: false,
-    resolveCompletion: () => undefined,
-    signal: null,
-  };
-
-  state.completion = new Promise<void>(resolve => {
-    state.resolveCompletion = resolve;
-  });
-
-  scheduleMemoryToFileSpill(id, state);
-
-  childProc.stdout.on('data', (data: unknown) => {
-    const chunk = String(data);
-    appendBackgroundOutput(id, state, chunk);
-  });
-
-  childProc.stderr.on('data', (data: unknown) => {
-    const chunk = String(data);
-    appendBackgroundOutput(id, state, chunk);
-  });
-
-  childProc.on('close', (code: null | number, signal: NodeJS.Signals | null) => {
-    state.completed = true;
-    state.exitCode = code;
-    state.signal = signal;
-
-    if (signal) {
-      handleSignalTermination(id, state, signal);
-    }
-
-    state.resolveCompletion();
-    scheduleBackgroundStateCleanup(id, state);
-  });
-
-  childProc.on('error', (error: Error) => {
-    state.completed = true;
-    appendBackgroundOutput(id, state, `\n${String(error)}\n`);
-    state.resolveCompletion();
-    scheduleBackgroundStateCleanup(id, state);
-  });
-
-  backgroundProcesses.set(id, state);
-
-  return id;
-}
-
-function getBackgroundState(id: string): BackgroundProcessState {
-  const state = backgroundProcesses.get(id);
-
-  if (!state) {
-    throw new Error(`Unknown terminal id: ${id}`);
-  }
-
-  return state;
-}
+const terminalRuntime = new TerminalRuntime({
+  getBackgroundCwd: () => process.cwd(),
+  getInitialForegroundCwd: () => process.cwd(),
+  pwdMarker: '__CUSTOM_VSCODE_MCP_PWD__',
+});
 
 function toTextContent(payload: object): {
   content: {
@@ -334,27 +38,19 @@ function toTextContent(payload: object): {
 
 function registerTools(server: McpServer): void {
   server.registerTool(
-    'custom_run_in_terminal',
+    TERMINAL_TOOL_NAMES.runInTerminal,
     {
-      description: 'Execute shell commands in a persistent bash terminal session. Supports foreground and background execution with output capture.',
-      inputSchema: {
-        command: z.string(),
-        explanation: z.string(),
-        goal: z.string(),
-        isBackground: z.boolean(),
-        timeout: z.number(),
-      },
-      title: 'Custom Run In Terminal',
+      description: TERMINAL_TOOL_METADATA.runInTerminal.description,
+      inputSchema: runInTerminalInputSchema,
+      title: TERMINAL_TOOL_METADATA.runInTerminal.title,
     },
     async input => {
-      lastCommand = input.command;
-
       if (input.isBackground) {
-        const id = startBackgroundCommand(input.command);
+        const id = terminalRuntime.startBackgroundCommand(input.command);
         return toTextContent({ id });
       }
 
-      const result = await runForegroundCommand({
+      const result = await terminalRuntime.runForegroundCommand({
         command: input.command,
         timeout: input.timeout,
       });
@@ -369,80 +65,53 @@ function registerTools(server: McpServer): void {
   );
 
   server.registerTool(
-    'custom_await_terminal',
+    TERMINAL_TOOL_NAMES.awaitTerminal,
     {
-      description: 'Wait for a background terminal process to complete and return its output and status.',
-      inputSchema: {
-        id: z.string(),
-        timeout: z.number(),
-      },
-      title: 'Custom Await Terminal',
+      description: TERMINAL_TOOL_METADATA.awaitTerminal.description,
+      inputSchema: awaitTerminalInputSchema,
+      title: TERMINAL_TOOL_METADATA.awaitTerminal.title,
     },
     async input => {
-      const state = getBackgroundState(input.id);
-
-      if (!state.completed) {
-        if (input.timeout === 0) {
-          await state.completion;
-        }
-        else {
-          await Promise.race([
-            state.completion,
-            new Promise<void>(resolve => {
-              setTimeout(resolve, input.timeout);
-            }),
-          ]);
-        }
-      }
-
-      const timedOut = !state.completed;
+      const result = await terminalRuntime.awaitBackgroundCommand({
+        id: input.id,
+        timeout: input.timeout,
+      });
 
       return toTextContent({
-        exitCode: state.completed ? state.exitCode : null,
-        output: getBackgroundOutput(input.id, state),
-        signal: state.completed ? state.signal : null,
-        timedOut,
+        exitCode: result.exitCode,
+        output: result.output,
+        signal: result.signal,
+        timedOut: result.timedOut,
       });
     },
   );
 
   server.registerTool(
-    'custom_get_terminal_output',
+    TERMINAL_TOOL_NAMES.getTerminalOutput,
     {
-      description: 'Read current output from a background terminal process.',
-      inputSchema: {
-        id: z.string(),
-        last_lines: z.number().int().nonnegative().optional(),
-        regex: z.string().optional(),
-      },
-      title: 'Custom Get Terminal Output',
+      description: TERMINAL_TOOL_METADATA.getTerminalOutput.description,
+      inputSchema: getTerminalOutputInputSchema,
+      title: TERMINAL_TOOL_METADATA.getTerminalOutput.title,
     },
     async input => {
-      const state = getBackgroundState(input.id);
-      const storedOutput = getBackgroundOutput(input.id, state);
+      const result = terminalRuntime.readBackgroundOutput(input);
 
       return toTextContent({
-        isRunning: !state.completed,
-        output: getFilteredOutput(input, storedOutput),
+        isRunning: result.isRunning,
+        output: result.output,
       });
     },
   );
 
   server.registerTool(
-    'custom_kill_terminal',
+    TERMINAL_TOOL_NAMES.killTerminal,
     {
-      description: 'Terminate a running background terminal process.',
-      inputSchema: {
-        id: z.string(),
-      },
-      title: 'Custom Kill Terminal',
+      description: TERMINAL_TOOL_METADATA.killTerminal.description,
+      inputSchema: killTerminalInputSchema,
+      title: TERMINAL_TOOL_METADATA.killTerminal.title,
     },
     async input => {
-      const state = getBackgroundState(input.id);
-
-      if (!state.completed) {
-        state.childProc.kill('SIGTERM');
-      }
+      terminalRuntime.killBackgroundCommand(input.id);
 
       return toTextContent({
         killed: true,
@@ -451,18 +120,14 @@ function registerTools(server: McpServer): void {
   );
 
   server.registerTool(
-    'custom_terminal_last_command',
+    TERMINAL_TOOL_NAMES.terminalLastCommand,
     {
-      description: 'Return the last command executed via custom_run_in_terminal.',
-      inputSchema: {
-        id: z.string().optional(),
-      },
-      title: 'Custom Terminal Last Command',
+      description: TERMINAL_TOOL_METADATA.terminalLastCommand.description,
+      inputSchema: terminalLastCommandInputSchema,
+      title: TERMINAL_TOOL_METADATA.terminalLastCommand.title,
     },
     async input => {
-      const command = input.id
-        ? getBackgroundState(input.id).command
-        : lastCommand;
+      const command = terminalRuntime.getLastCommand(input.id);
 
       return toTextContent({
         command: command ?? null,
