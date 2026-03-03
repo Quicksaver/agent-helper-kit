@@ -53,7 +53,7 @@
         "toolReferenceName": "run_in_terminal_enhanced",
         "displayName": "Run In Terminal",
         "icon": "$(terminal)",
-        "modelDescription": "Execute shell commands in a persistent bash terminal session. Supports foreground (returns output upon completion, exitCode, terminationSignal, and indicates if command timed out) and background execution (returns id for async tracking).",
+        "modelDescription": "Execute shell commands in a persistent bash terminal session. Supports foreground (on completion returns output, exitCode, terminationSignal, and timedOut) and background execution (returns id for async tracking).",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -93,7 +93,7 @@
         "toolReferenceName": "await_terminal_enhanced",
         "displayName": "Await Terminal",
         "icon": "$(clock)",
-        "modelDescription": "Wait for a background terminal process to complete and returns its output, exitCode, terminationSignal if applicable, and timedOut.",
+        "modelDescription": "Wait for a background terminal process to complete and returns its output, exitCode, terminationSignal, and timedOut.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -118,7 +118,7 @@
         "toolReferenceName": "get_terminal_output_enhanced",
         "displayName": "Get Terminal Output",
         "icon": "$(output)",
-        "modelDescription": "Read stream-like output from a background terminal process (new output since last read by default), returning exitCode, terminationSignal if applicable, timedOut, and isRunning.",
+        "modelDescription": "Read stream-like output from a background terminal process (new output since last read by default). Also returns exitCode, terminationSignal, timedOut, and isRunning.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
