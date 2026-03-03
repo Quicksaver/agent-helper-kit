@@ -20,7 +20,8 @@ Personal VS Code extension focused on improving in-editor workflows with chat in
 
 The extension contributes and registers these language model tools:
 
-- `run_in_terminal_enhanced`
+- `run_in_sync_terminal`
+- `run_in_async_terminal`
 - `await_terminal_enhanced`
 - `get_terminal_output_enhanced`
 - `kill_terminal_enhanced`
@@ -28,11 +29,12 @@ The extension contributes and registers these language model tools:
 
 These are extension-scoped copies of the built-in terminal-style tool APIs.
 
-`run_in_terminal_enhanced` behavior:
+Run tool behavior:
 
-- Foreground (`isBackground: false`) returns YAML metadata by default: `id`, `exitCode`, `terminationSignal`, `timedOut`.
-- Background (`isBackground: true`) returns YAML with `id` by default.
-- In both modes, command output is opt-in via `full_output`, `last_lines`, or `regex`.
+- `run_in_sync_terminal` returns YAML metadata by default: `id`, `exitCode`, `terminationSignal`, `timedOut`.
+- `run_in_async_terminal` returns YAML with `id` by default.
+- `run_in_sync_terminal` supports output options via `full_output`, `last_lines`, or `regex`.
+- `run_in_async_terminal` is id-only; use `get_terminal_output_enhanced` for output.
 
 `get_terminal_output_enhanced` returns Markdown frontmatter with `exitCode`, `isRunning`, and `terminationSignal` plus a fenced output block.
 

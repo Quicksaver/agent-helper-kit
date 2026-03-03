@@ -7,7 +7,8 @@ export const TERMINAL_TOOL_NAMES = {
   awaitTerminal: 'await_terminal_enhanced',
   getTerminalOutput: 'get_terminal_output_enhanced',
   killTerminal: 'kill_terminal_enhanced',
-  runInTerminal: 'run_in_terminal_enhanced',
+  runInAsyncTerminal: 'run_in_async_terminal',
+  runInSyncTerminal: 'run_in_sync_terminal',
   terminalLastCommand: 'terminal_last_command_enhanced',
 } as const;
 
@@ -147,11 +148,17 @@ export const TERMINAL_TOOL_METADATA = {
     ...getToolMetadata(TERMINAL_TOOL_NAMES.killTerminal),
     invocationMessage: (id: string) => `Stopping terminal ${id}`,
   },
-  runInTerminal: {
+  runInAsyncTerminal: {
     confirmationMessage: (commandPreview: string) => `Run shell command: ${commandPreview}`,
-    confirmationTitle: 'Run terminal command?',
-    ...getToolMetadata(TERMINAL_TOOL_NAMES.runInTerminal),
-    invocationMessage: (commandPreview: string) => `Running in terminal: ${commandPreview}`,
+    confirmationTitle: 'Run async terminal command?',
+    ...getToolMetadata(TERMINAL_TOOL_NAMES.runInAsyncTerminal),
+    invocationMessage: (commandPreview: string) => `Running async terminal command: ${commandPreview}`,
+  },
+  runInSyncTerminal: {
+    confirmationMessage: (commandPreview: string) => `Run shell command: ${commandPreview}`,
+    confirmationTitle: 'Run sync terminal command?',
+    ...getToolMetadata(TERMINAL_TOOL_NAMES.runInSyncTerminal),
+    invocationMessage: (commandPreview: string) => `Running sync terminal command: ${commandPreview}`,
   },
   terminalLastCommand: {
     invocationMessage: 'Reading last terminal command',
@@ -159,12 +166,18 @@ export const TERMINAL_TOOL_METADATA = {
   },
 } as const;
 
-export interface RunInTerminalInput {
+export interface RunInAsyncTerminalInput {
+  command: string;
+  explanation: string;
+  goal: string;
+  timeout: number;
+}
+
+export interface RunInSyncTerminalInput {
   command: string;
   explanation: string;
   full_output?: boolean;
   goal: string;
-  isBackground: boolean;
   last_lines?: number;
   regex?: string;
   timeout: number;
@@ -190,12 +203,18 @@ export interface TerminalLastCommandInput {
   id?: string;
 }
 
-export const runInTerminalInputSchema = {
+export const runInAsyncTerminalInputSchema = {
+  command: z.string(),
+  explanation: z.string(),
+  goal: z.string(),
+  timeout: z.number(),
+} satisfies z.ZodRawShape;
+
+export const runInSyncTerminalInputSchema = {
   command: z.string(),
   explanation: z.string(),
   full_output: z.boolean().optional(),
   goal: z.string(),
-  isBackground: z.boolean(),
   last_lines: z.number().int().nonnegative().optional(),
   regex: z.string().optional(),
   timeout: z.number(),
@@ -220,7 +239,9 @@ const getTerminalOutputInputValidator = z.object(getTerminalOutputInputSchema).r
   },
 );
 
-const runInTerminalInputValidator = z.object(runInTerminalInputSchema).refine(
+const runInAsyncTerminalInputValidator = z.object(runInAsyncTerminalInputSchema);
+
+const runInSyncTerminalInputValidator = z.object(runInSyncTerminalInputSchema).refine(
   value => !(typeof value.last_lines === 'number' && typeof value.regex === 'string'),
   {
     message: 'last_lines and regex are mutually exclusive',
@@ -239,6 +260,10 @@ export function validateGetTerminalOutputInput(input: GetTerminalOutputInput): G
   return getTerminalOutputInputValidator.parse(input);
 }
 
-export function validateRunInTerminalInput(input: RunInTerminalInput): RunInTerminalInput {
-  return runInTerminalInputValidator.parse(input);
+export function validateRunInAsyncTerminalInput(input: RunInAsyncTerminalInput): RunInAsyncTerminalInput {
+  return runInAsyncTerminalInputValidator.parse(input);
+}
+
+export function validateRunInSyncTerminalInput(input: RunInSyncTerminalInput): RunInSyncTerminalInput {
+  return runInSyncTerminalInputValidator.parse(input);
 }

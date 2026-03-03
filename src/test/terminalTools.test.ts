@@ -183,12 +183,13 @@ describe('terminal tools', () => {
 
     registerTerminalTools(context);
 
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_terminal_enhanced', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_sync_terminal', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_async_terminal', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('await_terminal_enhanced', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('get_terminal_output_enhanced', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('kill_terminal_enhanced', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('terminal_last_command_enhanced', expect.any(Object));
-    expect(context.subscriptions).toHaveLength(5);
+    expect(context.subscriptions).toHaveLength(6);
   });
 
   it('runs a background command and exposes incremental output, await, kill, and last command', async () => {
@@ -198,7 +199,7 @@ describe('terminal tools', () => {
     const context = createContext();
     registerTerminalTools(context);
 
-    const runTool = getRegisteredTool('run_in_terminal_enhanced');
+    const runTool = getRegisteredTool('run_in_async_terminal');
     const getOutputTool = getRegisteredTool('get_terminal_output_enhanced');
     const awaitTool = getRegisteredTool('await_terminal_enhanced');
     const killTool = getRegisteredTool('kill_terminal_enhanced');
@@ -215,7 +216,6 @@ describe('terminal tools', () => {
         command: 'echo hello',
         explanation: 'prints a value',
         goal: 'test background execution',
-        isBackground: true,
         timeout: 0,
       },
       toolInvocationToken: undefined,
@@ -367,7 +367,7 @@ describe('terminal tools', () => {
     const context = createContext();
     registerTerminalTools(context);
 
-    const runTool = getRegisteredTool('run_in_terminal_enhanced');
+    const runTool = getRegisteredTool('run_in_async_terminal');
     const awaitTool = getRegisteredTool('await_terminal_enhanced');
 
     const runResult = await runTool.invoke({
@@ -375,7 +375,6 @@ describe('terminal tools', () => {
         command: 'echo keep',
         explanation: 'sigint behavior test',
         goal: 'verify no purge on sigint',
-        isBackground: true,
         timeout: 0,
       },
       toolInvocationToken: undefined,
@@ -407,7 +406,7 @@ describe('terminal tools', () => {
     const context = createContext();
     registerTerminalTools(context);
 
-    const runTool = getRegisteredTool('run_in_terminal_enhanced');
+    const runTool = getRegisteredTool('run_in_sync_terminal');
     const getOutputTool = getRegisteredTool('get_terminal_output_enhanced');
 
     const runPromise = runTool.invoke({
@@ -415,7 +414,6 @@ describe('terminal tools', () => {
         command: 'echo foreground',
         explanation: 'foreground id-only behavior',
         goal: 'ensure output is not returned by default',
-        isBackground: false,
         timeout: 0,
       },
       toolInvocationToken: undefined,
@@ -453,7 +451,7 @@ describe('terminal tools', () => {
     const context = createContext();
     registerTerminalTools(context);
 
-    const runTool = getRegisteredTool('run_in_terminal_enhanced');
+    const runTool = getRegisteredTool('run_in_sync_terminal');
 
     const fullOutputProcess = createFakeProcess();
     spawn.mockReturnValueOnce(fullOutputProcess);
@@ -464,7 +462,6 @@ describe('terminal tools', () => {
         explanation: 'foreground full output behavior',
         full_output: true,
         goal: 'return full output inline',
-        isBackground: false,
         timeout: 0,
       },
       toolInvocationToken: undefined,
@@ -486,7 +483,6 @@ describe('terminal tools', () => {
         command: 'echo lines',
         explanation: 'foreground last lines behavior',
         goal: 'return only trailing lines inline',
-        isBackground: false,
         last_lines: 2,
         timeout: 0,
       },
@@ -509,7 +505,6 @@ describe('terminal tools', () => {
         command: 'echo regex',
         explanation: 'foreground regex behavior',
         goal: 'return only matching lines inline',
-        isBackground: false,
         regex: '^b$|^c$',
         timeout: 0,
       },
@@ -529,7 +524,6 @@ describe('terminal tools', () => {
         command: 'echo invalid',
         explanation: 'invalid options test',
         goal: 'reject mutually exclusive filters',
-        isBackground: false,
         last_lines: 1,
         regex: 'a',
         timeout: 0,
@@ -548,7 +542,7 @@ describe('terminal tools', () => {
       const context = createContext();
       registerTerminalTools(context);
 
-      const runTool = getRegisteredTool('run_in_terminal_enhanced');
+      const runTool = getRegisteredTool('run_in_async_terminal');
       const awaitTool = getRegisteredTool('await_terminal_enhanced');
 
       const runResult = await runTool.invoke({
@@ -556,7 +550,6 @@ describe('terminal tools', () => {
           command: 'echo spill',
           explanation: 'signal purge test',
           goal: 'verify disk purge on sigterm',
-          isBackground: true,
           timeout: 0,
         },
         toolInvocationToken: undefined,

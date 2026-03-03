@@ -7,11 +7,13 @@ import {
   type AwaitTerminalInput,
   type GetTerminalOutputInput,
   type KillTerminalInput,
-  type RunInTerminalInput,
+  type RunInAsyncTerminalInput,
+  type RunInSyncTerminalInput,
   TERMINAL_TOOL_METADATA,
   TERMINAL_TOOL_NAMES,
   type TerminalLastCommandInput,
-  validateRunInTerminalInput,
+  validateRunInAsyncTerminalInput,
+  validateRunInSyncTerminalInput,
 } from '@/terminalToolContracts';
 
 const STATE_CLEANUP_DELAY_MS = 5 * 60 * 1000;
@@ -97,41 +99,46 @@ function getTerminalRuntime(): TerminalRuntime {
   return terminalRuntime;
 }
 
-function hasRunOutputOverrides(input: RunInTerminalInput): boolean {
+function hasRunOutputOverrides(input: {
+  full_output?: boolean;
+  last_lines?: number;
+  regex?: string;
+}): boolean {
   return input.full_output === true
     || typeof input.last_lines === 'number'
     || typeof input.regex === 'string';
 }
 
-const customRunInTerminalTool: vscode.LanguageModelTool<RunInTerminalInput> = {
+const customRunInAsyncTerminalTool: vscode.LanguageModelTool<RunInAsyncTerminalInput> = {
   async invoke(
-    options: vscode.LanguageModelToolInvocationOptions<RunInTerminalInput>,
+    options: vscode.LanguageModelToolInvocationOptions<RunInAsyncTerminalInput>,
   ): Promise<vscode.LanguageModelToolResult> {
-    const input = validateRunInTerminalInput(options.input);
+    const input = validateRunInAsyncTerminalInput(options.input);
+    const id = getTerminalRuntime().startBackgroundCommand(input.command);
+
+    return buildYamlToolResult({ id });
+  },
+  prepareInvocation(
+    options: vscode.LanguageModelToolInvocationPrepareOptions<RunInAsyncTerminalInput>,
+  ): vscode.PreparedToolInvocation {
+    const commandPreview = options.input.command.split('\n')[0]?.trim() || '(empty command)';
+
+    return {
+      confirmationMessages: {
+        message: TERMINAL_TOOL_METADATA.runInAsyncTerminal.confirmationMessage(commandPreview),
+        title: TERMINAL_TOOL_METADATA.runInAsyncTerminal.confirmationTitle,
+      },
+      invocationMessage: TERMINAL_TOOL_METADATA.runInAsyncTerminal.invocationMessage(commandPreview),
+    };
+  },
+};
+
+const customRunInSyncTerminalTool: vscode.LanguageModelTool<RunInSyncTerminalInput> = {
+  async invoke(
+    options: vscode.LanguageModelToolInvocationOptions<RunInSyncTerminalInput>,
+  ): Promise<vscode.LanguageModelToolResult> {
+    const input = validateRunInSyncTerminalInput(options.input);
     const shouldReturnOutput = hasRunOutputOverrides(input);
-
-    if (input.isBackground) {
-      const id = getTerminalRuntime().startBackgroundCommand(input.command);
-
-      if (!shouldReturnOutput) {
-        return buildYamlToolResult({ id });
-      }
-
-      const result = await getTerminalRuntime().readBackgroundOutput({
-        full_output: input.full_output,
-        id,
-        last_lines: input.last_lines,
-        regex: input.regex,
-      });
-
-      return buildMarkdownOutputToolResult({
-        exitCode: result.exitCode,
-        id,
-        isRunning: result.isRunning,
-        output: result.output,
-        terminationSignal: result.terminationSignal,
-      });
-    }
 
     const result = await getTerminalRuntime().runForegroundCommand({
       command: input.command,
@@ -165,16 +172,16 @@ const customRunInTerminalTool: vscode.LanguageModelTool<RunInTerminalInput> = {
     });
   },
   prepareInvocation(
-    options: vscode.LanguageModelToolInvocationPrepareOptions<RunInTerminalInput>,
+    options: vscode.LanguageModelToolInvocationPrepareOptions<RunInSyncTerminalInput>,
   ): vscode.PreparedToolInvocation {
     const commandPreview = options.input.command.split('\n')[0]?.trim() || '(empty command)';
 
     return {
       confirmationMessages: {
-        message: TERMINAL_TOOL_METADATA.runInTerminal.confirmationMessage(commandPreview),
-        title: TERMINAL_TOOL_METADATA.runInTerminal.confirmationTitle,
+        message: TERMINAL_TOOL_METADATA.runInSyncTerminal.confirmationMessage(commandPreview),
+        title: TERMINAL_TOOL_METADATA.runInSyncTerminal.confirmationTitle,
       },
-      invocationMessage: TERMINAL_TOOL_METADATA.runInTerminal.invocationMessage(commandPreview),
+      invocationMessage: TERMINAL_TOOL_METADATA.runInSyncTerminal.invocationMessage(commandPreview),
     };
   },
 };
@@ -265,7 +272,8 @@ const customTerminalLastCommandTool: vscode.LanguageModelTool<TerminalLastComman
 
 export function registerTerminalTools(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
-    vscode.lm.registerTool(TERMINAL_TOOL_NAMES.runInTerminal, customRunInTerminalTool),
+    vscode.lm.registerTool(TERMINAL_TOOL_NAMES.runInSyncTerminal, customRunInSyncTerminalTool),
+    vscode.lm.registerTool(TERMINAL_TOOL_NAMES.runInAsyncTerminal, customRunInAsyncTerminalTool),
     vscode.lm.registerTool(TERMINAL_TOOL_NAMES.awaitTerminal, customAwaitTerminalTool),
     vscode.lm.registerTool(TERMINAL_TOOL_NAMES.getTerminalOutput, customGetTerminalOutputTool),
     vscode.lm.registerTool(TERMINAL_TOOL_NAMES.killTerminal, customKillTerminalTool),

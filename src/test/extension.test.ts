@@ -67,7 +67,11 @@ describe('Extension', () => {
     activate(context);
 
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      TERMINAL_TOOL_NAMES.runInTerminal,
+      TERMINAL_TOOL_NAMES.runInSyncTerminal,
+      expect.any(Object),
+    );
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
+      TERMINAL_TOOL_NAMES.runInAsyncTerminal,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(

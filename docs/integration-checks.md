@@ -4,14 +4,13 @@ Use the VS Code Chat tool-calling flow (or an agent capable of invoking extensio
 
 ## 1) Run a foreground command
 
-Invoke `run_in_terminal_enhanced` with:
+Invoke `run_in_sync_terminal` with:
 
 ```json
 {
   "command": "pwd && echo ready",
   "explanation": "verify foreground execution",
   "goal": "integration smoke test",
-  "isBackground": false,
   "timeout": 10000
 }
 ```
@@ -33,7 +32,7 @@ Then read output by id:
 { "id": "<id-from-step-1>" }
 ```
 
-via `get_terminal_output_enhanced`, or request inline output directly from `run_in_terminal_enhanced` by passing one of:
+via `get_terminal_output_enhanced`, or request inline output directly from `run_in_sync_terminal` by passing one of:
 
 ```json
 { "full_output": true }
@@ -56,14 +55,13 @@ ready
 
 ## 2) Start a background command
 
-Invoke `run_in_terminal_enhanced` with:
+Invoke `run_in_async_terminal` with:
 
 ```json
 {
   "command": "for i in 1 2 3; do echo tick-$i; sleep 1; done",
   "explanation": "verify background execution",
   "goal": "capture terminal id",
-  "isBackground": true,
   "timeout": 0
 }
 ```
@@ -111,7 +109,7 @@ Notes:
 - `last_lines` and `regex` are mutually exclusive.
 - If neither is supplied, all available output is returned.
 - `get_terminal_output_enhanced` frontmatter includes `exitCode`, `isRunning`, and `terminationSignal` (it does not include `timedOut`).
-- In `run_in_terminal_enhanced`, output is opt-in for both foreground and background modes.
+- `run_in_sync_terminal` supports `full_output`, `last_lines`, and `regex`; `run_in_async_terminal` always returns only `id`.
 
 ## 3b) Manual long-running check (`isRunning: true` + await behavior)
 
@@ -122,7 +120,6 @@ Start a longer background command:
   "command": "for i in 1 2 3 4 5; do echo slow-tick-$i; sleep 2; done",
   "explanation": "manual running-state verification",
   "goal": "verify output polling while still running",
-  "isBackground": true,
   "timeout": 0
 }
 ```
@@ -157,7 +154,7 @@ Expected: markdown+frontmatter result with `exitCode`/`timedOut` in frontmatter 
 
 Invoke `terminal_last_command_enhanced` with `{}`.
 
-Expected response format: YAML-only with `command`, which equals the last command passed to `run_in_terminal_enhanced`.
+Expected response format: YAML-only with `command`, which equals the last command passed to `run_in_sync_terminal` or `run_in_async_terminal`.
 
 To query a specific background terminal instead, pass an optional `id`:
 
