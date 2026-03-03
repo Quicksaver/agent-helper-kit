@@ -94,7 +94,10 @@ After installing/reloading the extension:
 
 - Output is kept in memory first for each terminal id.
 - After a short delay (a few minutes), in-memory output is copied to a per-command file in the system temp directory and then purged from memory.
-- If a terminal process is terminated by signal (for example `SIGTERM`/`SIGKILL`), output is purged immediately from whichever storage layer currently holds it (memory or temp file).
+- If a terminal process receives `SIGINT` (for example Ctrl+C), signal handling does not trigger output purging.
+- For other termination signals (for example `SIGTERM`/`SIGKILL`):
+  - if output is still in memory, it remains there until the normal spill time and is purged then (not written to disk)
+  - if output is already on disk, it is purged immediately
 - On host startup, temp output files that do not correspond to active terminal ids are purged.
 
 ## How an agent can test terminal tools integration (after install)

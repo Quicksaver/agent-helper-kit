@@ -1,4 +1,7 @@
 import { EventEmitter } from 'node:events';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 import {
   beforeEach, describe, expect, it, vi,
@@ -98,6 +101,11 @@ describe('terminal tools', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
+
+  function getOutputFilePath(terminalId: string): string {
+    const safeId = terminalId.replaceAll(/[^a-zA-Z0-9_-]/g, '_');
+    return path.join(os.tmpdir(), 'custom-vscode-terminal-output', `terminal-${safeId}.log`);
+  }
 
   it('registers all custom terminal tools', () => {
     const context = createContext();
@@ -233,5 +241,100 @@ describe('terminal tools', () => {
 
     const perTerminalPayload = getResultPayload(perTerminalLastResult);
     expect(perTerminalPayload.command).toBe('echo hello');
+  });
+
+  it('keeps output when process closes with SIGINT', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+
+    const context = createContext();
+    registerTerminalTools(context);
+
+    const runTool = getRegisteredTool('custom_run_in_terminal');
+    const awaitTool = getRegisteredTool('custom_await_terminal');
+
+    const runResult = await runTool.invoke({
+      input: {
+        command: 'echo keep',
+        explanation: 'sigint behavior test',
+        goal: 'verify no purge on sigint',
+        isBackground: true,
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const runPayload = getResultPayload(runResult);
+    const terminalId = runPayload.id as string;
+
+    fakeProcess.stdout.emit('data', 'before-int\n');
+    fakeProcess.emit('close', null, 'SIGINT');
+
+    const awaitResult = await awaitTool.invoke({
+      input: {
+        id: terminalId,
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const awaitPayload = getResultPayload(awaitResult);
+    expect(awaitPayload.output).toContain('before-int');
+    expect(awaitPayload.signal).toBe('SIGINT');
+  });
+
+  it('purges disk output when process closes with non-SIGINT signal', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fakeProcess = createFakeProcess();
+      spawn.mockReturnValue(fakeProcess);
+
+      const context = createContext();
+      registerTerminalTools(context);
+
+      const runTool = getRegisteredTool('custom_run_in_terminal');
+      const awaitTool = getRegisteredTool('custom_await_terminal');
+
+      const runResult = await runTool.invoke({
+        input: {
+          command: 'echo spill',
+          explanation: 'signal purge test',
+          goal: 'verify disk purge on sigterm',
+          isBackground: true,
+          timeout: 0,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      const runPayload = getResultPayload(runResult);
+      const terminalId = runPayload.id as string;
+
+      fakeProcess.stdout.emit('data', 'spill-me\n');
+
+      await vi.advanceTimersByTimeAsync(2 * 60 * 1000 + 10);
+
+      const outputFilePath = getOutputFilePath(terminalId);
+      expect(fs.existsSync(outputFilePath)).toBe(true);
+
+      fakeProcess.emit('close', null, 'SIGTERM');
+
+      expect(fs.existsSync(outputFilePath)).toBe(false);
+
+      const awaitResult = await awaitTool.invoke({
+        input: {
+          id: terminalId,
+          timeout: 0,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      const awaitPayload = getResultPayload(awaitResult);
+      expect(awaitPayload.output).toBe('');
+      expect(awaitPayload.signal).toBe('SIGTERM');
+    }
+    finally {
+      vi.useRealTimers();
+    }
   });
 });

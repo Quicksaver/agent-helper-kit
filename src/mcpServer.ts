@@ -28,6 +28,7 @@ interface BackgroundProcessState {
   memoryToFileTimer: NodeJS.Timeout | undefined;
   output: string;
   outputInFile: boolean;
+  purgeOnSpill: boolean;
   resolveCompletion: () => void;
   signal: NodeJS.Signals | null;
 }
@@ -122,6 +123,11 @@ function scheduleBackgroundStateCleanup(id: string, state: BackgroundProcessStat
 
 function scheduleMemoryToFileSpill(id: string, state: BackgroundProcessState): void {
   state.memoryToFileTimer = setTimeout(() => {
+    if (state.purgeOnSpill) {
+      state.output = '';
+      return;
+    }
+
     overwriteTerminalOutput(id, state.output);
     state.output = '';
     state.outputInFile = true;
@@ -154,6 +160,19 @@ function purgeBackgroundOutput(id: string, state: BackgroundProcessState): void 
     clearTimeout(state.memoryToFileTimer);
     state.memoryToFileTimer = undefined;
   }
+}
+
+function handleSignalTermination(id: string, state: BackgroundProcessState, signal: NodeJS.Signals): void {
+  if (signal === 'SIGINT') {
+    return;
+  }
+
+  if (state.outputInFile) {
+    purgeBackgroundOutput(id, state);
+    return;
+  }
+
+  state.purgeOnSpill = true;
 }
 
 async function runForegroundCommand(input: {
@@ -241,6 +260,7 @@ function startBackgroundCommand(command: string): string {
     memoryToFileTimer: undefined,
     output: '',
     outputInFile: false,
+    purgeOnSpill: false,
     resolveCompletion: () => undefined,
     signal: null,
   };
@@ -267,7 +287,7 @@ function startBackgroundCommand(command: string): string {
     state.signal = signal;
 
     if (signal) {
-      purgeBackgroundOutput(id, state);
+      handleSignalTermination(id, state, signal);
     }
 
     state.resolveCompletion();
