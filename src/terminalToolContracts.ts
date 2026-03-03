@@ -1,6 +1,5 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { z } from 'zod';
 
@@ -23,9 +22,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readPackageJsonManifest(): unknown {
-  const currentFilePath = fileURLToPath(import.meta.url);
-  const currentDirectoryPath = path.dirname(currentFilePath);
-  const packageJsonPath = path.resolve(currentDirectoryPath, '..', 'package.json');
+  const packageJsonPath = path.resolve(__dirname, '..', 'package.json');
   const packageJsonContent = fs.readFileSync(packageJsonPath, { encoding: 'utf8' });
 
   return JSON.parse(packageJsonContent) as unknown;
