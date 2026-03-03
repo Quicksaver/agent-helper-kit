@@ -38,6 +38,7 @@ function getTerminalIdFromFileName(fileName: string): string | undefined {
 export function initializeTerminalOutputStore(activeTerminalIds: ReadonlySet<string>): void {
   const directoryPath = ensureOutputDirectory();
   const fileNames = fs.readdirSync(directoryPath);
+  const sanitizedActiveIds = new Set([ ...activeTerminalIds ].map(sanitizeTerminalId));
 
   for (const fileName of fileNames) {
     const terminalId = getTerminalIdFromFileName(fileName);
@@ -46,7 +47,7 @@ export function initializeTerminalOutputStore(activeTerminalIds: ReadonlySet<str
       continue;
     }
 
-    if (!activeTerminalIds.has(terminalId)) {
+    if (!sanitizedActiveIds.has(terminalId)) {
       fs.rmSync(path.join(directoryPath, fileName), { force: true });
     }
   }

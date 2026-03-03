@@ -6,6 +6,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { TerminalRuntime } from '@/terminalRuntime';
 import {
   awaitTerminalInputSchema,
+  getPackageVersion,
   getTerminalOutputInputSchema,
   killTerminalInputSchema,
   runInTerminalInputSchema,
@@ -137,10 +138,11 @@ function registerTools(server: McpServer): void {
 }
 
 async function main(): Promise<void> {
+  const version = getPackageVersion();
   const server = new McpServer(
     {
       name: 'custom-vscode-terminal-tools-mcp',
-      version: '0.1.0',
+      version,
     },
     {
       capabilities: {

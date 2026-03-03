@@ -261,7 +261,7 @@ export class TerminalRuntime {
       return;
     }
 
-    state.output = `${state.output}${chunk}`;
+    state.output = this.appendOutput(state.output, chunk);
   }
 
   private appendOutput(current: string, chunk: string): string {

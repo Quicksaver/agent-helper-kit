@@ -17,6 +17,29 @@ interface ContributedLanguageModelTool {
   name: string;
 }
 
+const DEFAULT_TOOL_METADATA: Record<string, { description: string; title: string }> = {
+  [TERMINAL_TOOL_NAMES.awaitTerminal]: {
+    description: 'Wait for a background terminal process to complete and return its output and status.',
+    title: 'Custom Await Terminal',
+  },
+  [TERMINAL_TOOL_NAMES.getTerminalOutput]: {
+    description: 'Read current output from a background terminal process.',
+    title: 'Custom Get Terminal Output',
+  },
+  [TERMINAL_TOOL_NAMES.killTerminal]: {
+    description: 'Terminate a running background terminal process.',
+    title: 'Custom Kill Terminal',
+  },
+  [TERMINAL_TOOL_NAMES.runInTerminal]: {
+    description: 'Execute shell commands in a persistent bash terminal session. Supports foreground and background execution with output capture.',
+    title: 'Custom Run In Terminal',
+  },
+  [TERMINAL_TOOL_NAMES.terminalLastCommand]: {
+    description: 'Return the last command executed via custom_run_in_terminal.',
+    title: 'Custom Terminal Last Command',
+  },
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -26,6 +49,19 @@ function readPackageJsonManifest(): unknown {
   const packageJsonContent = fs.readFileSync(packageJsonPath, { encoding: 'utf8' });
 
   return JSON.parse(packageJsonContent) as unknown;
+}
+
+export function getPackageVersion(): string {
+  const manifest = readPackageJsonManifest();
+
+  if (
+    isRecord(manifest)
+    && typeof manifest.version === 'string'
+  ) {
+    return manifest.version;
+  }
+
+  return '0.0.0';
 }
 
 function getContributedLanguageModelTools(): ContributedLanguageModelTool[] {
@@ -74,7 +110,16 @@ function getContributedLanguageModelTools(): ContributedLanguageModelTool[] {
   });
 }
 
-const contributedLanguageModelTools = getContributedLanguageModelTools();
+function getContributedLanguageModelToolsSafely(): ContributedLanguageModelTool[] {
+  try {
+    return getContributedLanguageModelTools();
+  }
+  catch {
+    return [];
+  }
+}
+
+const contributedLanguageModelTools = getContributedLanguageModelToolsSafely();
 
 function getToolFromManifest(name: string): ContributedLanguageModelTool {
   const tool = contributedLanguageModelTools.find(candidate => candidate.name === name);
@@ -90,7 +135,20 @@ function getToolMetadata(name: string): {
   description: string;
   title: string;
 } {
-  const manifestTool = getToolFromManifest(name);
+  const manifestTool = contributedLanguageModelTools.find(candidate => candidate.name === name);
+
+  if (!manifestTool) {
+    const fallback = DEFAULT_TOOL_METADATA[name];
+
+    if (!fallback) {
+      return {
+        description: '',
+        title: name,
+      };
+    }
+
+    return fallback;
+  }
 
   return {
     description: manifestTool.modelDescription,

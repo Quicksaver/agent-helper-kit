@@ -30,5 +30,11 @@ export function getFilteredOutput(input: TerminalOutputFilterInput, output: stri
   }
 
   const expression = new RegExp(input.regex ?? '');
-  return lines.filter(line => expression.test(line)).join('\n');
+  const matched = lines.filter(line => expression.test(line)).join('\n');
+
+  if (!matched) {
+    return '';
+  }
+
+  return `${matched}\n`;
 }

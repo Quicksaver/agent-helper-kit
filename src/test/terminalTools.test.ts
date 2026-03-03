@@ -187,7 +187,7 @@ describe('terminal tools', () => {
     }, {});
 
     const regexPayload = getResultPayload(regexResult);
-    expect(regexPayload.output).toBe('match-line');
+    expect(regexPayload.output).toBe('match-line\n');
 
     await expect(getOutputTool.invoke({
       input: {
