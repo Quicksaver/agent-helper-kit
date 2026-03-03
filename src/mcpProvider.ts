@@ -1,3 +1,4 @@
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as process from 'node:process';
 import * as vscode from 'vscode';
@@ -39,10 +40,9 @@ export function registerMcpServerProvider(context: vscode.ExtensionContext): voi
       server: vscode.McpStdioServerDefinition,
     ): vscode.ProviderResult<vscode.McpStdioServerDefinition> {
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      const resolvedCwd = workspaceFolder?.uri ?? vscode.Uri.file(os.homedir());
 
-      if (workspaceFolder) {
-        server.cwd = workspaceFolder.uri;
-      }
+      server.cwd = resolvedCwd;
 
       return server;
     },

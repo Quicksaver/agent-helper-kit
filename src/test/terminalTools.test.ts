@@ -1,11 +1,15 @@
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
 
 import {
-  beforeEach, describe, expect, it, vi,
+  afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
+
+import {
+  getTerminalOutputDirectoryPath,
+  getTerminalOutputFilePath,
+} from '@/terminalOutputStore';
+import { registerTerminalTools } from '@/terminalTools';
 
 type FakeReadable = EventEmitter;
 
@@ -67,9 +71,6 @@ vi.mock('node:child_process', () => ({
 
 vi.mock('vscode', () => vscode);
 
-// eslint-disable-next-line import/first -- must follow vi.mock
-import { registerTerminalTools } from '@/terminalTools';
-
 function createContext() {
   return {
     subscriptions: [] as { dispose: () => void }[],
@@ -102,10 +103,9 @@ describe('terminal tools', () => {
     vi.clearAllMocks();
   });
 
-  function getOutputFilePath(terminalId: string): string {
-    const safeId = terminalId.replaceAll(/[^a-zA-Z0-9_-]/g, '_');
-    return path.join(os.tmpdir(), 'custom-vscode-terminal-output', `terminal-${safeId}.log`);
-  }
+  afterEach(() => {
+    fs.rmSync(getTerminalOutputDirectoryPath(), { force: true, recursive: true });
+  });
 
   it('registers all custom terminal tools', () => {
     const context = createContext();
@@ -314,7 +314,7 @@ describe('terminal tools', () => {
 
       await vi.advanceTimersByTimeAsync(2 * 60 * 1000 + 10);
 
-      const outputFilePath = getOutputFilePath(terminalId);
+      const outputFilePath = getTerminalOutputFilePath(terminalId);
       expect(fs.existsSync(outputFilePath)).toBe(true);
 
       fakeProcess.emit('close', null, 'SIGTERM');

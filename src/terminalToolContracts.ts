@@ -44,15 +44,30 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+let packageJsonManifestCache: undefined | unknown;
+
 function readPackageJsonManifest(): unknown {
+  if (packageJsonManifestCache !== undefined) {
+    return packageJsonManifestCache;
+  }
+
   const packageJsonPath = path.resolve(__dirname, '..', 'package.json');
   const packageJsonContent = fs.readFileSync(packageJsonPath, { encoding: 'utf8' });
+  const manifest = JSON.parse(packageJsonContent) as unknown;
 
-  return JSON.parse(packageJsonContent) as unknown;
+  packageJsonManifestCache = manifest;
+  return manifest;
 }
 
 export function getPackageVersion(): string {
-  const manifest = readPackageJsonManifest();
+  let manifest: unknown;
+
+  try {
+    manifest = readPackageJsonManifest();
+  }
+  catch {
+    return '0.0.0';
+  }
 
   if (
     isRecord(manifest)
@@ -120,16 +135,6 @@ function getContributedLanguageModelToolsSafely(): ContributedLanguageModelTool[
 }
 
 const contributedLanguageModelTools = getContributedLanguageModelToolsSafely();
-
-function getToolFromManifest(name: string): ContributedLanguageModelTool {
-  const tool = contributedLanguageModelTools.find(candidate => candidate.name === name);
-
-  if (!tool) {
-    throw new Error(`Tool not found in package.json contributes.languageModelTools: ${name}`);
-  }
-
-  return tool;
-}
 
 function getToolMetadata(name: string): {
   description: string;
@@ -229,6 +234,13 @@ export const getTerminalOutputInputSchema = {
   regex: z.string().optional(),
 } satisfies z.ZodRawShape;
 
+const getTerminalOutputInputValidator = z.object(getTerminalOutputInputSchema).refine(
+  value => !(typeof value.last_lines === 'number' && typeof value.regex === 'string'),
+  {
+    message: 'last_lines and regex are mutually exclusive',
+  },
+);
+
 export const killTerminalInputSchema = {
   id: z.string(),
 } satisfies z.ZodRawShape;
@@ -236,3 +248,7 @@ export const killTerminalInputSchema = {
 export const terminalLastCommandInputSchema = {
   id: z.string().optional(),
 } satisfies z.ZodRawShape;
+
+export function validateGetTerminalOutputInput(input: GetTerminalOutputInput): GetTerminalOutputInput {
+  return getTerminalOutputInputValidator.parse(input);
+}

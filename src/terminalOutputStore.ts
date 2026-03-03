@@ -10,6 +10,10 @@ function getOutputDirectoryPath(): string {
   return path.join(os.tmpdir(), OUTPUT_DIR_NAME);
 }
 
+export function getTerminalOutputDirectoryPath(): string {
+  return getOutputDirectoryPath();
+}
+
 function ensureOutputDirectory(): string {
   const directoryPath = getOutputDirectoryPath();
 
@@ -22,7 +26,7 @@ function sanitizeTerminalId(terminalId: string): string {
   return terminalId.replaceAll(/[^a-zA-Z0-9_-]/g, '_');
 }
 
-function getOutputFilePath(terminalId: string): string {
+export function getTerminalOutputFilePath(terminalId: string): string {
   const safeId = sanitizeTerminalId(terminalId);
   return path.join(ensureOutputDirectory(), `${OUTPUT_FILE_PREFIX}${safeId}${OUTPUT_FILE_SUFFIX}`);
 }
@@ -37,6 +41,11 @@ function getTerminalIdFromFileName(fileName: string): string | undefined {
 
 export function initializeTerminalOutputStore(activeTerminalIds: ReadonlySet<string>): void {
   const directoryPath = ensureOutputDirectory();
+
+  if (activeTerminalIds.size === 0) {
+    return;
+  }
+
   const fileNames = fs.readdirSync(directoryPath);
   const sanitizedActiveIds = new Set([ ...activeTerminalIds ].map(sanitizeTerminalId));
 
@@ -54,19 +63,19 @@ export function initializeTerminalOutputStore(activeTerminalIds: ReadonlySet<str
 }
 
 export function createTerminalOutputFile(terminalId: string): void {
-  fs.writeFileSync(getOutputFilePath(terminalId), '', { encoding: 'utf8' });
+  fs.writeFileSync(getTerminalOutputFilePath(terminalId), '', { encoding: 'utf8' });
 }
 
 export function overwriteTerminalOutput(terminalId: string, output: string): void {
-  fs.writeFileSync(getOutputFilePath(terminalId), output, { encoding: 'utf8' });
+  fs.writeFileSync(getTerminalOutputFilePath(terminalId), output, { encoding: 'utf8' });
 }
 
 export function appendTerminalOutput(terminalId: string, chunk: string): void {
-  fs.appendFileSync(getOutputFilePath(terminalId), chunk, { encoding: 'utf8' });
+  fs.appendFileSync(getTerminalOutputFilePath(terminalId), chunk, { encoding: 'utf8' });
 }
 
 export function readTerminalOutput(terminalId: string): string {
-  const filePath = getOutputFilePath(terminalId);
+  const filePath = getTerminalOutputFilePath(terminalId);
 
   if (!fs.existsSync(filePath)) {
     return '';
@@ -76,5 +85,5 @@ export function readTerminalOutput(terminalId: string): string {
 }
 
 export function removeTerminalOutputFile(terminalId: string): void {
-  fs.rmSync(getOutputFilePath(terminalId), { force: true });
+  fs.rmSync(getTerminalOutputFilePath(terminalId), { force: true });
 }

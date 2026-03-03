@@ -1,4 +1,5 @@
 import * as childProcess from 'node:child_process';
+import * as os from 'node:os';
 
 import {
   getFilteredOutput,
@@ -41,6 +42,12 @@ export interface RunCommandResult {
   output: string;
   signal: NodeJS.Signals | null;
   timedOut: boolean;
+}
+
+interface ShellInvocation {
+  command: string;
+  shell: string;
+  shellArgs: string[];
 }
 
 export interface AwaitBackgroundInput {
@@ -132,12 +139,16 @@ export class TerminalRuntime {
     this.lastCommand = input.command;
 
     const cwd = this.sharedForegroundCwd ?? this.options.getInitialForegroundCwd();
-    const wrappedCommand = `${input.command}\nprintf "\\n${this.options.pwdMarker}%s\\n" "$PWD"`;
+    const shellInvocation = this.createForegroundInvocation(input.command);
 
-    const childProc = childProcess.spawn('/bin/bash', [ '-lc', wrappedCommand ], {
-      cwd,
-      env: this.buildShellEnv(),
-    });
+    const childProc = childProcess.spawn(
+      shellInvocation.shell,
+      [ ...shellInvocation.shellArgs, shellInvocation.command ],
+      {
+        cwd,
+        env: this.buildShellEnv(),
+      },
+    );
 
     let output = '';
     let timedOut = false;
@@ -193,8 +204,9 @@ export class TerminalRuntime {
   startBackgroundCommand(command: string): string {
     this.lastCommand = command;
 
+    const shellInvocation = this.createShellInvocation(command);
     const id = `custom-terminal-${++this.backgroundIdCounter}`;
-    const childProc = childProcess.spawn('/bin/bash', [ '-lc', command ], {
+    const childProc = childProcess.spawn(shellInvocation.shell, [ ...shellInvocation.shellArgs, shellInvocation.command ], {
       cwd: this.options.getBackgroundCwd(),
       env: this.buildShellEnv(),
     });
@@ -284,6 +296,30 @@ export class TerminalRuntime {
     };
   }
 
+  private createForegroundInvocation(command: string): ShellInvocation {
+    if (os.platform() === 'win32') {
+      return this.createShellInvocation(`${command}\r\necho ${this.options.pwdMarker}%CD%`);
+    }
+
+    return this.createShellInvocation(`${command}\nprintf "\\n${this.options.pwdMarker}%s\\n" "$PWD"`);
+  }
+
+  private createShellInvocation(command: string): ShellInvocation {
+    if (os.platform() === 'win32') {
+      return {
+        command,
+        shell: globalThis.process.env.ComSpec ?? 'cmd.exe',
+        shellArgs: [ '/d', '/s', '/c' ],
+      };
+    }
+
+    return {
+      command,
+      shell: globalThis.process.env.SHELL ?? '/bin/bash',
+      shellArgs: [ '-lc' ],
+    };
+  }
+
   private getBackgroundOutput(id: string, state: BackgroundProcessState): string {
     if (state.outputInFile) {
       return readTerminalOutput(id);
@@ -309,6 +345,12 @@ export class TerminalRuntime {
 
     if (state.outputInFile) {
       this.purgeBackgroundOutput(id, state);
+      return;
+    }
+
+    if (!state.memoryToFileTimer) {
+      state.output = '';
+      state.outputInFile = false;
       return;
     }
 
@@ -355,6 +397,10 @@ export class TerminalRuntime {
     const delay = this.options.stateCleanupDelayMs ?? DEFAULT_STATE_CLEANUP_DELAY_MS;
 
     state.cleanupTimer = setTimeout(() => {
+      if (state.outputInFile) {
+        removeTerminalOutputFile(id);
+      }
+
       this.backgroundProcesses.delete(id);
     }, delay);
   }
@@ -363,8 +409,11 @@ export class TerminalRuntime {
     const delay = this.options.memoryToFileDelayMs ?? DEFAULT_MEMORY_TO_FILE_DELAY_MS;
 
     state.memoryToFileTimer = setTimeout(() => {
+      state.memoryToFileTimer = undefined;
+
       if (state.purgeOnSpill) {
         state.output = '';
+        state.outputInFile = false;
         return;
       }
 

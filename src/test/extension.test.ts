@@ -1,6 +1,10 @@
 import {
+  beforeEach,
   describe, expect, it, vi,
 } from 'vitest';
+
+import { activate } from '@/extension';
+import { MCP_PROVIDER_ID } from '@/mcpProvider';
 
 const vscode = vi.hoisted(() => {
   const disposable = { dispose: vi.fn() };
@@ -24,9 +28,6 @@ const vscode = vi.hoisted(() => {
 
 vi.mock('vscode', () => vscode);
 
-// eslint-disable-next-line import/first -- must follow vi.mock
-import { activate } from '@/extension';
-
 function createMockContext() {
   return {
     subscriptions: [] as { dispose: () => void }[],
@@ -34,6 +35,10 @@ function createMockContext() {
 }
 
 describe('Extension', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('should register the reviewCommentToChat command on activation', () => {
     const context = createMockContext();
 
@@ -56,12 +61,16 @@ describe('Extension', () => {
     );
   });
 
-  it('should push two subscriptions on activation', () => {
+  it('should push expected core subscriptions on activation', () => {
     const context = createMockContext();
 
     activate(context);
 
-    expect(context.subscriptions).toHaveLength(8);
+    expect(vscode.commands.registerCommand).toHaveBeenCalledTimes(1);
+    expect(vscode.chat.createChatParticipant).toHaveBeenCalledTimes(1);
+    expect(vscode.lm.registerMcpServerDefinitionProvider).toHaveBeenCalledTimes(1);
+    expect(vscode.lm.registerTool).toHaveBeenCalledTimes(5);
+    expect(context.subscriptions.length).toBeGreaterThanOrEqual(8);
   });
 
   it('should register MCP server definition provider on activation', () => {
@@ -70,7 +79,7 @@ describe('Extension', () => {
     activate(context);
 
     expect(vscode.lm.registerMcpServerDefinitionProvider).toHaveBeenCalledWith(
-      'custom-vscode.terminal-tools-mcp',
+      MCP_PROVIDER_ID,
       expect.any(Object),
     );
   });

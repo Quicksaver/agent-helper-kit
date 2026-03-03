@@ -29,7 +29,21 @@ export function getFilteredOutput(input: TerminalOutputFilterInput, output: stri
     return `${lines.slice(-count).join('\n')}\n`;
   }
 
-  const expression = new RegExp(input.regex ?? '');
+  const regexPattern = input.regex ?? '';
+
+  if (regexPattern.length > 2048) {
+    throw new Error('regex exceeds maximum supported length (2048 characters)');
+  }
+
+  let expression: RegExp;
+
+  try {
+    expression = new RegExp(regexPattern);
+  }
+  catch {
+    throw new Error('Invalid regex pattern');
+  }
+
   const matched = lines.filter(line => expression.test(line)).join('\n');
 
   if (!matched) {

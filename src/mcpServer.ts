@@ -13,6 +13,7 @@ import {
   TERMINAL_TOOL_METADATA,
   TERMINAL_TOOL_NAMES,
   terminalLastCommandInputSchema,
+  validateGetTerminalOutputInput,
 } from '@/terminalToolContracts';
 
 const terminalRuntime = new TerminalRuntime({
@@ -94,8 +95,9 @@ function registerTools(server: McpServer): void {
       inputSchema: getTerminalOutputInputSchema,
       title: TERMINAL_TOOL_METADATA.getTerminalOutput.title,
     },
-    async input => {
-      const result = terminalRuntime.readBackgroundOutput(input);
+    input => {
+      const validatedInput = validateGetTerminalOutputInput(input);
+      const result = terminalRuntime.readBackgroundOutput(validatedInput);
 
       return toTextContent({
         isRunning: result.isRunning,
@@ -111,7 +113,7 @@ function registerTools(server: McpServer): void {
       inputSchema: killTerminalInputSchema,
       title: TERMINAL_TOOL_METADATA.killTerminal.title,
     },
-    async input => {
+    input => {
       terminalRuntime.killBackgroundCommand(input.id);
 
       return toTextContent({
@@ -127,7 +129,7 @@ function registerTools(server: McpServer): void {
       inputSchema: terminalLastCommandInputSchema,
       title: TERMINAL_TOOL_METADATA.terminalLastCommand.title,
     },
-    async input => {
+    input => {
       const command = terminalRuntime.getLastCommand(input.id);
 
       return toTextContent({
