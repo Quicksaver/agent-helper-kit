@@ -53,7 +53,7 @@
         "toolReferenceName": "run_in_terminal_enhanced",
         "displayName": "Run In Terminal",
         "icon": "$(terminal)",
-        "modelDescription": "Execute shell commands in a persistent bash terminal session. Supports foreground (on completion returns output, exitCode, terminationSignal, and timedOut) and background execution (returns id for async tracking).",
+        "modelDescription": "Run a shell command in a persistent bash session. Foreground returns output and status (exitCode, terminationSignal, timedOut); background returns a terminal id.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -67,23 +67,23 @@
           "properties": {
             "command": {
               "type": "string",
-              "description": "The command to run in the terminal."
+              "description": "Shell command to execute."
             },
             "explanation": {
               "type": "string",
-              "description": "A one-sentence description of what the command does."
+              "description": "One-sentence summary of the command."
             },
             "goal": {
               "type": "string",
-              "description": "A short description of the purpose of the command."
+              "description": "Short purpose of the command."
             },
             "isBackground": {
               "type": "boolean",
-              "description": "Whether the command runs as a background process."
+              "description": "Run asynchronously in the background."
             },
             "timeout": {
               "type": "number",
-              "description": "Timeout in milliseconds. Use 0 for no timeout."
+              "description": "Timeout in ms; use 0 for no timeout."
             }
           }
         }
@@ -93,7 +93,7 @@
         "toolReferenceName": "await_terminal_enhanced",
         "displayName": "Await Terminal",
         "icon": "$(clock)",
-        "modelDescription": "Wait for a background terminal process to complete and returns its output, exitCode, terminationSignal, and timedOut.",
+        "modelDescription": "Wait for a background terminal command to finish and return output and status (exitCode, terminationSignal, timedOut).",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -104,11 +104,11 @@
           "properties": {
             "id": {
               "type": "string",
-              "description": "Background terminal identifier returned by run_in_terminal_enhanced."
+              "description": "Background terminal id from run_in_terminal_enhanced."
             },
             "timeout": {
               "type": "number",
-              "description": "Timeout in milliseconds. Use 0 for no timeout."
+              "description": "Timeout in ms; use 0 for no timeout."
             }
           }
         }
@@ -118,7 +118,7 @@
         "toolReferenceName": "get_terminal_output_enhanced",
         "displayName": "Get Terminal Output",
         "icon": "$(output)",
-        "modelDescription": "Read stream-like output from a background terminal process (new output since last read by default). Also returns exitCode, terminationSignal, timedOut, and isRunning.",
+        "modelDescription": "Read output from a background terminal command (only new since last read by default) and status (isRunning, exitCode, terminationSignal, timedOut).",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -128,20 +128,20 @@
           "properties": {
             "id": {
               "type": "string",
-              "description": "Background terminal identifier returned by run_in_terminal_enhanced."
+              "description": "Background terminal id from run_in_terminal_enhanced."
             },
             "full_output": {
               "type": "boolean",
-              "description": "When true, returns output from the beginning instead of only output since the last read."
+              "description": "When true, return output from the beginning."
             },
             "last_lines": {
               "type": "number",
-              "description": "Optional number of trailing lines to return. Mutually exclusive with regex.",
+              "description": "Optional trailing line count to return; mutually exclusive with regex.",
               "minimum": 0
             },
             "regex": {
               "type": "string",
-              "description": "Optional regex filter expression to return only matching lines. Mutually exclusive with last_lines."
+              "description": "Optional regex filter for matching lines; mutually exclusive with last_lines."
             }
           },
           "allOf": [
@@ -161,7 +161,7 @@
         "toolReferenceName": "kill_terminal_enhanced",
         "displayName": "Kill Terminal",
         "icon": "$(close)",
-        "modelDescription": "Terminate a running background terminal process.",
+        "modelDescription": "Stop a running background terminal command.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -171,7 +171,7 @@
           "properties": {
             "id": {
               "type": "string",
-              "description": "Background terminal identifier returned by run_in_terminal_enhanced."
+              "description": "Background terminal id from run_in_terminal_enhanced."
             }
           }
         }
@@ -181,14 +181,14 @@
         "toolReferenceName": "terminal_last_command_enhanced",
         "displayName": "Terminal Last Command",
         "icon": "$(history)",
-        "modelDescription": "Return the last command executed via run_in_terminal_enhanced.",
+        "modelDescription": "Get the last command executed via run_in_terminal_enhanced.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
           "properties": {
             "id": {
               "type": "string",
-              "description": "Optional background terminal identifier to get the last command for a specific terminal."
+              "description": "Optional background terminal id to scope the lookup."
             }
           }
         }
