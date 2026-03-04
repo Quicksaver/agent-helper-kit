@@ -39,6 +39,33 @@ function createFakeProcess(): FakeProcess {
 const spawn = vi.hoisted(() => vi.fn());
 
 const vscode = vi.hoisted(() => {
+  class TestEventEmitter<T> {
+    private readonly emitter = new EventEmitter();
+
+    dispose(): void {
+      this.emitter.removeAllListeners();
+    }
+
+    readonly event = (listener: (value: T) => void) => {
+      this.emitter.on('event', listener as (value: unknown) => void);
+
+      return {
+        dispose: () => {
+          this.emitter.off('event', listener as (value: unknown) => void);
+        },
+      };
+    };
+
+    fire(value: T): void {
+      this.emitter.emit('event', value);
+    }
+  }
+
+  function TreeItem(this: { collapsibleState: number; label: string }, label: string, collapsibleState: number) {
+    this.label = label;
+    this.collapsibleState = collapsibleState;
+  }
+
   function LanguageModelTextPart(this: { value: string }, value: string) {
     this.value = value;
   }
@@ -48,6 +75,9 @@ const vscode = vi.hoisted(() => {
   }
 
   return {
+    commands: {
+      registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+    },
     Disposable: {
       from: vi.fn((...disposables: { dispose: () => void }[]) => ({
         dispose: () => {
@@ -57,10 +87,29 @@ const vscode = vi.hoisted(() => {
         },
       })),
     },
+    EventEmitter: TestEventEmitter,
     LanguageModelTextPart,
     LanguageModelToolResult,
     lm: {
       registerTool: vi.fn(() => ({ dispose: vi.fn() })),
+    },
+    ThemeIcon: vi.fn(),
+    TreeItem,
+    TreeItemCollapsibleState: {
+      None: 0,
+    },
+    window: {
+      createOutputChannel: vi.fn(() => ({
+        append: vi.fn(),
+        appendLine: vi.fn(),
+        clear: vi.fn(),
+        dispose: vi.fn(),
+        show: vi.fn(),
+      })),
+      createTreeView: vi.fn(() => ({
+        dispose: vi.fn(),
+        onDidChangeSelection: vi.fn(() => ({ dispose: vi.fn() })),
+      })),
     },
     workspace: {
       getConfiguration: vi.fn(() => ({
@@ -193,7 +242,7 @@ describe('terminal tools', () => {
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('get_terminal_output_enhanced', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('kill_terminal_enhanced', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('terminal_last_command_enhanced', expect.any(Object));
-    expect(vscode.Disposable.from).toHaveBeenCalledOnce();
+    expect(vscode.Disposable.from).toHaveBeenCalledTimes(2);
     expect(registration).toBeDefined();
   });
 
@@ -557,7 +606,7 @@ describe('terminal tools', () => {
     }, {})).rejects.toThrow('mutually exclusive');
   });
 
-  it('purges disk output when process closes with non-SIGINT signal', async () => {
+  it('retains disk output when process closes with non-SIGINT signal', async () => {
     vi.useFakeTimers();
 
     try {
@@ -591,7 +640,7 @@ describe('terminal tools', () => {
 
       fakeProcess.emit('close', null, 'SIGTERM');
 
-      expect(fs.existsSync(outputFilePath)).toBe(false);
+      expect(fs.existsSync(outputFilePath)).toBe(true);
 
       const awaitResult = await awaitTool.invoke({
         input: {
@@ -602,7 +651,7 @@ describe('terminal tools', () => {
       }, {});
 
       const awaitPayload = getResultPayload(awaitResult);
-      expect(awaitPayload.output).toBe('');
+      expect(awaitPayload.output).toBe('spill-me\n');
       expect(awaitPayload.terminationSignal).toBe('SIGTERM');
     }
     finally {

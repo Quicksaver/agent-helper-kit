@@ -30,6 +30,33 @@
         "category": "Custom",
         "enablement": "config.custom-vscode.bringToChat.enabled",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "custom-vscode.shellCommands.clearFinished",
+        "title": "Clear",
+        "category": "Shell Commands",
+        "enablement": "config.custom-vscode.terminalTools.enabled",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "custom-vscode.shellCommands.killEntry",
+        "title": "Kill",
+        "category": "Shell Commands",
+        "enablement": "config.custom-vscode.terminalTools.enabled",
+        "icon": "$(close)"
+      },
+      {
+        "command": "custom-vscode.shellCommands.deleteEntry",
+        "title": "Delete",
+        "category": "Shell Commands",
+        "enablement": "config.custom-vscode.terminalTools.enabled",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "custom-vscode.shellCommands.openEntry",
+        "title": "Show Output",
+        "category": "Shell Commands",
+        "enablement": "config.custom-vscode.terminalTools.enabled"
       }
     ],
     "menus": {
@@ -44,6 +71,45 @@
           "command": "custom-vscode.reviewCommentToChat",
           "group": "inline",
           "when": "config.custom-vscode.bringToChat.enabled"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "custom-vscode.shellCommands.killEntry",
+          "group": "inline",
+          "when": "view == custom-vscode.shellCommandsView && viewItem == running && config.custom-vscode.terminalTools.enabled"
+        },
+        {
+          "command": "custom-vscode.shellCommands.deleteEntry",
+          "group": "inline",
+          "when": "view == custom-vscode.shellCommandsView && viewItem == finished && config.custom-vscode.terminalTools.enabled"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "custom-vscode.shellCommands.clearFinished",
+          "group": "navigation",
+          "when": "view == custom-vscode.shellCommandsView && config.custom-vscode.terminalTools.enabled"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "custom-vscode-shellCommandsPanel",
+          "title": "Shell Commands",
+          "icon": "$(terminal)",
+          "when": "config.custom-vscode.terminalTools.enabled"
+        }
+      ]
+    },
+    "views": {
+      "custom-vscode-shellCommandsPanel": [
+        {
+          "id": "custom-vscode.shellCommandsView",
+          "name": "Shell Commands",
+          "icon": "$(terminal)",
+          "when": "config.custom-vscode.terminalTools.enabled"
         }
       ]
     },

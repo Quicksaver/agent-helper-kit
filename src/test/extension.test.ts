@@ -1,3 +1,5 @@
+import { EventEmitter } from 'node:events';
+
 import {
   beforeEach,
   describe, expect, it, vi,
@@ -12,6 +14,33 @@ type ConfigurationChangeEventLike = {
 };
 
 const vscode = vi.hoisted(() => {
+  class TestEventEmitter<T> {
+    private readonly emitter = new EventEmitter();
+
+    dispose(): void {
+      this.emitter.removeAllListeners();
+    }
+
+    readonly event = (listener: (value: T) => void) => {
+      this.emitter.on('event', listener as (value: unknown) => void);
+
+      return {
+        dispose: () => {
+          this.emitter.off('event', listener as (value: unknown) => void);
+        },
+      };
+    };
+
+    fire(value: T): void {
+      this.emitter.emit('event', value);
+    }
+  }
+
+  function TreeItem(this: { collapsibleState: number; label: string }, label: string, collapsibleState: number) {
+    this.label = label;
+    this.collapsibleState = collapsibleState;
+  }
+
   const commandDisposable = { dispose: vi.fn() };
   const participantDisposable = { dispose: vi.fn() };
   const toolDisposable = { dispose: vi.fn() };
@@ -47,11 +76,29 @@ const vscode = vi.hoisted(() => {
         },
       })),
     },
+    EventEmitter: TestEventEmitter,
     lm: {
       registerTool: vi.fn(() => toolDisposable),
     },
     ThemeIcon: vi.fn(),
     toolDisposable,
+    TreeItem,
+    TreeItemCollapsibleState: {
+      None: 0,
+    },
+    window: {
+      createOutputChannel: vi.fn(() => ({
+        append: vi.fn(),
+        appendLine: vi.fn(),
+        clear: vi.fn(),
+        dispose: vi.fn(),
+        show: vi.fn(),
+      })),
+      createTreeView: vi.fn(() => ({
+        dispose: vi.fn(),
+        onDidChangeSelection: vi.fn(() => ({ dispose: vi.fn() })),
+      })),
+    },
     workspace: {
       getConfiguration,
       onDidChangeConfiguration: vi.fn(

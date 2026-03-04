@@ -1,6 +1,7 @@
 import * as os from 'node:os';
 import * as vscode from 'vscode';
 
+import { registerShellCommandsPanel } from '@/shellCommandsPanel';
 import { getFilteredOutput } from '@/terminalOutputFilter';
 import { TerminalRuntime } from '@/terminalRuntime';
 import {
@@ -16,7 +17,6 @@ import {
   validateRunInSyncTerminalInput,
 } from '@/terminalToolContracts';
 
-const STATE_CLEANUP_DELAY_MS = 5 * 60 * 1000;
 const DEFAULT_MEMORY_TO_FILE_SPILL_MINUTES = 2;
 const DEFAULT_STARTUP_PURGE_MAX_AGE_HOURS = 6;
 
@@ -129,7 +129,6 @@ function getTerminalRuntime(): TerminalRuntime {
       memoryToFileDelayMs,
       pwdMarker: '__CUSTOM_VSCODE_PWD__',
       startupPurgeMaxAgeMs,
-      stateCleanupDelayMs: STATE_CLEANUP_DELAY_MS,
     });
   }
 
@@ -318,6 +317,7 @@ export function registerTerminalTools(): vscode.Disposable {
     vscode.lm.registerTool(TERMINAL_TOOL_NAMES.getTerminalOutput, customGetTerminalOutputTool),
     vscode.lm.registerTool(TERMINAL_TOOL_NAMES.killTerminal, customKillTerminalTool),
     vscode.lm.registerTool(TERMINAL_TOOL_NAMES.terminalLastCommand, customTerminalLastCommandTool),
+    registerShellCommandsPanel(getTerminalRuntime),
   ];
 
   return vscode.Disposable.from(...registrations);

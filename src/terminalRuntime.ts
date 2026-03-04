@@ -8,31 +8,51 @@ import {
 import {
   appendTerminalOutput,
   initializeTerminalOutputStore,
+  listTerminalOutputIds,
   overwriteTerminalOutput,
+  readTerminalCommandMetadata,
   readTerminalOutput,
+  removeTerminalCommandMetadata,
   removeTerminalOutputFile,
+  writeTerminalCommandMetadata,
 } from '@/terminalOutputStore';
 
 const DEFAULT_OUTPUT_LIMIT = 60 * 1024;
 const DEFAULT_MEMORY_TO_FILE_DELAY_MS = 2 * 60 * 1000;
-const DEFAULT_STATE_CLEANUP_DELAY_MS = 5 * 60 * 1000;
 const READS_SINCE_COMPLETION_FOR_SYNC_RECORD = 1;
+const TERMINAL_ID_PATTERN = /^custom-terminal-(\d+)$/;
 
 interface BackgroundProcessState {
   childProc?: childProcess.ChildProcessWithoutNullStreams;
-  cleanupTimer: NodeJS.Timeout | undefined;
   command: string;
   completed: boolean;
+  completedAt: null | string;
   completion: Promise<void>;
   exitCode: null | number;
+  killedByUser: boolean;
   lastReadCursor: number;
   memoryToFileTimer: NodeJS.Timeout | undefined;
   output: string;
   outputInFile: boolean;
-  purgeOnSpill: boolean;
   readsSinceCompletion: number;
   resolveCompletion: () => void;
   signal: NodeJS.Signals | null;
+  startedAt: string;
+}
+
+export interface TerminalCommandListItem {
+  command: string;
+  completedAt: null | string;
+  exitCode: null | number;
+  id: string;
+  isRunning: boolean;
+  killedByUser: boolean;
+  signal: NodeJS.Signals | null;
+  startedAt: string;
+}
+
+export interface TerminalCommandDetails extends TerminalCommandListItem {
+  output: string;
 }
 
 export interface RunForegroundCommandInput {
@@ -71,17 +91,18 @@ interface TerminalRuntimeOptions {
   pwdMarker: string;
   shellEnv?: NodeJS.ProcessEnv;
   startupPurgeMaxAgeMs?: number;
-  stateCleanupDelayMs?: number;
 }
 
 export class TerminalRuntime {
   private backgroundIdCounter = 0;
   private readonly backgroundProcesses = new Map<string, BackgroundProcessState>();
+  private readonly commandChangeListeners = new Set<() => void>();
   private lastCommand: string | undefined;
   private sharedForegroundCwd: string | undefined;
 
   constructor(private readonly options: TerminalRuntimeOptions) {
     initializeTerminalOutputStore(this.options.startupPurgeMaxAgeMs);
+    this.hydrateFromPersistedOutput();
   }
 
   async awaitBackgroundCommand(input: AwaitBackgroundInput): Promise<RunCommandResult> {
@@ -111,29 +132,77 @@ export class TerminalRuntime {
     };
   }
 
+  clearCompletedCommands(): number {
+    let removedCount = 0;
+
+    for (const [ id, state ] of this.backgroundProcesses.entries()) {
+      if (!state.completed) {
+        continue;
+      }
+
+      this.backgroundProcesses.delete(id);
+      this.purgeCommandArtifacts(id, state);
+      removedCount += 1;
+    }
+
+    if (removedCount > 0) {
+      this.emitCommandChange();
+    }
+
+    return removedCount;
+  }
+
   createCompletedCommandRecord(command: string, result: RunCommandResult): string {
     const id = `custom-terminal-${++this.backgroundIdCounter}`;
+    const startedAt = new Date().toISOString();
+    const completedAt = new Date().toISOString();
 
     const state: BackgroundProcessState = {
-      cleanupTimer: undefined,
       command,
       completed: true,
+      completedAt,
       completion: Promise.resolve(),
       exitCode: result.exitCode,
+      killedByUser: false,
       lastReadCursor: 0,
       memoryToFileTimer: undefined,
       output: result.output,
       outputInFile: false,
-      purgeOnSpill: false,
       readsSinceCompletion: READS_SINCE_COMPLETION_FOR_SYNC_RECORD,
       resolveCompletion: () => undefined,
       signal: result.terminationSignal,
+      startedAt,
     };
 
     this.backgroundProcesses.set(id, state);
-    this.scheduleBackgroundStateCleanup(id, state);
+    this.persistCommandMetadata(id, state);
+    this.emitCommandChange();
 
     return id;
+  }
+
+  deleteCompletedCommand(id: string): boolean {
+    const state = this.backgroundProcesses.get(id);
+
+    if (!state?.completed) {
+      return false;
+    }
+
+    this.backgroundProcesses.delete(id);
+    this.purgeCommandArtifacts(id, state);
+    this.emitCommandChange();
+
+    return true;
+  }
+
+  async getCommandDetails(id: string): Promise<TerminalCommandDetails> {
+    const state = this.getBackgroundState(id);
+    const output = await this.getBackgroundOutput(id, state);
+
+    return {
+      ...this.toCommandListItem(id, state),
+      output,
+    };
   }
 
   getLastCommand(id?: string): string | undefined {
@@ -148,11 +217,28 @@ export class TerminalRuntime {
     const state = this.getBackgroundState(id);
 
     if (!state.completed && state.childProc) {
+      state.killedByUser = true;
+      this.persistCommandMetadata(id, state);
+      this.emitCommandChange();
       state.childProc.kill('SIGTERM');
       return true;
     }
 
     return false;
+  }
+
+  listCommands(): TerminalCommandListItem[] {
+    return [ ...this.backgroundProcesses.entries() ]
+      .map(([ id, state ]) => this.toCommandListItem(id, state))
+      .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+  }
+
+  onDidChangeCommands(listener: () => void): () => void {
+    this.commandChangeListeners.add(listener);
+
+    return () => {
+      this.commandChangeListeners.delete(listener);
+    };
   }
 
   async readBackgroundOutput(input: ReadBackgroundOutputInput): Promise<{
@@ -270,19 +356,20 @@ export class TerminalRuntime {
 
     const state: BackgroundProcessState = {
       childProc,
-      cleanupTimer: undefined,
       command,
       completed: false,
+      completedAt: null,
       completion: Promise.resolve(),
       exitCode: null,
+      killedByUser: false,
       lastReadCursor: 0,
       memoryToFileTimer: undefined,
       output: '',
       outputInFile: false,
-      purgeOnSpill: false,
       readsSinceCompletion: 0,
       resolveCompletion: () => undefined,
       signal: null,
+      startedAt: new Date().toISOString(),
     };
 
     state.completion = new Promise<void>(resolve => {
@@ -291,6 +378,8 @@ export class TerminalRuntime {
 
     this.scheduleMemoryToFileSpill(id, state);
     this.backgroundProcesses.set(id, state);
+    this.persistCommandMetadata(id, state);
+    this.emitCommandChange();
 
     childProc.stdout.on('data', (data: unknown) => {
       const chunk = String(data);
@@ -304,24 +393,24 @@ export class TerminalRuntime {
 
     childProc.on('close', (code: null | number, signal: NodeJS.Signals | null) => {
       state.completed = true;
+      state.completedAt = new Date().toISOString();
       state.exitCode = code;
       state.readsSinceCompletion = 0;
       state.signal = signal;
 
-      if (signal) {
-        this.handleSignalTermination(id, state, signal);
-      }
-
       state.resolveCompletion();
-      this.scheduleBackgroundStateCleanup(id, state);
+      this.persistCommandMetadata(id, state);
+      this.emitCommandChange();
     });
 
     childProc.on('error', (error: Error) => {
       state.completed = true;
+      state.completedAt = new Date().toISOString();
       this.appendBackgroundOutput(id, state, `\n${String(error)}\n`);
       state.readsSinceCompletion = 0;
       state.resolveCompletion();
-      this.scheduleBackgroundStateCleanup(id, state);
+      this.persistCommandMetadata(id, state);
+      this.emitCommandChange();
     });
 
     return id;
@@ -380,6 +469,12 @@ export class TerminalRuntime {
     };
   }
 
+  private emitCommandChange(): void {
+    for (const listener of this.commandChangeListeners) {
+      listener();
+    }
+  }
+
   private async getBackgroundOutput(id: string, state: BackgroundProcessState): Promise<string> {
     if (state.outputInFile) {
       return readTerminalOutput(id);
@@ -398,22 +493,36 @@ export class TerminalRuntime {
     return state;
   }
 
-  private handleSignalTermination(id: string, state: BackgroundProcessState, signal: NodeJS.Signals): void {
-    if (signal === 'SIGINT') {
-      return;
-    }
+  private hydrateFromPersistedOutput(): void {
+    const outputIds = listTerminalOutputIds();
 
-    if (state.outputInFile) {
-      this.purgeBackgroundOutput(id, state);
-      return;
-    }
+    for (const id of outputIds) {
+      if (this.backgroundProcesses.has(id)) {
+        continue;
+      }
 
-    if (!state.memoryToFileTimer) {
-      state.output = '';
-      return;
-    }
+      const metadata = readTerminalCommandMetadata(id);
+      const state: BackgroundProcessState = {
+        childProc: undefined,
+        command: metadata?.command ?? 'Restored command output',
+        completed: true,
+        completedAt: metadata?.completedAt ?? new Date().toISOString(),
+        completion: Promise.resolve(),
+        exitCode: metadata?.exitCode ?? null,
+        killedByUser: metadata?.killedByUser ?? false,
+        lastReadCursor: 0,
+        memoryToFileTimer: undefined,
+        output: '',
+        outputInFile: true,
+        readsSinceCompletion: READS_SINCE_COMPLETION_FOR_SYNC_RECORD,
+        resolveCompletion: () => undefined,
+        signal: metadata?.signal ?? null,
+        startedAt: metadata?.startedAt ?? new Date().toISOString(),
+      };
 
-    state.purgeOnSpill = true;
+      this.backgroundProcesses.set(id, state);
+      this.syncIdCounter(id);
+    }
   }
 
   private parseOutputAndPwd(output: string): {
@@ -441,6 +550,18 @@ export class TerminalRuntime {
     };
   }
 
+  private persistCommandMetadata(id: string, state: BackgroundProcessState): void {
+    writeTerminalCommandMetadata({
+      command: state.command,
+      completedAt: state.completedAt,
+      exitCode: state.exitCode,
+      id,
+      killedByUser: state.killedByUser,
+      signal: state.signal,
+      startedAt: state.startedAt,
+    });
+  }
+
   private purgeBackgroundOutput(id: string, state: BackgroundProcessState): void {
     state.output = '';
     state.outputInFile = false;
@@ -452,16 +573,17 @@ export class TerminalRuntime {
     }
   }
 
-  private scheduleBackgroundStateCleanup(id: string, state: BackgroundProcessState): void {
-    const delay = this.options.stateCleanupDelayMs ?? DEFAULT_STATE_CLEANUP_DELAY_MS;
+  private purgeCommandArtifacts(id: string, state: BackgroundProcessState): void {
+    if (state.outputInFile) {
+      removeTerminalOutputFile(id);
+    }
 
-    state.cleanupTimer = setTimeout(() => {
-      if (state.outputInFile) {
-        removeTerminalOutputFile(id);
-      }
+    removeTerminalCommandMetadata(id);
 
-      this.backgroundProcesses.delete(id);
-    }, delay);
+    if (state.memoryToFileTimer) {
+      clearTimeout(state.memoryToFileTimer);
+      state.memoryToFileTimer = undefined;
+    }
   }
 
   private scheduleMemoryToFileSpill(id: string, state: BackgroundProcessState): void {
@@ -470,15 +592,39 @@ export class TerminalRuntime {
     state.memoryToFileTimer = setTimeout(() => {
       state.memoryToFileTimer = undefined;
 
-      if (state.purgeOnSpill) {
-        state.output = '';
-        state.outputInFile = false;
-        return;
-      }
-
       overwriteTerminalOutput(id, state.output);
       state.output = '';
       state.outputInFile = true;
+      this.emitCommandChange();
     }, delay);
+  }
+
+  private syncIdCounter(id: string): void {
+    const match = TERMINAL_ID_PATTERN.exec(id);
+
+    if (!match) {
+      return;
+    }
+
+    const numericId = Number.parseInt(match[1], 10);
+
+    if (!Number.isFinite(numericId)) {
+      return;
+    }
+
+    this.backgroundIdCounter = Math.max(this.backgroundIdCounter, numericId);
+  }
+
+  private toCommandListItem(id: string, state: BackgroundProcessState): TerminalCommandListItem {
+    return {
+      command: state.command,
+      completedAt: state.completedAt,
+      exitCode: state.exitCode,
+      id,
+      isRunning: !state.completed,
+      killedByUser: state.killedByUser,
+      signal: state.signal,
+      startedAt: state.startedAt,
+    };
   }
 }
