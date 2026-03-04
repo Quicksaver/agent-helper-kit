@@ -28,14 +28,22 @@
         "command": "custom-vscode.reviewCommentToChat",
         "title": "Copy to Chat",
         "category": "Custom",
+        "enablement": "config.custom-vscode.bringToChat.enabled",
         "icon": "$(comment-discussion)"
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "custom-vscode.reviewCommentToChat",
+          "when": "config.custom-vscode.bringToChat.enabled"
+        }
+      ],
       "comments/commentThread/title": [
         {
           "command": "custom-vscode.reviewCommentToChat",
-          "group": "inline"
+          "group": "inline",
+          "when": "config.custom-vscode.bringToChat.enabled"
         }
       ]
     },
@@ -51,6 +59,16 @@
     "configuration": {
       "title": "Custom VS Code",
       "properties": {
+        "custom-vscode.bringToChat.enabled": {
+          "default": true,
+          "description": "Enable the bring-to-chat feature (chat participant, command, and review comment button).",
+          "type": "boolean"
+        },
+        "custom-vscode.terminalTools.enabled": {
+          "default": true,
+          "description": "Enable custom terminal language model tools.",
+          "type": "boolean"
+        },
         "custom-vscode.terminalOutput.memoryToFileSpillMinutes": {
           "default": 2,
           "description": "Minutes to keep terminal output in memory before spilling it to a temp file.",

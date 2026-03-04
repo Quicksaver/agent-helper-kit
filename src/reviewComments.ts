@@ -411,12 +411,12 @@ async function handleCopyCommentToChatRequest(
   }
 }
 
-/** Registers the `@review` chat participant and adds it to the extension context subscriptions. */
-export function registerReviewParticipant(context: vscode.ExtensionContext): void {
+/** Registers the `@review` chat participant. */
+export function registerReviewParticipant(): vscode.Disposable {
   const participant = vscode.chat.createChatParticipant(
     'custom-vscode.bringCommentsToChat',
     handleCopyCommentToChatRequest,
   );
   participant.iconPath = new vscode.ThemeIcon('comment-discussion');
-  context.subscriptions.push(participant);
+  return participant;
 }

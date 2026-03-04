@@ -48,6 +48,15 @@ const vscode = vi.hoisted(() => {
   }
 
   return {
+    Disposable: {
+      from: vi.fn((...disposables: { dispose: () => void }[]) => ({
+        dispose: () => {
+          for (const disposable of disposables) {
+            disposable.dispose();
+          }
+        },
+      })),
+    },
     LanguageModelTextPart,
     LanguageModelToolResult,
     lm: {
@@ -73,12 +82,6 @@ vi.mock('node:child_process', () => ({
 }));
 
 vi.mock('vscode', () => vscode);
-
-function createContext() {
-  return {
-    subscriptions: [] as { dispose: () => void }[],
-  } as unknown as import('vscode').ExtensionContext;
-}
 
 function getRegisteredTool(name: string) {
   const registerToolMock = vscode.lm.registerTool as unknown as {
@@ -182,9 +185,7 @@ describe('terminal tools', () => {
   });
 
   it('registers all custom terminal tools', () => {
-    const context = createContext();
-
-    registerTerminalTools(context);
+    const registration = registerTerminalTools();
 
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_sync_terminal', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_async_terminal', expect.any(Object));
@@ -192,15 +193,15 @@ describe('terminal tools', () => {
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('get_terminal_output_enhanced', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('kill_terminal_enhanced', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('terminal_last_command_enhanced', expect.any(Object));
-    expect(context.subscriptions).toHaveLength(6);
+    expect(vscode.Disposable.from).toHaveBeenCalledOnce();
+    expect(registration).toBeDefined();
   });
 
   it('runs a background command and exposes incremental output, await, kill, and last command', async () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
 
-    const context = createContext();
-    registerTerminalTools(context);
+    registerTerminalTools();
 
     const runTool = getRegisteredTool('run_in_async_terminal');
     const getOutputTool = getRegisteredTool('get_terminal_output_enhanced');
@@ -367,8 +368,7 @@ describe('terminal tools', () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
 
-    const context = createContext();
-    registerTerminalTools(context);
+    registerTerminalTools();
 
     const runTool = getRegisteredTool('run_in_async_terminal');
     const awaitTool = getRegisteredTool('await_terminal_enhanced');
@@ -406,8 +406,7 @@ describe('terminal tools', () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
 
-    const context = createContext();
-    registerTerminalTools(context);
+    registerTerminalTools();
 
     const runTool = getRegisteredTool('run_in_sync_terminal');
     const getOutputTool = getRegisteredTool('get_terminal_output_enhanced');
@@ -451,8 +450,7 @@ describe('terminal tools', () => {
   });
 
   it('returns opt-in foreground output when full_output, last_lines, or regex is provided', async () => {
-    const context = createContext();
-    registerTerminalTools(context);
+    registerTerminalTools();
 
     const runTool = getRegisteredTool('run_in_sync_terminal');
 
@@ -566,8 +564,7 @@ describe('terminal tools', () => {
       const fakeProcess = createFakeProcess();
       spawn.mockReturnValue(fakeProcess);
 
-      const context = createContext();
-      registerTerminalTools(context);
+      registerTerminalTools();
 
       const runTool = getRegisteredTool('run_in_async_terminal');
       const awaitTool = getRegisteredTool('await_terminal_enhanced');

@@ -310,13 +310,15 @@ const customTerminalLastCommandTool: vscode.LanguageModelTool<TerminalLastComman
   },
 };
 
-export function registerTerminalTools(context: vscode.ExtensionContext): void {
-  context.subscriptions.push(
+export function registerTerminalTools(): vscode.Disposable {
+  const registrations = [
     vscode.lm.registerTool(TERMINAL_TOOL_NAMES.runInSyncTerminal, customRunInSyncTerminalTool),
     vscode.lm.registerTool(TERMINAL_TOOL_NAMES.runInAsyncTerminal, customRunInAsyncTerminalTool),
     vscode.lm.registerTool(TERMINAL_TOOL_NAMES.awaitTerminal, customAwaitTerminalTool),
     vscode.lm.registerTool(TERMINAL_TOOL_NAMES.getTerminalOutput, customGetTerminalOutputTool),
     vscode.lm.registerTool(TERMINAL_TOOL_NAMES.killTerminal, customKillTerminalTool),
     vscode.lm.registerTool(TERMINAL_TOOL_NAMES.terminalLastCommand, customTerminalLastCommandTool),
-  );
+  ];
+
+  return vscode.Disposable.from(...registrations);
 }
