@@ -2,7 +2,7 @@
   "name": "custom-vscode",
   "displayName": "Custom VS Code",
   "description": "Personal VS Code extension",
-  "version": "0.3.11",
+  "version": "0.3.15",
   "publisher": "Quicksaver",
   "license": "UNLICENSED",
   "private": true,
@@ -90,7 +90,7 @@
         "displayName": "Run In Sync Terminal",
         "when": "config.custom-vscode.terminalTools.enabled",
         "icon": "$(terminal)",
-        "modelDescription": "Run a shell command synchronously in a persistent bash session. Returns an id and status metadata (exitCode, terminationSignal, timedOut); provide full_output, last_lines, or regex to include output in the response, or use id to await or retrieve output.",
+        "modelDescription": "Run a shell command synchronously. First run starts in workspace root (or home if no workspace); later runs reuse the last resolved PWD from previous sync commands. Returns an id and status metadata (exitCode, terminationSignal, timedOut); provide full_output, last_lines, or regex to include output in the response, or use id to await or retrieve output.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -165,7 +165,7 @@
         "displayName": "Run In Async Terminal",
         "when": "config.custom-vscode.terminalTools.enabled",
         "icon": "$(terminal)",
-        "modelDescription": "Run a shell command asynchronously in a persistent bash session. Returns a terminal id to await or retrieve output.",
+        "modelDescription": "Run a shell command asynchronously. Each call runs in workspace root (or home if no workspace). Returns a terminal id to await or retrieve output.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
