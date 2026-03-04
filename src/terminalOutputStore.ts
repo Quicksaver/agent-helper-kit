@@ -5,6 +5,7 @@ import * as path from 'node:path';
 const OUTPUT_DIR_NAME = 'custom-vscode-terminal-output';
 const OUTPUT_FILE_PREFIX = 'terminal-';
 const OUTPUT_FILE_SUFFIX = '.log';
+const DEFAULT_STARTUP_PURGE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 function getOutputDirectoryPath(): string {
   return path.join(os.tmpdir(), OUTPUT_DIR_NAME);
@@ -39,15 +40,10 @@ function getTerminalIdFromFileName(fileName: string): string | undefined {
   return fileName.slice(OUTPUT_FILE_PREFIX.length, -OUTPUT_FILE_SUFFIX.length);
 }
 
-export function initializeTerminalOutputStore(activeTerminalIds: ReadonlySet<string>): void {
+export function initializeTerminalOutputStore(startupPurgeMaxAgeMs = DEFAULT_STARTUP_PURGE_MAX_AGE_MS): void {
   const directoryPath = ensureOutputDirectory();
-
-  if (activeTerminalIds.size === 0) {
-    return;
-  }
-
+  const nowMs = Date.now();
   const fileNames = fs.readdirSync(directoryPath);
-  const sanitizedActiveIds = new Set([ ...activeTerminalIds ].map(sanitizeTerminalId));
 
   for (const fileName of fileNames) {
     const terminalId = getTerminalIdFromFileName(fileName);
@@ -56,8 +52,12 @@ export function initializeTerminalOutputStore(activeTerminalIds: ReadonlySet<str
       continue;
     }
 
-    if (!sanitizedActiveIds.has(terminalId)) {
-      fs.rmSync(path.join(directoryPath, fileName), { force: true });
+    const filePath = path.join(directoryPath, fileName);
+    const fileStats = fs.statSync(filePath);
+    const ageMs = nowMs - fileStats.mtimeMs;
+
+    if (ageMs > startupPurgeMaxAgeMs) {
+      fs.rmSync(filePath, { force: true });
     }
   }
 }

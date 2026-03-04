@@ -54,6 +54,9 @@ const vscode = vi.hoisted(() => {
       registerTool: vi.fn(() => ({ dispose: vi.fn() })),
     },
     workspace: {
+      getConfiguration: vi.fn(() => ({
+        get: vi.fn(() => undefined),
+      })),
       workspaceFolders: [
         {
           uri: {

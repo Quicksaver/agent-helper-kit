@@ -48,6 +48,23 @@
         "isSticky": false
       }
     ],
+    "configuration": {
+      "title": "Custom VS Code",
+      "properties": {
+        "custom-vscode.terminalOutput.memoryToFileSpillMinutes": {
+          "default": 2,
+          "description": "Minutes to keep terminal output in memory before spilling it to a temp file.",
+          "minimum": 0,
+          "type": "number"
+        },
+        "custom-vscode.terminalOutput.startupPurgeMaxAgeHours": {
+          "default": 6,
+          "description": "On extension host startup, purge persisted terminal output files older than this many hours.",
+          "minimum": 0,
+          "type": "number"
+        }
+      }
+    },
     "languageModelTools": [
       {
         "name": "run_in_sync_terminal",

@@ -17,6 +17,36 @@ import {
 } from '@/terminalToolContracts';
 
 const STATE_CLEANUP_DELAY_MS = 5 * 60 * 1000;
+const DEFAULT_MEMORY_TO_FILE_SPILL_MINUTES = 2;
+const DEFAULT_STARTUP_PURGE_MAX_AGE_HOURS = 6;
+
+function getNumericSettingOrDefault(value: number | undefined, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return fallback;
+  }
+
+  return value;
+}
+
+function getTerminalOutputSettings(): {
+  memoryToFileDelayMs: number;
+  startupPurgeMaxAgeMs: number;
+} {
+  const configuration = vscode.workspace.getConfiguration('custom-vscode');
+  const memoryToFileSpillMinutes = getNumericSettingOrDefault(
+    configuration.get<number>('terminalOutput.memoryToFileSpillMinutes'),
+    DEFAULT_MEMORY_TO_FILE_SPILL_MINUTES,
+  );
+  const startupPurgeMaxAgeHours = getNumericSettingOrDefault(
+    configuration.get<number>('terminalOutput.startupPurgeMaxAgeHours'),
+    DEFAULT_STARTUP_PURGE_MAX_AGE_HOURS,
+  );
+
+  return {
+    memoryToFileDelayMs: memoryToFileSpillMinutes * 60 * 1000,
+    startupPurgeMaxAgeMs: startupPurgeMaxAgeHours * 60 * 60 * 1000,
+  };
+}
 
 function getWorkspaceCwd(): string {
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -88,10 +118,17 @@ let terminalRuntime: TerminalRuntime | undefined;
 
 function getTerminalRuntime(): TerminalRuntime {
   if (!terminalRuntime) {
+    const {
+      memoryToFileDelayMs,
+      startupPurgeMaxAgeMs,
+    } = getTerminalOutputSettings();
+
     terminalRuntime = new TerminalRuntime({
       getBackgroundCwd: () => getWorkspaceCwd(),
       getInitialForegroundCwd: () => getWorkspaceCwd(),
+      memoryToFileDelayMs,
       pwdMarker: '__CUSTOM_VSCODE_PWD__',
+      startupPurgeMaxAgeMs,
       stateCleanupDelayMs: STATE_CLEANUP_DELAY_MS,
     });
   }

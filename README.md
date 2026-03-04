@@ -80,11 +80,12 @@ yarn lint:check
 
 - Output is kept in memory first for each terminal id.
 - After a short delay (a few minutes), in-memory output is copied to a per-command file in the system temp directory and then purged from memory.
+- The in-memory spill delay is configurable via `custom-vscode.terminalOutput.memoryToFileSpillMinutes` (default: 2).
 - If a terminal process receives `SIGINT` (for example Ctrl+C), signal handling does not trigger output purging.
 - For other termination signals (for example `SIGTERM`/`SIGKILL`):
   - if output is still in memory, it remains there until the normal spill time and is purged then (not written to disk)
   - if output is already on disk, it is purged immediately
-- On host startup, output-store initialization does not purge when there are zero known active terminal ids (to avoid deleting files owned by other concurrent extension-host processes).
+- On host startup, persisted output files older than a configurable max age are purged; use `custom-vscode.terminalOutput.startupPurgeMaxAgeHours` (default: 6).
 
 ## How an agent can test terminal tools integration (after install)
 

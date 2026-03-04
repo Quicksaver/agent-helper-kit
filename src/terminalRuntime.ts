@@ -70,6 +70,7 @@ interface TerminalRuntimeOptions {
   outputLimit?: number;
   pwdMarker: string;
   shellEnv?: NodeJS.ProcessEnv;
+  startupPurgeMaxAgeMs?: number;
   stateCleanupDelayMs?: number;
 }
 
@@ -80,7 +81,7 @@ export class TerminalRuntime {
   private sharedForegroundCwd: string | undefined;
 
   constructor(private readonly options: TerminalRuntimeOptions) {
-    initializeTerminalOutputStore(new Set(this.backgroundProcesses.keys()));
+    initializeTerminalOutputStore(this.options.startupPurgeMaxAgeMs);
   }
 
   async awaitBackgroundCommand(input: AwaitBackgroundInput): Promise<RunCommandResult> {
