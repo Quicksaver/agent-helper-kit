@@ -504,7 +504,7 @@ export class TerminalRuntime {
       const metadata = readTerminalCommandMetadata(id);
       const state: BackgroundProcessState = {
         childProc: undefined,
-        command: metadata?.command ?? 'Restored command output',
+        command: metadata?.command ?? '(command not recorded)',
         completed: true,
         completedAt: metadata?.completedAt ?? new Date().toISOString(),
         completion: Promise.resolve(),
@@ -608,7 +608,7 @@ export class TerminalRuntime {
 
     const numericId = Number.parseInt(match[1], 10);
 
-    if (!Number.isFinite(numericId)) {
+    if (Number.isNaN(numericId)) {
       return;
     }
 

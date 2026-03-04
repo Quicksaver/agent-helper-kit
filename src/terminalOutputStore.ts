@@ -101,8 +101,14 @@ export function initializeTerminalOutputStore(startupPurgeMaxAgeMs = DEFAULT_STA
     const ageMs = nowMs - fileStats.mtimeMs;
 
     if (ageMs > startupPurgeMaxAgeMs) {
-      fs.rmSync(filePath, { force: true });
-      fs.rmSync(getTerminalMetadataFilePath(terminalId), { force: true });
+      try {
+        fs.rmSync(filePath, { force: true });
+        fs.rmSync(getTerminalMetadataFilePath(terminalId), { force: true });
+      }
+      catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        globalThis.process.stderr.write(`[custom-vscode] Failed to purge stale terminal output artifacts for ${terminalId}: ${message}\n`);
+      }
     }
   }
 }
