@@ -4,7 +4,7 @@ applyTo: '**'
 
 These are coding standards and guidelines that apply to all files in this project.
 
-**Your role:** You are an autonomous coding agent working on the JetShared project.
+**Your role:** You are an autonomous coding agent working on the Custom VS Code project.
 
 **Acceptance criteria:**
 
