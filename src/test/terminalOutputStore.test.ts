@@ -15,6 +15,7 @@ import {
 } from '@/terminalOutputStore';
 
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+const SEVEN_HOURS_MS = 7 * 60 * 60 * 1000;
 
 describe('terminal output store startup purge', () => {
   afterEach(() => {
@@ -30,7 +31,7 @@ describe('terminal output store startup purge', () => {
 
     const oldFilePath = getTerminalOutputFilePath(oldTerminalId);
     const freshFilePath = getTerminalOutputFilePath(freshTerminalId);
-    const oldDate = new Date(Date.now() - (7 * 60 * 60 * 1000));
+    const oldDate = new Date(Date.now() - SEVEN_HOURS_MS);
 
     fs.utimesSync(oldFilePath, oldDate, oldDate);
 

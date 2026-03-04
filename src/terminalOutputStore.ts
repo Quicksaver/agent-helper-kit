@@ -43,7 +43,16 @@ function getTerminalIdFromFileName(fileName: string): string | undefined {
 export function initializeTerminalOutputStore(startupPurgeMaxAgeMs = DEFAULT_STARTUP_PURGE_MAX_AGE_MS): void {
   const directoryPath = ensureOutputDirectory();
   const nowMs = Date.now();
-  const fileNames = fs.readdirSync(directoryPath);
+  let fileNames: string[];
+
+  try {
+    fileNames = fs.readdirSync(directoryPath);
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    globalThis.process.stderr.write(`[custom-vscode] Failed to read terminal output directory ${directoryPath}: ${message}\n`);
+    return;
+  }
 
   for (const fileName of fileNames) {
     const terminalId = getTerminalIdFromFileName(fileName);
@@ -53,7 +62,17 @@ export function initializeTerminalOutputStore(startupPurgeMaxAgeMs = DEFAULT_STA
     }
 
     const filePath = path.join(directoryPath, fileName);
-    const fileStats = fs.statSync(filePath);
+    let fileStats: fs.Stats;
+
+    try {
+      fileStats = fs.statSync(filePath);
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      globalThis.process.stderr.write(`[custom-vscode] Failed to stat terminal output file ${filePath}: ${message}\n`);
+      continue;
+    }
+
     const ageMs = nowMs - fileStats.mtimeMs;
 
     if (ageMs > startupPurgeMaxAgeMs) {
