@@ -123,6 +123,20 @@ function getCommandStatusClass(command: TerminalCommandListItem): string {
   return 'error';
 }
 
+function getCommandStatusIcon(command: TerminalCommandListItem): string {
+  const statusClass = getCommandStatusClass(command);
+
+  if (statusClass === 'running') {
+    return '<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M7.99909 3C10.7605 3 12.9991 5.23858 12.9991 8C12.9991 10.7614 10.7605 13 7.99909 13C5.39117 13 3.2491 11.003 3.0195 8.45512C2.99471 8.1801 2.75167 7.97723 2.47664 8.00202C2.20161 8.0268 1.99875 8.26985 2.02353 8.54488C2.29916 11.6035 4.86898 14 7.99909 14C11.3128 14 13.9991 11.3137 13.9991 8C13.9991 4.68629 11.3128 2 7.99909 2C6.20656 2 4.59815 2.78613 3.49909 4.03138V2.5C3.49909 2.22386 3.27524 2 2.99909 2C2.72295 2 2.49909 2.22386 2.49909 2.5V5.5C2.49909 5.77614 2.72295 6 2.99909 6H3.08812C3.09498 6.00014 3.10184 6.00014 3.10868 6H5.99909C6.27524 6 6.49909 5.77614 6.49909 5.5C6.49909 5.22386 6.27524 5 5.99909 5H3.99863C4.91128 3.78495 6.36382 3 7.99909 3ZM7.99909 5.5C7.99909 5.22386 7.77524 5 7.49909 5C7.22295 5 6.99909 5.22386 6.99909 5.5V8.5C6.99909 8.77614 7.22295 9 7.49909 9H9.49909C9.77524 9 9.99909 8.77614 9.99909 8.5C9.99909 8.22386 9.77524 8 9.49909 8H7.99909V5.5Z"/></svg>';
+  }
+
+  if (statusClass === 'success') {
+    return '<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M10.6484 5.64648C10.8434 5.45148 11.1605 5.45148 11.3555 5.64648C11.5498 5.84137 11.5499 6.15766 11.3555 6.35254L7.35547 10.3525C7.25747 10.4495 7.12898 10.499 7.00098 10.499C6.87299 10.499 6.74545 10.4505 6.64746 10.3525L4.64746 8.35254C4.45247 8.15754 4.45248 7.84148 4.64746 7.64648C4.84246 7.45148 5.15949 7.45148 5.35449 7.64648L7 9.29199L10.6465 5.64648H10.6484Z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M8 1C11.86 1 15 4.14 15 8C15 11.86 11.86 15 8 15C4.14 15 1 11.86 1 8C1 4.14 4.14 1 8 1ZM8 2C4.691 2 2 4.691 2 8C2 11.309 4.691 14 8 14C11.309 14 14 11.309 14 8C14 4.691 11.309 2 8 2Z"/></svg>';
+  }
+
+  return '<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M8 1C4.14 1 1 4.14 1 8C1 11.86 4.14 15 8 15C11.86 15 15 11.86 15 8C15 4.14 11.86 1 8 1ZM8 14C4.691 14 2 11.309 2 8C2 4.691 4.691 2 8 2C11.309 2 14 4.691 14 8C14 11.309 11.309 14 8 14ZM10.854 5.854L8.708 8L10.854 10.146C11.049 10.341 11.049 10.658 10.854 10.853C10.756 10.951 10.628 10.999 10.5 10.999C10.372 10.999 10.244 10.95 10.146 10.853L8 8.707L5.854 10.853C5.756 10.951 5.628 10.999 5.5 10.999C5.372 10.999 5.244 10.95 5.146 10.853C4.951 10.658 4.951 10.341 5.146 10.146L7.292 8L5.146 5.854C4.951 5.659 4.951 5.342 5.146 5.147C5.341 4.952 5.658 4.952 5.853 5.147L7.999 7.293L10.145 5.147C10.34 4.952 10.657 4.952 10.852 5.147C11.047 5.342 11.047 5.659 10.852 5.854H10.854Z"/></svg>';
+}
+
 function buildCommandTooltip(command: TerminalCommandListItem): string {
   const lines = [
     `Id: ${command.id}`,
@@ -558,7 +572,7 @@ function getWebviewHtml(
         role="button"
         tabindex="0"
       >
-        <span class="status-dot ${getCommandStatusClass(command)}"></span>
+        <span class="status-indicator ${getCommandStatusClass(command)}">${getCommandStatusIcon(command)}</span>
         <span class="command-preview">${escapeHtml(commandPreview)}</span>
         <span class="command-shell">${escapeHtml(shellLabel)}</span>
         <button
@@ -593,7 +607,7 @@ function getWebviewHtml(
       }
       .layout {
         display: grid;
-        grid-template-columns: var(--sidebar-width, 340px) 1px minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr) 1px var(--sidebar-width, 340px);
         height: 100%;
       }
       .sidebar {
@@ -635,22 +649,24 @@ function getWebviewHtml(
         gap: 8px;
         padding: 2px 8px;
         cursor: pointer;
+        position: relative;
       }
       .command-item:hover { background: var(--vscode-list-hoverBackground); }
       .command-item.selected {
         background: var(--vscode-list-activeSelectionBackground);
         color: var(--vscode-list-activeSelectionForeground);
       }
-      .status-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
+      .status-indicator {
         flex: 0 0 auto;
+        width: 16px;
+        text-align: center;
+        font-size: 12px;
+        line-height: 1;
       }
-      .status-dot.running { background: var(--vscode-terminal-ansiYellow); }
-      .status-dot.success { background: var(--vscode-terminal-ansiGreen); }
-      .status-dot.error { background: var(--vscode-terminal-ansiRed); }
-      .status-dot.killed { background: var(--vscode-terminal-ansiRed); }
+      .status-indicator.running { color: var(--vscode-terminal-ansiYellow); }
+      .status-indicator.success { color: var(--vscode-terminal-ansiGreen); }
+      .status-indicator.error { color: var(--vscode-terminal-ansiRed); }
+      .status-indicator.killed { color: var(--vscode-terminal-ansiRed); }
       .command-preview {
         overflow: hidden;
         text-overflow: ellipsis;
@@ -677,6 +693,20 @@ function getWebviewHtml(
         color: var(--vscode-foreground);
         opacity: 1;
       }
+      .row-action {
+        position: absolute;
+        left: 26px;
+        top: 50%;
+        transform: translateY(-50%);
+        opacity: 0;
+        pointer-events: none;
+        background: var(--vscode-list-hoverBackground);
+      }
+      .command-item:hover .row-action,
+      .command-item:focus-within .row-action {
+        opacity: 1;
+        pointer-events: auto;
+      }
       .resizer {
         cursor: col-resize;
         background: var(--vscode-editorWidget-border);
@@ -696,7 +726,6 @@ function getWebviewHtml(
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        background: var(--vscode-sideBar-background);
       }
       .command-header {
         display: flex;
@@ -707,7 +736,6 @@ function getWebviewHtml(
       .command-block {
         margin: 0;
         padding: 8px;
-        background: var(--vscode-editorWidget-background);
         white-space: pre-wrap;
         word-break: break-word;
         overflow: auto;
@@ -718,7 +746,6 @@ function getWebviewHtml(
         align-items: flex-start;
         gap: 4px;
         padding: 6px;
-        background: var(--vscode-editorWidget-background);
         border-left: 1px solid var(--vscode-editorWidget-border);
       }
       .output-block {
@@ -773,6 +800,8 @@ function getWebviewHtml(
   </head>
   <body>
     <div class="layout" id="layout">
+      <main class="main-pane">${detailsMarkup}</main>
+      <div id="resizer" class="resizer" aria-hidden="true"></div>
       <aside class="sidebar">
         <div class="sidebar-toolbar">
           <input
@@ -787,8 +816,6 @@ function getWebviewHtml(
         </div>
         <div class="command-list">${commandItems}</div>
       </aside>
-      <div id="resizer" class="resizer" aria-hidden="true"></div>
-      <main class="main-pane">${detailsMarkup}</main>
     </div>
     <script nonce="${scriptNonce}">
       const vscodeApi = acquireVsCodeApi();
@@ -896,7 +923,7 @@ function getWebviewHtml(
         }
 
         const bounds = layout.getBoundingClientRect();
-        const nextWidth = Math.min(620, Math.max(180, event.clientX - bounds.left));
+        const nextWidth = Math.min(620, Math.max(180, bounds.right - event.clientX));
         root.style.setProperty('--sidebar-width', String(nextWidth) + 'px');
       });
 
