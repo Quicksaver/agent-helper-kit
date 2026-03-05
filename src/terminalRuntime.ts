@@ -468,6 +468,8 @@ export class TerminalRuntime {
       }
     }
 
+    // Extremely rare collision scenario: if repeated clashes exhaust all attempts,
+    // fall back to UUID entropy to keep ID generation practically collision-free.
     return `${TERMINAL_ID_PREFIX}${globalThis.crypto.randomUUID().replaceAll('-', '').slice(0, TERMINAL_ID_HEX_LENGTH)}`;
   }
 
