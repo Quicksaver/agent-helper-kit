@@ -346,6 +346,20 @@ describe('terminal tools', () => {
     const regexPayload = getResultPayload(regexResult);
     expect(regexPayload.output).toBe('only-match\n');
 
+    fakeProcess.stdout.emit('data', 'CaseSensitive\n');
+
+    const regexFlagsResult = await getOutputTool.invoke({
+      input: {
+        id: terminalId,
+        regex: '^casesensitive$',
+        regex_flags: 'i',
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const regexFlagsPayload = getResultPayload(regexFlagsResult);
+    expect(regexFlagsPayload.output).toBe('CaseSensitive\n');
+
     const fullOutputResult = await getOutputTool.invoke({
       input: {
         full_output: true,
@@ -355,7 +369,7 @@ describe('terminal tools', () => {
     }, {});
 
     const fullOutputPayload = getResultPayload(fullOutputResult);
-    expect(fullOutputPayload.output).toBe('hello\nworld\nmatch-line\nnomatch\nonly-match\n');
+  expect(fullOutputPayload.output).toBe('hello\nworld\nmatch-line\nnomatch\nonly-match\nCaseSensitive\n');
 
     await expect(getOutputTool.invoke({
       input: {
@@ -365,6 +379,14 @@ describe('terminal tools', () => {
       },
       toolInvocationToken: undefined,
     }, {})).rejects.toThrow('mutually exclusive');
+
+    await expect(getOutputTool.invoke({
+      input: {
+        id: terminalId,
+        regex_flags: 'i',
+      },
+      toolInvocationToken: undefined,
+    }, {})).rejects.toThrow('regex_flags requires regex');
 
     const timedAwaitResult = await awaitTool.invoke({
       input: {
@@ -413,7 +435,7 @@ describe('terminal tools', () => {
 
     const secondCompletedReadPayload = getResultPayload(secondCompletedRead);
     expect(secondCompletedReadPayload.exitCode).toBeNull();
-    expect(secondCompletedReadPayload.output).toBe('hello\nworld\nmatch-line\nnomatch\nonly-match\n');
+    expect(secondCompletedReadPayload.output).toBe('hello\nworld\nmatch-line\nnomatch\nonly-match\nCaseSensitive\n');
     expect(secondCompletedReadPayload.shell).toBe('/bin/zsh');
     expect(secondCompletedReadPayload.terminationSignal).toBe('SIGTERM');
 
@@ -590,6 +612,29 @@ describe('terminal tools', () => {
     expect(regexPayload.id).toMatch(TERMINAL_ID_REGEX);
     expect(regexPayload.output).toBe('b\nc\n');
 
+    const regexFlagsProcess = createFakeProcess();
+    spawn.mockReturnValueOnce(regexFlagsProcess);
+
+    const regexFlagsPromise = runTool.invoke({
+      input: {
+        command: 'echo regex-flags',
+        explanation: 'foreground regex flags behavior',
+        goal: 'return matching lines inline using regex flags',
+        regex: '^b$',
+        regex_flags: 'i',
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    regexFlagsProcess.stdout.emit('data', 'A\nB\nC\n');
+    regexFlagsProcess.emit('close', 0, null);
+
+    const regexFlagsResult = await regexFlagsPromise;
+    const regexFlagsPayload = getResultPayload(regexFlagsResult);
+    expect(regexFlagsPayload.id).toMatch(TERMINAL_ID_REGEX);
+    expect(regexFlagsPayload.output).toBe('B\n');
+
     await expect(runTool.invoke({
       input: {
         command: 'echo invalid',
@@ -625,6 +670,17 @@ describe('terminal tools', () => {
       },
       toolInvocationToken: undefined,
     }, {})).rejects.toThrow('mutually exclusive');
+
+    await expect(runTool.invoke({
+      input: {
+        command: 'echo invalid-regex-flags-only',
+        explanation: 'invalid regex flags options test',
+        goal: 'reject regex_flags without regex',
+        regex_flags: 'i',
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {})).rejects.toThrow('regex_flags requires regex');
   });
 
   it('uses provided shell when shell input is set', async () => {

@@ -1,6 +1,7 @@
 export interface TerminalOutputFilterInput {
   last_lines?: number;
   regex?: string;
+  regex_flags?: string;
 }
 
 export function stripTerminalControlSequences(output: string): string {
@@ -63,10 +64,15 @@ export function stripTerminalControlSequences(output: string): string {
 export function getFilteredOutput(input: TerminalOutputFilterInput, output: string): string {
   const hasLastLines = typeof input.last_lines === 'number';
   const hasRegex = typeof input.regex === 'string';
+  const hasRegexFlags = typeof input.regex_flags === 'string';
   const sanitizedOutput = stripTerminalControlSequences(output);
 
   if (hasLastLines && hasRegex) {
     throw new Error('last_lines and regex are mutually exclusive');
+  }
+
+  if (hasRegexFlags && !hasRegex) {
+    throw new Error('regex_flags requires regex');
   }
 
   if (!hasLastLines && !hasRegex) {
@@ -88,18 +94,35 @@ export function getFilteredOutput(input: TerminalOutputFilterInput, output: stri
   }
 
   const regexPattern = input.regex ?? '';
+  const regexFlags = input.regex_flags ?? '';
 
   if (regexPattern.length > 2048) {
     throw new Error('regex exceeds maximum supported length (2048 characters)');
   }
 
+  if (regexFlags.length > 16) {
+    throw new Error('regex_flags exceeds maximum supported length (16 characters)');
+  }
+
+  if (/[^dgimsuvy]/u.test(regexFlags)) {
+    throw new Error('regex_flags contains unsupported flags');
+  }
+
+  if (new Set(regexFlags).size !== regexFlags.length) {
+    throw new Error('regex_flags contains duplicate flags');
+  }
+
+  if (regexFlags.includes('g') || regexFlags.includes('y')) {
+    throw new Error('regex_flags cannot include g or y');
+  }
+
   let expression: RegExp;
 
   try {
-    expression = new RegExp(regexPattern);
+    expression = new RegExp(regexPattern, regexFlags);
   }
   catch {
-    throw new Error('Invalid regex pattern');
+    throw new Error('Invalid regex pattern or flags');
   }
 
   const matched = lines.filter(line => expression.test(line)).join('\n');

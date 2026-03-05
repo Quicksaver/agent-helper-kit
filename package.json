@@ -197,6 +197,10 @@
               "type": "string",
               "description": "Optional regex filter for lines included in this tool response; mutually exclusive with last_lines."
             },
+            "regex_flags": {
+              "type": "string",
+              "description": "Optional regex flags for regex (for example i, m, s, u); requires regex."
+            },
             "timeout": {
               "type": "number",
               "description": "Timeout in ms; use 0 for no timeout."
@@ -223,6 +227,18 @@
               "not": {
                 "required": [
                   "full_output",
+                  "regex"
+                ]
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "regex_flags"
+                ]
+              },
+              "then": {
+                "required": [
                   "regex"
                 ]
               }
@@ -326,6 +342,10 @@
             "regex": {
               "type": "string",
               "description": "Optional regex filter for matching lines; mutually exclusive with last_lines."
+            },
+            "regex_flags": {
+              "type": "string",
+              "description": "Optional regex flags for regex (for example i, m, s, u); requires regex."
             }
           },
           "allOf": [
@@ -333,6 +353,18 @@
               "not": {
                 "required": [
                   "last_lines",
+                  "regex"
+                ]
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "regex_flags"
+                ]
+              },
+              "then": {
+                "required": [
                   "regex"
                 ]
               }

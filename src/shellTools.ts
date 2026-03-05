@@ -157,10 +157,12 @@ function hasRunOutputOverrides(input: {
   full_output?: boolean;
   last_lines?: number;
   regex?: string;
+  regex_flags?: string;
 }): boolean {
   return input.full_output === true
     || typeof input.last_lines === 'number'
-    || typeof input.regex === 'string';
+    || typeof input.regex === 'string'
+    || typeof input.regex_flags === 'string';
 }
 
 function getRequestedOrDefaultShell(inputShell?: string): string | undefined {
@@ -242,6 +244,7 @@ const customRunInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = 
         {
           last_lines: input.last_lines,
           regex: input.regex,
+          regex_flags: input.regex_flags,
         },
         result.output,
       );

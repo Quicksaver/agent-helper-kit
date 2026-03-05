@@ -181,6 +181,7 @@ export interface RunInSyncShellInput {
   goal: string;
   last_lines?: number;
   regex?: string;
+  regex_flags?: string;
   shell?: string;
   timeout: number;
 }
@@ -195,6 +196,7 @@ export interface GetShellOutputInput {
   id: string;
   last_lines?: number;
   regex?: string;
+  regex_flags?: string;
 }
 
 export interface KillShellInput {
@@ -220,6 +222,7 @@ export const runInSyncShellInputSchema = {
   goal: z.string(),
   last_lines: z.number().int().nonnegative().optional(),
   regex: z.string().optional(),
+  regex_flags: z.string().optional(),
   shell: z.string().optional(),
   timeout: z.number(),
 } satisfies z.ZodRawShape;
@@ -234,12 +237,18 @@ export const getShellOutputInputSchema = {
   id: z.string(),
   last_lines: z.number().int().nonnegative().optional(),
   regex: z.string().optional(),
+  regex_flags: z.string().optional(),
 } satisfies z.ZodRawShape;
 
 const getShellOutputInputValidator = z.object(getShellOutputInputSchema).refine(
   value => !(typeof value.last_lines === 'number' && typeof value.regex === 'string'),
   {
     message: 'last_lines and regex are mutually exclusive',
+  },
+).refine(
+  value => !(typeof value.regex_flags === 'string' && typeof value.regex !== 'string'),
+  {
+    message: 'regex_flags requires regex',
   },
 );
 
@@ -253,6 +262,11 @@ const runInSyncShellInputValidator = z.object(runInSyncShellInputSchema).refine(
   ),
   {
     message: 'full_output, last_lines, and regex are mutually exclusive options',
+  },
+).refine(
+  value => !(typeof value.regex_flags === 'string' && typeof value.regex !== 'string'),
+  {
+    message: 'regex_flags requires regex',
   },
 );
 
