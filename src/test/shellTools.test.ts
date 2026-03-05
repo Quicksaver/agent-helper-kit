@@ -30,16 +30,6 @@ function expectedShellArgs(shell: string): string[] {
     return [ '/d', '/s', '/c' ];
   }
 
-  if (
-    normalizedShellName === 'bash'
-    || normalizedShellName === 'fish'
-    || normalizedShellName === 'ksh'
-    || normalizedShellName === 'mksh'
-    || normalizedShellName === 'zsh'
-  ) {
-    return [ '-ic' ];
-  }
-
   return [ '-lc' ];
 }
 

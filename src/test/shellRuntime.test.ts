@@ -10,12 +10,15 @@ import {
   vi,
 } from 'vitest';
 
+import { stripTerminalControlSequences } from '@/shellOutputFilter';
 import { TerminalRuntime } from '@/shellRuntime';
 
 const TERMINAL_ID_REGEX = /^custom-shell-[a-f0-9]{8}$/;
 
 function normalizePath(value: string): string {
-  return fs.realpathSync.native(value.trim()).replaceAll('\\', '/');
+  const sanitizedValue = stripTerminalControlSequences(value).trim();
+
+  return fs.realpathSync.native(sanitizedValue).replaceAll('\\', '/');
 }
 
 describe('TerminalRuntime foreground cwd behavior', () => {

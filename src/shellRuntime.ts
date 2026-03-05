@@ -453,7 +453,13 @@ export class TerminalRuntime {
   }
 
   private buildShellEnv(): NodeJS.ProcessEnv {
-    return this.options.shellEnv ?? globalThis.process.env;
+    const source = this.options.shellEnv ?? globalThis.process.env;
+
+    return {
+      COLORTERM: source.COLORTERM ?? 'truecolor',
+      TERM: source.TERM ?? 'xterm-256color',
+      ...source,
+    };
   }
 
   private createForegroundInvocation(command: string, shell?: string): ShellInvocation {
@@ -461,22 +467,6 @@ export class TerminalRuntime {
   }
 
   private createPosixShellInvocation(command: string, shell: string): ShellInvocation {
-    const shellName = this.getShellCommandName(shell);
-
-    if (
-      shellName === 'bash'
-      || shellName === 'fish'
-      || shellName === 'ksh'
-      || shellName === 'mksh'
-      || shellName === 'zsh'
-    ) {
-      return {
-        command,
-        shell,
-        shellArgs: [ '-ic' ],
-      };
-    }
-
     return {
       command,
       shell,
