@@ -333,6 +333,54 @@ function getAnsiStateStyle(state: AnsiRenderState): string {
     backgroundColor = originalForeground;
   }
 
+  const classes: string[] = [];
+
+  const foregroundIndex = foregroundColor
+    ? [
+      ...ANSI_STANDARD_COLORS,
+      ...ANSI_BRIGHT_COLORS,
+    ].indexOf(foregroundColor)
+    : -1;
+
+  if (foregroundIndex >= 0) {
+    classes.push(`ansi-fg-${String(foregroundIndex)}`);
+  }
+
+  const backgroundIndex = backgroundColor
+    ? [
+      ...ANSI_STANDARD_COLORS,
+      ...ANSI_BRIGHT_COLORS,
+    ].indexOf(backgroundColor)
+    : -1;
+
+  if (backgroundIndex >= 0) {
+    classes.push(`ansi-bg-${String(backgroundIndex)}`);
+  }
+
+  if (state.bold) {
+    classes.push('ansi-bold');
+  }
+
+  if (state.dim) {
+    classes.push('ansi-dim');
+  }
+
+  if (state.italic) {
+    classes.push('ansi-italic');
+  }
+
+  if (state.underline) {
+    classes.push('ansi-underline');
+  }
+
+  if (state.strikethrough) {
+    classes.push('ansi-strikethrough');
+  }
+
+  if (classes.length > 0) {
+    return classes.join(' ');
+  }
+
   const declarations: string[] = [];
 
   if (foregroundColor) {
@@ -389,7 +437,7 @@ function convertAnsiToHtml(value: string): string {
       const escapedSegment = escapeHtml(segment);
       html += style.length === 0
         ? escapedSegment
-        : `<span style="${style}">${escapedSegment}</span>`;
+        : `<span class="${style}">${escapedSegment}</span>`;
     }
 
     const sequence = match[0];
@@ -424,7 +472,7 @@ function convertAnsiToHtml(value: string): string {
 
     html += style.length === 0
       ? escapedSegment
-      : `<span style="${style}">${escapedSegment}</span>`;
+      : `<span class="${style}">${escapedSegment}</span>`;
   }
 
   return html;
@@ -648,6 +696,43 @@ function getWebviewHtml(
         min-height: 0;
         overflow: auto;
       }
+      .output-block .ansi-fg-0 { color: #000000; }
+      .output-block .ansi-fg-1 { color: #cd3131; }
+      .output-block .ansi-fg-2 { color: #0dbc79; }
+      .output-block .ansi-fg-3 { color: #e5e510; }
+      .output-block .ansi-fg-4 { color: #2472c8; }
+      .output-block .ansi-fg-5 { color: #bc3fbc; }
+      .output-block .ansi-fg-6 { color: #11a8cd; }
+      .output-block .ansi-fg-7 { color: #e5e5e5; }
+      .output-block .ansi-fg-8 { color: #666666; }
+      .output-block .ansi-fg-9 { color: #f14c4c; }
+      .output-block .ansi-fg-10 { color: #23d18b; }
+      .output-block .ansi-fg-11 { color: #f5f543; }
+      .output-block .ansi-fg-12 { color: #3b8eea; }
+      .output-block .ansi-fg-13 { color: #d670d6; }
+      .output-block .ansi-fg-14 { color: #29b8db; }
+      .output-block .ansi-fg-15 { color: #ffffff; }
+      .output-block .ansi-bg-0 { background-color: #000000; }
+      .output-block .ansi-bg-1 { background-color: #cd3131; }
+      .output-block .ansi-bg-2 { background-color: #0dbc79; }
+      .output-block .ansi-bg-3 { background-color: #e5e510; }
+      .output-block .ansi-bg-4 { background-color: #2472c8; }
+      .output-block .ansi-bg-5 { background-color: #bc3fbc; }
+      .output-block .ansi-bg-6 { background-color: #11a8cd; }
+      .output-block .ansi-bg-7 { background-color: #e5e5e5; }
+      .output-block .ansi-bg-8 { background-color: #666666; }
+      .output-block .ansi-bg-9 { background-color: #f14c4c; }
+      .output-block .ansi-bg-10 { background-color: #23d18b; }
+      .output-block .ansi-bg-11 { background-color: #f5f543; }
+      .output-block .ansi-bg-12 { background-color: #3b8eea; }
+      .output-block .ansi-bg-13 { background-color: #d670d6; }
+      .output-block .ansi-bg-14 { background-color: #29b8db; }
+      .output-block .ansi-bg-15 { background-color: #ffffff; }
+      .output-block .ansi-bold { font-weight: 700; }
+      .output-block .ansi-dim { opacity: 0.7; }
+      .output-block .ansi-italic { font-style: italic; }
+      .output-block .ansi-underline { text-decoration: underline; }
+      .output-block .ansi-strikethrough { text-decoration: line-through; }
     </style>
   </head>
   <body>
