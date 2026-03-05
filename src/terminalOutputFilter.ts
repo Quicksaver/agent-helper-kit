@@ -10,7 +10,7 @@ export function stripTerminalControlSequences(output: string): string {
     const codePoint = output.charCodeAt(index);
 
     if (codePoint !== 0x1B && codePoint !== 0x9B) {
-      sanitized += output[index] ?? '';
+      sanitized += output[index];
       continue;
     }
 
@@ -55,6 +55,8 @@ export function stripTerminalControlSequences(output: string): string {
   }
 
   return sanitized
+    // Normalize standalone carriage returns (used by some terminals to redraw a line)
+    // into newlines, while preserving CRLF pairs by excluding '\r' followed by '\n'.
     .replace(/\r(?!\n)/g, '\n');
 }
 
