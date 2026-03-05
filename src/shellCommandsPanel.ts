@@ -510,7 +510,7 @@ function getWebviewHtml(
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${styleNonce}'; script-src 'nonce-${scriptNonce}';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${styleNonce}' 'unsafe-inline'; script-src 'nonce-${scriptNonce}';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style nonce="${styleNonce}">
       :root { color-scheme: light dark; }
@@ -543,17 +543,17 @@ function getWebviewHtml(
       .filter-input {
         min-width: 0;
         flex: 1 1 auto;
-        border: 1px solid var(--vscode-input-border);
-        background: var(--vscode-input-background);
-        color: var(--vscode-input-foreground);
-        padding: 2px 6px;
+        border: none;
+        background: transparent;
+        color: var(--vscode-foreground);
+        padding: 0;
       }
       .filter-input:focus {
-        outline: 1px solid var(--vscode-focusBorder);
+        outline: none;
       }
       .command-list {
         overflow: auto;
-        padding: 0;
+        padding: 6px;
         display: flex;
         flex-direction: column;
       }
@@ -630,7 +630,7 @@ function getWebviewHtml(
         padding: 8px;
         border: 1px solid var(--vscode-editorWidget-border);
         border-radius: 4px;
-        background: var(--vscode-textCodeBlock-background);
+        background: var(--vscode-editorWidget-background);
         white-space: pre-wrap;
         word-break: break-word;
       }
