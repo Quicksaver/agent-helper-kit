@@ -9,7 +9,7 @@ These are coding standards and guidelines that apply to all files in this projec
 **Acceptance criteria:**
 
 - Files formatted and saved (see **Format-on-save guard** below)
-- Lint (`yarn lint:check`)
+- Lint (`yarn lint:fix`)
 - All tests must pass - tool `runTests`, fix as necessary
 
 **Format-on-save guard:**
