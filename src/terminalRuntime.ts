@@ -1,4 +1,5 @@
 import * as childProcess from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import * as os from 'node:os';
 
 import {
@@ -20,7 +21,9 @@ import {
 const DEFAULT_OUTPUT_LIMIT = 60 * 1024;
 const DEFAULT_MEMORY_TO_FILE_DELAY_MS = 2 * 60 * 1000;
 const READS_SINCE_COMPLETION_FOR_SYNC_RECORD = 1;
-const TERMINAL_ID_PATTERN = /^custom-terminal-(\d+)$/;
+const TERMINAL_ID_PREFIX = 'custom-terminal-';
+const TERMINAL_ID_HEX_LENGTH = 8;
+const TERMINAL_ID_GENERATION_MAX_ATTEMPTS = 8;
 
 interface BackgroundProcessState {
   childProc?: childProcess.ChildProcessWithoutNullStreams;
@@ -93,7 +96,6 @@ interface TerminalRuntimeOptions {
 }
 
 export class TerminalRuntime {
-  private backgroundIdCounter = 0;
   private readonly backgroundProcesses = new Map<string, BackgroundProcessState>();
   private readonly commandChangeListeners = new Set<() => void>();
   private lastCommand: string | undefined;
@@ -151,7 +153,7 @@ export class TerminalRuntime {
   }
 
   createCompletedCommandRecord(command: string, result: RunCommandResult): string {
-    const id = `custom-terminal-${++this.backgroundIdCounter}`;
+    const id = this.createUniqueTerminalId();
     const startedAt = new Date().toISOString();
     const completedAt = new Date().toISOString();
 
@@ -336,7 +338,7 @@ export class TerminalRuntime {
     this.lastCommand = command;
 
     const shellInvocation = this.createShellInvocation(command);
-    const id = `custom-terminal-${++this.backgroundIdCounter}`;
+    const id = this.createUniqueTerminalId();
     const childProc = childProcess.spawn(
       shellInvocation.shell,
       [ ...shellInvocation.shellArgs, shellInvocation.command ],
@@ -457,6 +459,18 @@ export class TerminalRuntime {
     };
   }
 
+  private createUniqueTerminalId(): string {
+    for (let attempt = 0; attempt < TERMINAL_ID_GENERATION_MAX_ATTEMPTS; attempt += 1) {
+      const candidate = `${TERMINAL_ID_PREFIX}${randomBytes(TERMINAL_ID_HEX_LENGTH / 2).toString('hex')}`;
+
+      if (!this.backgroundProcesses.has(candidate)) {
+        return candidate;
+      }
+    }
+
+    return `${TERMINAL_ID_PREFIX}${globalThis.crypto.randomUUID().replaceAll('-', '').slice(0, TERMINAL_ID_HEX_LENGTH)}`;
+  }
+
   private emitCommandChange(): void {
     for (const listener of this.commandChangeListeners) {
       listener();
@@ -509,7 +523,6 @@ export class TerminalRuntime {
       };
 
       this.backgroundProcesses.set(id, state);
-      this.syncIdCounter(id);
     }
   }
 
@@ -560,22 +573,6 @@ export class TerminalRuntime {
       state.outputInFile = true;
       this.emitCommandChange();
     }, delay);
-  }
-
-  private syncIdCounter(id: string): void {
-    const match = TERMINAL_ID_PATTERN.exec(id);
-
-    if (!match) {
-      return;
-    }
-
-    const numericId = Number.parseInt(match[1], 10);
-
-    if (Number.isNaN(numericId)) {
-      return;
-    }
-
-    this.backgroundIdCounter = Math.max(this.backgroundIdCounter, numericId);
   }
 
   private toCommandListItem(id: string, state: BackgroundProcessState): TerminalCommandListItem {

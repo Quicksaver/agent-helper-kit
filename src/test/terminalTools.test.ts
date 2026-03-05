@@ -11,6 +11,8 @@ import {
 } from '@/terminalOutputStore';
 import { registerTerminalTools } from '@/terminalTools';
 
+const TERMINAL_ID_REGEX = /^custom-terminal-[a-f0-9]{8}$/;
+
 type FakeReadable = EventEmitter;
 
 interface FakeProcess extends EventEmitter {
@@ -276,7 +278,7 @@ describe('terminal tools', () => {
 
     const runPayload = getResultPayload(runResult);
     const terminalId = runPayload.id as string;
-    expect(terminalId).toContain('custom-terminal-');
+    expect(terminalId).toMatch(TERMINAL_ID_REGEX);
 
     fakeProcess.stdout.emit('data', 'hello\n');
 
@@ -477,7 +479,7 @@ describe('terminal tools', () => {
     const runPayload = getResultPayload(runResult);
     const terminalId = runPayload.id as string;
 
-    expect(terminalId).toContain('custom-terminal-');
+    expect(terminalId).toMatch(TERMINAL_ID_REGEX);
     expect(runPayload).toEqual({
       exitCode: 0,
       id: terminalId,
@@ -522,7 +524,7 @@ describe('terminal tools', () => {
 
     const fullOutputResult = await fullOutputPromise;
     const fullOutputPayload = getResultPayload(fullOutputResult);
-    expect(fullOutputPayload.id).toMatch(/^custom-terminal-/);
+    expect(fullOutputPayload.id).toMatch(TERMINAL_ID_REGEX);
     expect(fullOutputPayload.output).toBe('a\nb\nc\n');
 
     const lastLinesProcess = createFakeProcess();
@@ -544,7 +546,7 @@ describe('terminal tools', () => {
 
     const lastLinesResult = await lastLinesPromise;
     const lastLinesPayload = getResultPayload(lastLinesResult);
-    expect(lastLinesPayload.id).toMatch(/^custom-terminal-/);
+    expect(lastLinesPayload.id).toMatch(TERMINAL_ID_REGEX);
     expect(lastLinesPayload.output).toBe('b\nc\n');
 
     const regexProcess = createFakeProcess();
@@ -566,7 +568,7 @@ describe('terminal tools', () => {
 
     const regexResult = await regexPromise;
     const regexPayload = getResultPayload(regexResult);
-    expect(regexPayload.id).toMatch(/^custom-terminal-/);
+    expect(regexPayload.id).toMatch(TERMINAL_ID_REGEX);
     expect(regexPayload.output).toBe('b\nc\n');
 
     await expect(runTool.invoke({
