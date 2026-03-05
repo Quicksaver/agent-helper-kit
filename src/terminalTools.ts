@@ -86,7 +86,7 @@ function toYaml(payload: Record<string, unknown>): string {
 
 function buildYamlToolResult(payload: Record<string, unknown>): vscode.LanguageModelToolResult {
   return new vscode.LanguageModelToolResult([
-    new vscode.LanguageModelTextPart(toYaml(payload)),
+    vscode.LanguageModelDataPart.text(toYaml(payload), 'application/yaml'),
   ]);
 }
 
@@ -99,8 +99,8 @@ function buildSplitOutputToolResult(payload: Record<string, unknown> & {
   } = payload;
 
   return new vscode.LanguageModelToolResult([
-    new vscode.LanguageModelTextPart(toYaml(metadata)),
-    new vscode.LanguageModelTextPart(output),
+    vscode.LanguageModelDataPart.text(toYaml(metadata), 'application/yaml'),
+    vscode.LanguageModelDataPart.text(output, 'text/plain'),
   ]);
 }
 
