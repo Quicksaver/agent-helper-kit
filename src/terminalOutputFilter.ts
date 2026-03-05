@@ -3,21 +3,77 @@ export interface TerminalOutputFilterInput {
   regex?: string;
 }
 
+export function stripTerminalControlSequences(output: string): string {
+  let sanitized = '';
+
+  for (let index = 0; index < output.length; index += 1) {
+    const codePoint = output.charCodeAt(index);
+
+    if (codePoint !== 0x1B && codePoint !== 0x9B) {
+      sanitized += output[index] ?? '';
+      continue;
+    }
+
+    if (codePoint === 0x1B && output[index + 1] === ']') {
+      index += 2;
+
+      while (index < output.length) {
+        const oscCodePoint = output.charCodeAt(index);
+
+        if (oscCodePoint === 0x07) {
+          break;
+        }
+
+        if (oscCodePoint === 0x1B && output[index + 1] === '\\') {
+          index += 1;
+          break;
+        }
+
+        index += 1;
+      }
+
+      continue;
+    }
+
+    let sequenceIndex = index + 1;
+
+    if (codePoint === 0x1B && output[sequenceIndex] === '[') {
+      sequenceIndex += 1;
+    }
+
+    while (sequenceIndex < output.length) {
+      const sequenceCodePoint = output.charCodeAt(sequenceIndex);
+
+      if (sequenceCodePoint >= 0x40 && sequenceCodePoint <= 0x7E) {
+        break;
+      }
+
+      sequenceIndex += 1;
+    }
+
+    index = sequenceIndex;
+  }
+
+  return sanitized
+    .replace(/\r(?!\n)/g, '\n');
+}
+
 export function getFilteredOutput(input: TerminalOutputFilterInput, output: string): string {
   const hasLastLines = typeof input.last_lines === 'number';
   const hasRegex = typeof input.regex === 'string';
+  const sanitizedOutput = stripTerminalControlSequences(output);
 
   if (hasLastLines && hasRegex) {
     throw new Error('last_lines and regex are mutually exclusive');
   }
 
   if (!hasLastLines && !hasRegex) {
-    return output;
+    return sanitizedOutput;
   }
 
-  const lines = output.endsWith('\n')
-    ? output.slice(0, -1).split('\n')
-    : output.split('\n');
+  const lines = sanitizedOutput.endsWith('\n')
+    ? sanitizedOutput.slice(0, -1).split('\n')
+    : sanitizedOutput.split('\n');
 
   if (hasLastLines) {
     const count = Math.max(Math.floor(input.last_lines ?? 0), 0);

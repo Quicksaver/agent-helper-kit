@@ -2,7 +2,10 @@ import * as os from 'node:os';
 import * as vscode from 'vscode';
 
 import { registerShellCommandsPanel } from '@/shellCommandsPanel';
-import { getFilteredOutput } from '@/terminalOutputFilter';
+import {
+  getFilteredOutput,
+  stripTerminalControlSequences,
+} from '@/terminalOutputFilter';
 import { TerminalRuntime } from '@/terminalRuntime';
 import {
   type AwaitTerminalInput,
@@ -97,10 +100,11 @@ function buildSplitOutputToolResult(payload: Record<string, unknown> & {
     output,
     ...metadata
   } = payload;
+  const sanitizedOutput = stripTerminalControlSequences(output);
 
   return new vscode.LanguageModelToolResult([
     new vscode.LanguageModelTextPart(toYaml(metadata)),
-    new vscode.LanguageModelTextPart(output),
+    new vscode.LanguageModelTextPart(sanitizedOutput),
   ]);
 }
 

@@ -599,6 +599,79 @@ describe('terminal tools', () => {
     }, {})).rejects.toThrow('mutually exclusive');
   });
 
+  it('strips ANSI escape sequences from terminal output payloads', async () => {
+    registerTerminalTools();
+
+    const runSyncTool = getRegisteredTool('run_in_sync_terminal');
+    const runAsyncTool = getRegisteredTool('run_in_async_terminal');
+    const getOutputTool = getRegisteredTool('get_terminal_output_enhanced');
+    const awaitTool = getRegisteredTool('await_terminal_enhanced');
+    const ansiDecoratedOutput = '\u001B[1m\u001B[46m RUN \u001B[49m\u001B[22m \u001B[36mv4.0.18\u001B[39m\n';
+
+    const syncProcess = createFakeProcess();
+    spawn.mockReturnValueOnce(syncProcess);
+
+    const runSyncPromise = runSyncTool.invoke({
+      input: {
+        command: 'vitest run',
+        explanation: 'strip ansi codes from sync output',
+        full_output: true,
+        goal: 'improve readability',
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    syncProcess.stdout.emit('data', ansiDecoratedOutput);
+    syncProcess.emit('close', 0, null);
+
+    const runSyncResult = await runSyncPromise;
+    const runSyncPayload = getResultPayload(runSyncResult);
+    expect(runSyncPayload.output).toBe(' RUN  v4.0.18\n');
+
+    const syncTerminalId = runSyncPayload.id as string;
+    const getOutputResult = await getOutputTool.invoke({
+      input: {
+        full_output: true,
+        id: syncTerminalId,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const getOutputPayload = getResultPayload(getOutputResult);
+    expect(getOutputPayload.output).toBe(' RUN  v4.0.18\n');
+
+    const asyncProcess = createFakeProcess();
+    spawn.mockReturnValueOnce(asyncProcess);
+
+    const runAsyncResult = await runAsyncTool.invoke({
+      input: {
+        command: 'vitest run --watch=false',
+        explanation: 'strip ansi codes from async output',
+        goal: 'improve readability',
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const runAsyncPayload = getResultPayload(runAsyncResult);
+    const asyncTerminalId = runAsyncPayload.id as string;
+
+    asyncProcess.stdout.emit('data', ansiDecoratedOutput);
+    asyncProcess.emit('close', 0, null);
+
+    const awaitResult = await awaitTool.invoke({
+      input: {
+        id: asyncTerminalId,
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const awaitPayload = getResultPayload(awaitResult);
+    expect(awaitPayload.output).toBe(' RUN  v4.0.18\n');
+  });
+
   it('retains disk output when process closes with non-SIGINT signal', async () => {
     vi.useFakeTimers();
 
