@@ -90,3 +90,7 @@ yarn lint:check
 ## How an agent can test terminal tools integration (after install)
 
 See <docs/integration-checks.md>.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

@@ -4,12 +4,13 @@
   "description": "Personal VS Code extension",
   "version": "0.5.14",
   "publisher": "Quicksaver",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "private": true,
   "engines": {
     "vscode": "^1.109.0"
   },
   "categories": [
+    "Chat",
     "Other"
   ],
   "main": "./dist/extension.js",
