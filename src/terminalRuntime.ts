@@ -88,7 +88,6 @@ interface TerminalRuntimeOptions {
   getInitialForegroundCwd: () => string;
   memoryToFileDelayMs?: number;
   outputLimit?: number;
-  pwdMarker: string;
   shellEnv?: NodeJS.ProcessEnv;
   startupPurgeMaxAgeMs?: number;
 }
@@ -98,7 +97,6 @@ export class TerminalRuntime {
   private readonly backgroundProcesses = new Map<string, BackgroundProcessState>();
   private readonly commandChangeListeners = new Set<() => void>();
   private lastCommand: string | undefined;
-  private sharedForegroundCwd: string | undefined;
 
   constructor(private readonly options: TerminalRuntimeOptions) {
     initializeTerminalOutputStore(this.options.startupPurgeMaxAgeMs);
@@ -277,7 +275,7 @@ export class TerminalRuntime {
   async runForegroundCommand(input: RunForegroundCommandInput): Promise<RunCommandResult> {
     this.lastCommand = input.command;
 
-    const cwd = this.sharedForegroundCwd ?? this.options.getInitialForegroundCwd();
+    const cwd = this.options.getInitialForegroundCwd();
     const shellInvocation = this.createForegroundInvocation(input.command);
 
     const childProc = childProcess.spawn(
@@ -326,15 +324,9 @@ export class TerminalRuntime {
       clearTimeout(timeoutHandle);
     }
 
-    const parsedOutput = this.parseOutputAndPwd(output);
-
-    if (parsedOutput.resolvedCwd) {
-      this.sharedForegroundCwd = parsedOutput.resolvedCwd;
-    }
-
     return {
       exitCode: closeResult.code,
-      output: parsedOutput.outputWithoutMarker,
+      output,
       terminationSignal: closeResult.signal,
       timedOut,
     };
@@ -446,11 +438,7 @@ export class TerminalRuntime {
   }
 
   private createForegroundInvocation(command: string): ShellInvocation {
-    if (os.platform() === 'win32') {
-      return this.createShellInvocation(`${command}\r\necho ${this.options.pwdMarker}%CD%`);
-    }
-
-    return this.createShellInvocation(`${command}\nprintf "\\n${this.options.pwdMarker}%s\\n" "$PWD"`);
+    return this.createShellInvocation(command);
   }
 
   private createShellInvocation(command: string): ShellInvocation {
@@ -523,31 +511,6 @@ export class TerminalRuntime {
       this.backgroundProcesses.set(id, state);
       this.syncIdCounter(id);
     }
-  }
-
-  private parseOutputAndPwd(output: string): {
-    outputWithoutMarker: string;
-    resolvedCwd: string | undefined;
-  } {
-    const markerIndex = output.lastIndexOf(this.options.pwdMarker);
-
-    if (markerIndex === -1) {
-      return {
-        outputWithoutMarker: output,
-        resolvedCwd: undefined,
-      };
-    }
-
-    const before = output.slice(0, markerIndex);
-    const after = output.slice(markerIndex + this.options.pwdMarker.length);
-    const lineBreakIndex = after.indexOf('\n');
-    const cwdValue = lineBreakIndex === -1 ? after : after.slice(0, lineBreakIndex);
-    const rest = lineBreakIndex === -1 ? '' : after.slice(lineBreakIndex + 1);
-
-    return {
-      outputWithoutMarker: `${before}${rest}`,
-      resolvedCwd: cwdValue.trim() || undefined,
-    };
   }
 
   private persistCommandMetadata(id: string, state: BackgroundProcessState): void {

@@ -127,7 +127,6 @@ function getTerminalRuntime(): TerminalRuntime {
       getBackgroundCwd: () => getWorkspaceCwd(),
       getInitialForegroundCwd: () => getWorkspaceCwd(),
       memoryToFileDelayMs,
-      pwdMarker: '__CUSTOM_VSCODE_PWD__',
       startupPurgeMaxAgeMs,
     });
   }
