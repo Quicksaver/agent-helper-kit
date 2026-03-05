@@ -306,6 +306,7 @@ describe('terminal tools', () => {
     expect(outputPayload.exitCode).toBeNull();
     expect(outputPayload.isRunning).toBe(true);
     expect(outputPayload.output).toBe('hello\n');
+    expect(outputPayload.shell).toBe('/bin/zsh');
     expect(outputPayload).not.toHaveProperty('terminationSignal');
 
     const noNewOutputResult = await getOutputTool.invoke({
@@ -316,6 +317,7 @@ describe('terminal tools', () => {
     const noNewOutputPayload = getResultPayload(noNewOutputResult);
     expect(noNewOutputPayload.exitCode).toBeNull();
     expect(noNewOutputPayload.output).toBe('');
+    expect(noNewOutputPayload.shell).toBe('/bin/zsh');
     expect(noNewOutputPayload).not.toHaveProperty('terminationSignal');
 
     fakeProcess.stdout.emit('data', 'world\nmatch-line\n');
@@ -401,6 +403,7 @@ describe('terminal tools', () => {
     expect(firstCompletedReadPayload.exitCode).toBeNull();
     expect(firstCompletedReadPayload.isRunning).toBe(false);
     expect(firstCompletedReadPayload.output).toBe('');
+    expect(firstCompletedReadPayload.shell).toBe('/bin/zsh');
     expect(firstCompletedReadPayload.terminationSignal).toBe('SIGTERM');
 
     const secondCompletedRead = await getOutputTool.invoke({
@@ -411,6 +414,7 @@ describe('terminal tools', () => {
     const secondCompletedReadPayload = getResultPayload(secondCompletedRead);
     expect(secondCompletedReadPayload.exitCode).toBeNull();
     expect(secondCompletedReadPayload.output).toBe('hello\nworld\nmatch-line\nnomatch\nonly-match\n');
+    expect(secondCompletedReadPayload.shell).toBe('/bin/zsh');
     expect(secondCompletedReadPayload.terminationSignal).toBe('SIGTERM');
 
     const lastResult = await lastCommandTool.invoke({
@@ -498,6 +502,7 @@ describe('terminal tools', () => {
     expect(runPayload).toEqual({
       exitCode: 0,
       id: terminalId,
+      shell: '/bin/zsh',
     });
     expect(runPayload).not.toHaveProperty('output');
 
@@ -510,6 +515,7 @@ describe('terminal tools', () => {
     expect(outputPayload.isRunning).toBe(false);
     expect(outputPayload.output).toBe('hello\nworld\n');
     expect(outputPayload.exitCode).toBe(0);
+    expect(outputPayload.shell).toBe('/bin/zsh');
     expect(outputPayload).not.toHaveProperty('terminationSignal');
   });
 

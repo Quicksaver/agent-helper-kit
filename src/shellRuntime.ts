@@ -78,6 +78,7 @@ export interface RunForegroundCommandInput {
 export interface RunCommandResult {
   exitCode: null | number;
   output: string;
+  shell: string;
   terminationSignal: NodeJS.Signals | null;
   timedOut: boolean;
 }
@@ -142,6 +143,7 @@ export class TerminalRuntime {
     return {
       exitCode: state.completed ? state.exitCode : null,
       output: await this.getBackgroundOutput(resolvedId, state),
+      shell: state.shell,
       terminationSignal: state.completed ? state.signal : null,
       timedOut,
     };
@@ -185,7 +187,7 @@ export class TerminalRuntime {
       outputInFile: false,
       readsSinceCompletion: READS_SINCE_COMPLETION_FOR_SYNC_RECORD,
       resolveCompletion: () => undefined,
-      shell: this.resolveShellExecutable(shell),
+      shell: this.resolveShellExecutable(shell ?? result.shell),
       signal: result.terminationSignal,
       startedAt,
     };
@@ -267,6 +269,7 @@ export class TerminalRuntime {
     exitCode: null | number;
     isRunning: boolean;
     output: string;
+    shell: string;
     terminationSignal: NodeJS.Signals | null;
   }> {
     const {
@@ -295,6 +298,7 @@ export class TerminalRuntime {
       exitCode: state.completed ? state.exitCode : null,
       isRunning: !state.completed,
       output,
+      shell: state.shell,
       terminationSignal: state.completed ? state.signal : null,
     };
   }
@@ -354,6 +358,7 @@ export class TerminalRuntime {
     return {
       exitCode: closeResult.code,
       output,
+      shell: shellInvocation.shell,
       terminationSignal: closeResult.signal,
       timedOut,
     };

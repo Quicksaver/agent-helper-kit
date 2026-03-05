@@ -75,6 +75,7 @@ describe('TerminalRuntime terminal id generation', () => {
     const firstId = runtime.createCompletedCommandRecord('echo one', {
       exitCode: 0,
       output: 'one\n',
+      shell: '/bin/bash',
       terminationSignal: null,
       timedOut: false,
     });
@@ -82,6 +83,7 @@ describe('TerminalRuntime terminal id generation', () => {
     const secondId = runtime.createCompletedCommandRecord('echo two', {
       exitCode: 0,
       output: 'two\n',
+      shell: '/bin/bash',
       terminationSignal: null,
       timedOut: false,
     });
@@ -102,6 +104,7 @@ describe('TerminalRuntime terminal id generation', () => {
     const firstId = runtime.createCompletedCommandRecord('echo one', {
       exitCode: 0,
       output: 'one\n',
+      shell: '/bin/bash',
       terminationSignal: null,
       timedOut: false,
     });
@@ -124,6 +127,7 @@ describe('TerminalRuntime terminal id generation', () => {
     const secondId = runtime.createCompletedCommandRecord('echo two', {
       exitCode: 0,
       output: 'two\n',
+      shell: '/bin/bash',
       terminationSignal: null,
       timedOut: false,
     });
@@ -143,6 +147,7 @@ describe('TerminalRuntime terminal id generation', () => {
     runtime.createCompletedCommandRecord('echo one', {
       exitCode: 0,
       output: 'one\n',
+      shell: '/bin/bash',
       terminationSignal: null,
       timedOut: false,
     });
@@ -157,6 +162,7 @@ describe('TerminalRuntime terminal id generation', () => {
     const secondId = runtime.createCompletedCommandRecord('echo two', {
       exitCode: 0,
       output: 'two\n',
+      shell: '/bin/bash',
       terminationSignal: null,
       timedOut: false,
     });

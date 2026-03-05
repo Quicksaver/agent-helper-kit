@@ -211,16 +211,17 @@ const customRunInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = 
     const input = validateRunInSyncShellInput(options.input);
     const shouldReturnOutput = hasRunOutputOverrides(input);
     const terminalRuntimeInstance = getTerminalRuntime();
+    const resolvedShell = getRequestedOrDefaultShell(input.shell);
 
     const result = await terminalRuntimeInstance.runForegroundCommand({
       command: input.command,
-      shell: getRequestedOrDefaultShell(input.shell),
+      shell: resolvedShell,
       timeout: input.timeout,
     });
     const id = terminalRuntimeInstance.createCompletedCommandRecord(
       input.command,
       result,
-      getRequestedOrDefaultShell(input.shell),
+      resolvedShell,
     );
     const publicId = toPublicCommandId(id);
 
@@ -228,6 +229,7 @@ const customRunInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = 
       return buildYamlToolResult(addOptionalCompletionMetadata({
         exitCode: result.exitCode,
         id: publicId,
+        shell: result.shell,
       }, {
         terminationSignal: result.terminationSignal,
         timedOut: result.timedOut,
@@ -248,6 +250,7 @@ const customRunInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = 
       exitCode: result.exitCode,
       id: publicId,
       output,
+      shell: result.shell,
     }, {
       terminationSignal: result.terminationSignal,
       timedOut: result.timedOut,
@@ -279,6 +282,7 @@ const customAwaitShellTool: vscode.LanguageModelTool<AwaitShellInput> = {
     return buildSplitOutputToolResult(addOptionalCompletionMetadata({
       exitCode: result.exitCode,
       output: result.output,
+      shell: result.shell,
     }, {
       terminationSignal: result.terminationSignal,
       timedOut: result.timedOut,
@@ -305,6 +309,7 @@ const customGetShellOutputTool: vscode.LanguageModelTool<GetShellOutputInput> = 
       exitCode: result.exitCode,
       isRunning: result.isRunning,
       output: result.output,
+      shell: result.shell,
     }, {
       terminationSignal: result.terminationSignal,
     }) as Record<string, unknown> & {
