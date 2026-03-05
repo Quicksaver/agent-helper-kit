@@ -170,6 +170,7 @@ export interface RunInAsyncShellInput {
   command: string;
   explanation: string;
   goal: string;
+  shell?: string;
   timeout: number;
 }
 
@@ -180,6 +181,7 @@ export interface RunInSyncShellInput {
   goal: string;
   last_lines?: number;
   regex?: string;
+  shell?: string;
   timeout: number;
 }
 
@@ -207,6 +209,7 @@ export const runInAsyncShellInputSchema = {
   command: z.string(),
   explanation: z.string(),
   goal: z.string(),
+  shell: z.string().optional(),
   timeout: z.number(),
 } satisfies z.ZodRawShape;
 
@@ -217,6 +220,7 @@ export const runInSyncShellInputSchema = {
   goal: z.string(),
   last_lines: z.number().int().nonnegative().optional(),
   regex: z.string().optional(),
+  shell: z.string().optional(),
   timeout: z.number(),
 } satisfies z.ZodRawShape;
 

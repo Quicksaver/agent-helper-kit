@@ -1,6 +1,7 @@
 import * as childProcess from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import * as os from 'node:os';
+import * as path from 'node:path';
 
 import {
   getFilteredOutput,
@@ -68,6 +69,7 @@ export interface TerminalCommandDetails extends TerminalCommandListItem {
 
 export interface RunForegroundCommandInput {
   command: string;
+  shell?: string;
   timeout: number;
 }
 
@@ -298,7 +300,7 @@ export class TerminalRuntime {
     this.lastCommand = input.command;
 
     const cwd = this.options.getInitialForegroundCwd();
-    const shellInvocation = this.createForegroundInvocation(input.command);
+    const shellInvocation = this.createForegroundInvocation(input.command, input.shell);
 
     const childProc = childProcess.spawn(
       shellInvocation.shell,
@@ -354,10 +356,10 @@ export class TerminalRuntime {
     };
   }
 
-  startBackgroundCommand(command: string): string {
+  startBackgroundCommand(command: string, shell?: string): string {
     this.lastCommand = command;
 
-    const shellInvocation = this.createShellInvocation(command);
+    const shellInvocation = this.createShellInvocation(command, shell);
     const id = this.createUniqueTerminalId();
     const childProc = childProcess.spawn(
       shellInvocation.shell,
@@ -451,34 +453,59 @@ export class TerminalRuntime {
   }
 
   private buildShellEnv(): NodeJS.ProcessEnv {
-    const source = this.options.shellEnv ?? globalThis.process.env;
-
-    return {
-      ...source,
-      CLICOLOR_FORCE: source.CLICOLOR_FORCE ?? '1',
-      FORCE_COLOR: source.FORCE_COLOR ?? '1',
-      TERM: source.TERM ?? 'xterm-256color',
-    };
+    return this.options.shellEnv ?? globalThis.process.env;
   }
 
-  private createForegroundInvocation(command: string): ShellInvocation {
-    return this.createShellInvocation(command);
+  private createForegroundInvocation(command: string, shell?: string): ShellInvocation {
+    return this.createShellInvocation(command, shell);
   }
 
-  private createShellInvocation(command: string): ShellInvocation {
-    if (os.platform() === 'win32') {
+  private createPosixShellInvocation(command: string, shell: string): ShellInvocation {
+    const shellName = this.getShellCommandName(shell);
+
+    if (
+      shellName === 'bash'
+      || shellName === 'fish'
+      || shellName === 'ksh'
+      || shellName === 'mksh'
+      || shellName === 'zsh'
+    ) {
       return {
         command,
-        shell: globalThis.process.env.ComSpec ?? 'cmd.exe',
-        shellArgs: [ '/d', '/s', '/c' ],
+        shell,
+        shellArgs: [ '-ic' ],
       };
     }
 
     return {
       command,
-      shell: globalThis.process.env.SHELL ?? '/bin/bash',
+      shell,
       shellArgs: [ '-lc' ],
     };
+  }
+
+  private createShellInvocation(command: string, preferredShell?: string): ShellInvocation {
+    const shell = this.resolveShellExecutable(preferredShell);
+
+    if (os.platform() === 'win32') {
+      const shellName = this.getShellCommandName(shell);
+
+      if (shellName === 'powershell' || shellName === 'pwsh') {
+        return {
+          command,
+          shell,
+          shellArgs: [ '-NoLogo', '-Command' ],
+        };
+      }
+
+      return {
+        command,
+        shell,
+        shellArgs: [ '/d', '/s', '/c' ],
+      };
+    }
+
+    return this.createPosixShellInvocation(command, shell);
   }
 
   private createUniqueTerminalId(): string {
@@ -540,6 +567,10 @@ export class TerminalRuntime {
     }
 
     throw new Error(`Unknown shell command id: ${id}`);
+  }
+
+  private getShellCommandName(shell: string): string {
+    return path.basename(shell).toLowerCase().replace(/\.(bat|cmd|exe)$/u, '');
   }
 
   private hydrateFromPersistedOutput(): void {
@@ -607,6 +638,18 @@ export class TerminalRuntime {
       clearTimeout(state.memoryToFileTimer);
       state.memoryToFileTimer = undefined;
     }
+  }
+
+  private resolveShellExecutable(preferredShell?: string): string {
+    if (typeof preferredShell === 'string' && preferredShell.trim().length > 0) {
+      return preferredShell.trim();
+    }
+
+    if (os.platform() === 'win32') {
+      return globalThis.process.env.ComSpec ?? 'cmd.exe';
+    }
+
+    return globalThis.process.env.SHELL ?? '/bin/bash';
   }
 
   private scheduleMemoryToFileSpill(id: string, state: BackgroundProcessState): void {

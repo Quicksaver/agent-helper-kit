@@ -163,12 +163,29 @@ function hasRunOutputOverrides(input: {
     || typeof input.regex === 'string';
 }
 
+function getRequestedOrDefaultShell(inputShell?: string): string | undefined {
+  if (typeof inputShell === 'string' && inputShell.trim().length > 0) {
+    return inputShell.trim();
+  }
+
+  const vscodeDefaultShell = vscode.env.shell;
+
+  if (typeof vscodeDefaultShell === 'string' && vscodeDefaultShell.trim().length > 0) {
+    return vscodeDefaultShell.trim();
+  }
+
+  return undefined;
+}
+
 const customRunInAsyncShellTool: vscode.LanguageModelTool<RunInAsyncShellInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<RunInAsyncShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
     const input = validateRunInAsyncShellInput(options.input);
-    const id = getTerminalRuntime().startBackgroundCommand(input.command);
+    const id = getTerminalRuntime().startBackgroundCommand(
+      input.command,
+      getRequestedOrDefaultShell(input.shell),
+    );
 
     return buildYamlToolResult({ id: toPublicCommandId(id) });
   },
@@ -197,6 +214,7 @@ const customRunInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = 
 
     const result = await terminalRuntimeInstance.runForegroundCommand({
       command: input.command,
+      shell: getRequestedOrDefaultShell(input.shell),
       timeout: input.timeout,
     });
     const id = terminalRuntimeInstance.createCompletedCommandRecord(input.command, result);

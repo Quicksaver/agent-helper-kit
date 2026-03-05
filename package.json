@@ -180,6 +180,10 @@
               "type": "string",
               "description": "Short purpose of the command."
             },
+            "shell": {
+              "type": "string",
+              "description": "Optional shell executable path or name. Uses VS Code/default shell when omitted (preferred)."
+            },
             "full_output": {
               "type": "boolean",
               "description": "When true, include output from the beginning in this tool response."
@@ -254,6 +258,10 @@
             "goal": {
               "type": "string",
               "description": "Short purpose of the command."
+            },
+            "shell": {
+              "type": "string",
+              "description": "Optional shell executable path or name. Uses VS Code/default shell when omitted (preferred)."
             },
             "timeout": {
               "type": "number",

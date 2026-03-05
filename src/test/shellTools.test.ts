@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 
 import {
   afterEach, beforeEach, describe, expect, it, vi,
@@ -13,6 +14,34 @@ import { SHELL_COMMAND_ID_PREFIX } from '@/shellRuntime';
 import { registerShellTools } from '@/shellTools';
 
 const TERMINAL_ID_REGEX = /^[a-f0-9]{8}$/;
+
+function expectedShellArgs(shell: string): string[] {
+  const normalizedShellName = shell
+    .split(/[\\/]/u)
+    .at(-1)
+    ?.toLowerCase()
+    .replace(/\.(bat|cmd|exe)$/u, '') ?? shell;
+
+  if (os.platform() === 'win32') {
+    if (normalizedShellName === 'powershell' || normalizedShellName === 'pwsh') {
+      return [ '-NoLogo', '-Command' ];
+    }
+
+    return [ '/d', '/s', '/c' ];
+  }
+
+  if (
+    normalizedShellName === 'bash'
+    || normalizedShellName === 'fish'
+    || normalizedShellName === 'ksh'
+    || normalizedShellName === 'mksh'
+    || normalizedShellName === 'zsh'
+  ) {
+    return [ '-ic' ];
+  }
+
+  return [ '-lc' ];
+}
 
 type FakeReadable = EventEmitter;
 
@@ -89,6 +118,9 @@ const vscode = vi.hoisted(() => {
           }
         },
       })),
+    },
+    env: {
+      shell: '/bin/zsh',
     },
     EventEmitter: TestEventEmitter,
     LanguageModelTextPart,
@@ -597,6 +629,69 @@ describe('terminal tools', () => {
       },
       toolInvocationToken: undefined,
     }, {})).rejects.toThrow('mutually exclusive');
+  });
+
+  it('uses provided shell when shell input is set', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_async_shell');
+    const selectedShell = os.platform() === 'win32' ? 'pwsh.exe' : '/bin/bash';
+
+    const runResult = await runTool.invoke({
+      input: {
+        command: 'echo with shell',
+        explanation: 'verify selected shell is used',
+        goal: 'shell selection',
+        shell: selectedShell,
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const runPayload = getResultPayload(runResult);
+    expect(runPayload.id).toMatch(TERMINAL_ID_REGEX);
+    expect(spawn).toHaveBeenCalledWith(
+      selectedShell,
+      [ ...expectedShellArgs(selectedShell), 'echo with shell' ],
+      expect.objectContaining({
+        cwd: '/workspace',
+      }),
+    );
+  });
+
+  it('uses vscode default shell when shell input is omitted', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_sync_shell');
+    const defaultShell = os.platform() === 'win32' ? 'pwsh.exe' : '/bin/zsh';
+    vscode.env.shell = defaultShell;
+
+    const runPromise = runTool.invoke({
+      input: {
+        command: 'echo default shell',
+        explanation: 'verify vscode default shell fallback',
+        goal: 'default shell selection',
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    expect(spawn).toHaveBeenCalledWith(
+      defaultShell,
+      [ ...expectedShellArgs(defaultShell), 'echo default shell' ],
+      expect.objectContaining({
+        cwd: '/workspace',
+      }),
+    );
+
+    fakeProcess.emit('close', 0, null);
+    await runPromise;
   });
 
   it('strips ANSI escape sequences from terminal output payloads', async () => {
