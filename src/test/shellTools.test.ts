@@ -112,6 +112,7 @@ const vscode = vi.hoisted(() => {
         dispose: vi.fn(),
         onDidChangeSelection: vi.fn(() => ({ dispose: vi.fn() })),
       })),
+      registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
     },
     workspace: {
       getConfiguration: vi.fn(() => ({
