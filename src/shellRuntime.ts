@@ -455,6 +455,8 @@ export class TerminalRuntime {
 
     return {
       ...source,
+      CLICOLOR_FORCE: source.CLICOLOR_FORCE ?? '1',
+      FORCE_COLOR: source.FORCE_COLOR ?? '1',
       TERM: source.TERM ?? 'xterm-256color',
     };
   }

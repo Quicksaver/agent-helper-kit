@@ -474,7 +474,7 @@ function getWebviewHtml(
     const commandIdSuffix = getCommandIdSuffix(command.id);
     const selectedClass = command.id === selectedCommandId ? 'selected' : '';
     const rowAction = command.isRunning ? 'kill' : 'delete';
-    const rowActionIcon = command.isRunning ? '✕' : '🗑';
+    const rowActionIcon = '✕';
     const rowActionTitle = command.isRunning ? 'Kill' : 'Delete';
     const tooltip = buildCommandTooltip(command);
 
@@ -483,6 +483,8 @@ function getWebviewHtml(
         class="command-item ${selectedClass}"
         data-action="select"
         data-id="${escapeHtml(command.id)}"
+        data-filter-command="${escapeHtml(command.command.toLowerCase())}"
+        data-filter-id="${escapeHtml(command.id.toLowerCase())}"
         title="${escapeHtml(tooltip)}"
         role="button"
         tabindex="0"
@@ -521,7 +523,7 @@ function getWebviewHtml(
       }
       .layout {
         display: grid;
-        grid-template-columns: var(--sidebar-width, 340px) 4px minmax(0, 1fr);
+        grid-template-columns: var(--sidebar-width, 340px) 1px minmax(0, 1fr);
         height: 100%;
       }
       .sidebar {
@@ -534,8 +536,20 @@ function getWebviewHtml(
         display: flex;
         justify-content: flex-end;
         align-items: center;
+        gap: 6px;
         min-height: 26px;
         padding: 4px 6px;
+      }
+      .filter-input {
+        min-width: 0;
+        flex: 1 1 auto;
+        border: 1px solid var(--vscode-input-border);
+        background: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        padding: 2px 6px;
+      }
+      .filter-input:focus {
+        outline: 1px solid var(--vscode-focusBorder);
       }
       .command-list {
         overflow: auto;
@@ -548,7 +562,7 @@ function getWebviewHtml(
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 2px 8px;
+        padding: 1px 8px;
         cursor: pointer;
       }
       .command-item:hover { background: var(--vscode-list-hoverBackground); }
@@ -581,16 +595,29 @@ function getWebviewHtml(
       .icon-action {
         border: none;
         background: transparent;
-        color: inherit;
+        color: var(--vscode-descriptionForeground);
         cursor: pointer;
         padding: 0 4px;
         font-size: 13px;
         line-height: 1;
+        opacity: 0.9;
       }
-      .icon-action:hover { color: var(--vscode-terminal-ansiRed); }
+      .icon-action:hover {
+        color: var(--vscode-foreground);
+        opacity: 1;
+      }
       .resizer {
         cursor: col-resize;
         background: var(--vscode-editorWidget-border);
+        position: relative;
+      }
+      .resizer::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: -3px;
+        bottom: 0;
+        left: -3px;
       }
       .main-pane {
         min-height: 0;
@@ -601,9 +628,9 @@ function getWebviewHtml(
       .command-block {
         margin: 0 0 10px;
         padding: 8px;
-        border: none;
+        border: 1px solid var(--vscode-editorWidget-border);
         border-radius: 4px;
-        background: var(--vscode-editorGroupHeader-tabsBackground);
+        background: var(--vscode-textCodeBlock-background);
         white-space: pre-wrap;
         word-break: break-word;
       }
@@ -619,7 +646,15 @@ function getWebviewHtml(
     <div class="layout" id="layout">
       <aside class="sidebar">
         <div class="sidebar-toolbar">
-          <button class="icon-action" data-action="clear" title="Clear Finished" aria-label="Clear Finished">🗑</button>
+          <input
+            id="command-filter"
+            class="filter-input"
+            type="text"
+            placeholder="Filter"
+            aria-label="Filter commands"
+            autocomplete="off"
+          />
+          <button class="icon-action" data-action="clear" title="Clear Finished" aria-label="Clear Finished">✕</button>
         </div>
         <div class="command-list">${commandItems}</div>
       </aside>
@@ -631,10 +666,72 @@ function getWebviewHtml(
       const root = document.documentElement;
       const layout = document.getElementById('layout');
       const resizer = document.getElementById('resizer');
+      const filterInput = document.getElementById('command-filter');
       const previousState = vscodeApi.getState() || {};
 
       if (typeof previousState.sidebarWidth === 'number') {
         root.style.setProperty('--sidebar-width', String(previousState.sidebarWidth) + 'px');
+      }
+
+      const normalizeFilterValue = value => value.trim().toLowerCase();
+
+      const applyFilter = value => {
+        const normalized = normalizeFilterValue(value);
+        const rows = document.querySelectorAll('.command-item');
+
+        for (const row of rows) {
+          if (!(row instanceof HTMLElement)) {
+            continue;
+          }
+
+          if (normalized.length < 1) {
+            row.style.display = '';
+            continue;
+          }
+
+          const commandText = row.getAttribute('data-filter-command') ?? '';
+          const idText = row.getAttribute('data-filter-id') ?? '';
+          const matches = commandText.includes(normalized) || idText.includes(normalized);
+
+          row.style.display = matches ? '' : 'none';
+        }
+      };
+
+      if (filterInput instanceof HTMLInputElement) {
+        const initialFilter = typeof previousState.filterText === 'string' ? previousState.filterText : '';
+        filterInput.value = initialFilter;
+        applyFilter(initialFilter);
+
+        filterInput.addEventListener('input', () => {
+          const filterText = filterInput.value;
+
+          applyFilter(filterText);
+          vscodeApi.setState({
+            ...previousState,
+            filterText,
+            sidebarWidth: Number.parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width'), 10),
+          });
+        });
+
+        filterInput.addEventListener('keydown', event => {
+          if (event.key !== 'Escape') {
+            return;
+          }
+
+          event.preventDefault();
+
+          if (filterInput.value.length === 0) {
+            return;
+          }
+
+          filterInput.value = '';
+          applyFilter('');
+          vscodeApi.setState({
+            ...previousState,
+            filterText: '',
+            sidebarWidth: Number.parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width'), 10),
+          });
+        });
       }
 
       let isResizing = false;
@@ -654,7 +751,11 @@ function getWebviewHtml(
         const width = Number.parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width'), 10);
 
         if (Number.isFinite(width)) {
-          vscodeApi.setState({ sidebarWidth: width });
+          vscodeApi.setState({
+            ...previousState,
+            filterText: filterInput instanceof HTMLInputElement ? filterInput.value : '',
+            sidebarWidth: width,
+          });
         }
       });
 
