@@ -69,12 +69,6 @@ export interface TerminalCommandDetails extends TerminalCommandListItem {
   output: string;
 }
 
-export interface RunForegroundCommandInput {
-  command: string;
-  shell?: string;
-  timeout: number;
-}
-
 export interface RunCommandResult {
   exitCode: null | number;
   output: string;
@@ -100,8 +94,6 @@ export interface ReadBackgroundOutputInput extends TerminalOutputFilterInput {
 }
 
 interface TerminalRuntimeOptions {
-  getBackgroundCwd: () => string;
-  getInitialForegroundCwd: () => string;
   memoryToFileDelayMs?: number;
   outputLimit?: number;
   shellEnv?: NodeJS.ProcessEnv;
@@ -303,77 +295,19 @@ export class TerminalRuntime {
     };
   }
 
-  async runForegroundCommand(input: RunForegroundCommandInput): Promise<RunCommandResult> {
-    this.lastCommand = input.command;
-
-    const cwd = this.options.getInitialForegroundCwd();
-    const shellInvocation = this.createForegroundInvocation(input.command, input.shell);
-
-    const childProc = childProcess.spawn(
-      shellInvocation.shell,
-      [ ...shellInvocation.shellArgs, shellInvocation.command ],
-      {
-        cwd,
-        env: this.buildShellEnv(),
-      },
-    );
-
-    let output = '';
-    let timedOut = false;
-    let timeoutHandle: NodeJS.Timeout | undefined;
-
-    childProc.stdout.on('data', (data: unknown) => {
-      const chunk = String(data);
-      output = this.appendOutput(output, chunk);
-    });
-
-    childProc.stderr.on('data', (data: unknown) => {
-      const chunk = String(data);
-      output = this.appendOutput(output, chunk);
-    });
-
-    if (input.timeout > 0) {
-      timeoutHandle = setTimeout(() => {
-        timedOut = true;
-        childProc.kill('SIGTERM');
-      }, input.timeout);
-    }
-
-    const closeResult = await new Promise<{
-      code: null | number;
-      signal: NodeJS.Signals | null;
-    }>(resolve => {
-      childProc.on('close', (code: null | number, signal: NodeJS.Signals | null) => {
-        resolve({
-          code,
-          signal,
-        });
-      });
-    });
-
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-    }
-
-    return {
-      exitCode: closeResult.code,
-      output,
-      shell: shellInvocation.shell,
-      terminationSignal: closeResult.signal,
-      timedOut,
-    };
-  }
-
-  startBackgroundCommand(command: string, shell?: string): string {
+  startBackgroundCommand(command: string, shell?: string, cwd?: string): string {
     this.lastCommand = command;
 
     const shellInvocation = this.createShellInvocation(command, shell);
     const id = this.createUniqueTerminalId();
+    const commandCwd = typeof cwd === 'string' && cwd.trim().length > 0
+      ? cwd
+      : os.homedir();
     const childProc = childProcess.spawn(
       shellInvocation.shell,
       [ ...shellInvocation.shellArgs, shellInvocation.command ],
       {
-        cwd: this.options.getBackgroundCwd(),
+        cwd: commandCwd,
         env: this.buildShellEnv(),
       },
     );
@@ -469,10 +403,6 @@ export class TerminalRuntime {
       TERM: source.TERM ?? 'xterm-256color',
       ...source,
     };
-  }
-
-  private createForegroundInvocation(command: string, shell?: string): ShellInvocation {
-    return this.createShellInvocation(command, shell);
   }
 
   private createPosixShellInvocation(command: string, shell: string): ShellInvocation {

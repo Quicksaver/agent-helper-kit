@@ -1,7 +1,3 @@
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
-
 import {
   afterEach,
   describe,
@@ -10,56 +6,9 @@ import {
   vi,
 } from 'vitest';
 
-import { stripTerminalControlSequences } from '@/shellOutputFilter';
 import { TerminalRuntime } from '@/shellRuntime';
 
 const TERMINAL_ID_REGEX = /^custom-shell-[a-f0-9]{8}$/;
-
-function normalizePath(value: string): string {
-  const sanitizedValue = stripTerminalControlSequences(value).trim();
-
-  return fs.realpathSync.native(sanitizedValue).replaceAll('\\', '/');
-}
-
-describe('TerminalRuntime foreground cwd behavior', () => {
-  const tempDirectories: string[] = [];
-
-  afterEach(() => {
-    for (const tempDirectory of tempDirectories.splice(0)) {
-      fs.rmSync(tempDirectory, { force: true, recursive: true });
-    }
-  });
-
-  it('starts each foreground command from initial cwd', async () => {
-    const rootDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'custom-vscode-runtime-'));
-    tempDirectories.push(rootDirectory);
-
-    const childDirectory = path.join(rootDirectory, 'child');
-    fs.mkdirSync(childDirectory);
-
-    const runtime = new TerminalRuntime({
-      getBackgroundCwd: () => rootDirectory,
-      getInitialForegroundCwd: () => rootDirectory,
-    });
-
-    await runtime.runForegroundCommand({
-      command: `cd "${childDirectory}"`,
-      timeout: 0,
-    });
-
-    const cwdResult = await runtime.runForegroundCommand({
-      command: os.platform() === 'win32' ? 'cd' : 'pwd',
-      timeout: 0,
-    });
-
-    const reportedCwd = cwdResult.output
-      .trim()
-      .split(/\r?\n/)
-      .at(-1) ?? '';
-
-    expect(normalizePath(reportedCwd)).toBe(normalizePath(rootDirectory));
-  });
-});
 
 describe('TerminalRuntime terminal id generation', () => {
   afterEach(() => {
@@ -67,10 +16,7 @@ describe('TerminalRuntime terminal id generation', () => {
   });
 
   it('creates non-sequential 8-char hexadecimal ids', () => {
-    const runtime = new TerminalRuntime({
-      getBackgroundCwd: () => '/',
-      getInitialForegroundCwd: () => '/',
-    });
+    const runtime = new TerminalRuntime({});
 
     const firstId = runtime.createCompletedCommandRecord('echo one', {
       exitCode: 0,
@@ -94,10 +40,7 @@ describe('TerminalRuntime terminal id generation', () => {
   });
 
   it('retries when random id candidate collides', () => {
-    const runtime = new TerminalRuntime({
-      getBackgroundCwd: () => '/',
-      getInitialForegroundCwd: () => '/',
-    });
+    const runtime = new TerminalRuntime({});
 
     const randomUuidSpy = vi.spyOn(globalThis.crypto, 'randomUUID');
 
@@ -139,10 +82,7 @@ describe('TerminalRuntime terminal id generation', () => {
   });
 
   it('falls back to UUID-based id after exhausting collision retries', () => {
-    const runtime = new TerminalRuntime({
-      getBackgroundCwd: () => '/',
-      getInitialForegroundCwd: () => '/',
-    });
+    const runtime = new TerminalRuntime({});
 
     runtime.createCompletedCommandRecord('echo one', {
       exitCode: 0,

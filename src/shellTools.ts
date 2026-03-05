@@ -143,8 +143,6 @@ function getTerminalRuntime(): TerminalRuntime {
     } = getTerminalOutputSettings();
 
     terminalRuntime = new TerminalRuntime({
-      getBackgroundCwd: () => getWorkspaceCwd(),
-      getInitialForegroundCwd: () => getWorkspaceCwd(),
       memoryToFileDelayMs,
       startupPurgeMaxAgeMs,
     });
@@ -187,6 +185,7 @@ const customRunInAsyncShellTool: vscode.LanguageModelTool<RunInAsyncShellInput> 
     const id = getTerminalRuntime().startBackgroundCommand(
       input.command,
       getRequestedOrDefaultShell(input.shell),
+      getWorkspaceCwd(),
     );
 
     return buildYamlToolResult({ id: toPublicCommandId(id) });
@@ -215,16 +214,29 @@ const customRunInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = 
     const terminalRuntimeInstance = getTerminalRuntime();
     const resolvedShell = getRequestedOrDefaultShell(input.shell);
 
-    const result = await terminalRuntimeInstance.runForegroundCommand({
-      command: input.command,
-      shell: resolvedShell,
+    const id = terminalRuntimeInstance.startBackgroundCommand(
+      input.command,
+      resolvedShell,
+      getWorkspaceCwd(),
+    );
+    let result = await terminalRuntimeInstance.awaitBackgroundCommand({
+      id,
       timeout: input.timeout,
     });
-    const id = terminalRuntimeInstance.createCompletedCommandRecord(
-      input.command,
-      result,
-      resolvedShell,
-    );
+
+    if (result.timedOut) {
+      terminalRuntimeInstance.killBackgroundCommand(id);
+      const completedResult = await terminalRuntimeInstance.awaitBackgroundCommand({
+        id,
+        timeout: 0,
+      });
+
+      result = {
+        ...completedResult,
+        timedOut: true,
+      };
+    }
+
     const publicId = toPublicCommandId(id);
 
     if (!shouldReturnOutput) {
