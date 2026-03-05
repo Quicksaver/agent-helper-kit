@@ -72,13 +72,6 @@ const vscode = vi.hoisted(() => {
     this.value = value;
   }
 
-  function LanguageModelDataPart(this: { mimeType: string; value: string }, value: string, mimeType: string) {
-    this.value = value;
-    this.mimeType = mimeType;
-  }
-
-  LanguageModelDataPart.text = (value: string, mimeType?: string) => new (LanguageModelDataPart as unknown as new (value: string, mimeType: string) => { mimeType: string; value: string })(value, mimeType ?? 'text/plain');
-
   function LanguageModelToolResult(this: { content: unknown[] }, content: unknown[]) {
     this.content = content;
   }
@@ -97,7 +90,6 @@ const vscode = vi.hoisted(() => {
       })),
     },
     EventEmitter: TestEventEmitter,
-    LanguageModelDataPart,
     LanguageModelTextPart,
     LanguageModelToolResult,
     lm: {
