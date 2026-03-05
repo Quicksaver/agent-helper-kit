@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 
 import ansiRegex from 'ansi-regex';
 
+import { stripTerminalControlSequences } from '@/shellOutputFilter';
 import {
   type TerminalCommandDetails,
   type TerminalCommandListItem,
@@ -602,7 +603,11 @@ function getWebviewHtml(
       }
       .codicon {
         display: inline-block;
-        font: normal normal normal 16px/1 codicon;
+        font-family: var(--vscode-icon-font-family, codicon);
+        font-size: 16px;
+        font-style: normal;
+        font-weight: normal;
+        line-height: 1;
         text-rendering: auto;
         text-transform: none;
         letter-spacing: normal;
@@ -1113,37 +1118,24 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
   }
 
   private buildOutputReplayCommand(output: string, shellPath: string): string | undefined {
-    if (output.length === 0) {
+    const sanitizedOutput = stripTerminalControlSequences(output);
+
+    if (sanitizedOutput.length === 0) {
       return undefined;
     }
 
     const shellName = getShellLabel(shellPath);
+    const outputBase64 = Buffer.from(sanitizedOutput, 'utf8').toString('base64');
 
     if (shellName === 'powershell' || shellName === 'pwsh') {
-      const escapedOutput = output.replaceAll('`', '``').replaceAll('@\'', '@`\'');
-
-      return `$text = @'\n${escapedOutput}\n'@; Write-Output $text`;
+      return `[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${outputBase64}')) | Write-Output`;
     }
 
     if (shellName === 'cmd') {
-      const escapedOutput = output
-        .replaceAll('^', '^^')
-        .replaceAll('&', '^&')
-        .replaceAll('<', '^<')
-        .replaceAll('>', '^>')
-        .replaceAll('|', '^|')
-        .replaceAll('%', '%%')
-        .replaceAll('(', '^(')
-        .replaceAll(')', '^)')
-        .replaceAll('\r', '');
-      const lines = escapedOutput.split('\n').map(line => `echo(${line}`);
-
-      return lines.join(' & ');
+      return `powershell -NoLogo -NoProfile -Command "[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${outputBase64}')) | Write-Output"`;
     }
 
-    const delimiter = `__CUSTOM_VSCODE_OUTPUT_${randomBytes(6).toString('hex')}__`;
-
-    return `cat <<'${delimiter}'\n${output}\n${delimiter}`;
+    return `printf %s '${outputBase64}' | base64 --decode`;
   }
 
   private async handleMessage(message: WebviewMessage): Promise<void> {
@@ -1177,18 +1169,17 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
       });
 
       terminal.show(true);
+      await this.waitForTerminalReady(terminal);
+
+      const outputReplayCommand = this.buildOutputReplayCommand(details.output, details.shell);
+
+      if (outputReplayCommand) {
+        terminal.sendText(outputReplayCommand, true);
+      }
 
       setTimeout(() => {
-        const outputReplayCommand = this.buildOutputReplayCommand(details.output, details.shell);
-
-        if (outputReplayCommand) {
-          terminal.sendText(outputReplayCommand, true);
-        }
-
-        setTimeout(() => {
-          terminal.sendText(details.command, false);
-        }, 120);
-      }, 120);
+        terminal.sendText(details.command, false);
+      }, 150);
 
       return;
     }
@@ -1256,6 +1247,15 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     this.runningPoller = setInterval(() => {
       void this.refresh();
     }, RUNNING_POLL_MS);
+  }
+
+  private async waitForTerminalReady(terminal: vscode.Terminal): Promise<void> {
+    await Promise.race([
+      terminal.processId,
+      new Promise<undefined>(resolve => {
+        setTimeout(resolve, 2500, undefined);
+      }),
+    ]);
   }
 }
 
