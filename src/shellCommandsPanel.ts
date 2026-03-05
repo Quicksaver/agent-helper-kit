@@ -144,7 +144,8 @@ function getWebviewHtml(
   selectedCommandId: string | undefined,
   selectedDetails: TerminalCommandDetails | undefined,
 ): string {
-  const nonce = randomBytes(16).toString('hex');
+  const scriptNonce = randomBytes(16).toString('hex');
+  const styleNonce = randomBytes(16).toString('hex');
   const commandItems = commands.map(command => {
     const firstLine = command.command.split('\n')[0]?.trim() || '(empty command)';
     const selectedClass = command.id === selectedCommandId ? 'selected' : '';
@@ -171,9 +172,9 @@ function getWebviewHtml(
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${styleNonce}'; script-src 'nonce-${scriptNonce}';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <style>
+    <style nonce="${styleNonce}">
       :root { color-scheme: light dark; }
       html, body { height: 100%; margin: 0; padding: 0; }
       body {
@@ -369,7 +370,7 @@ function getWebviewHtml(
       </aside>
       <main class="details">${detailsMarkup}</main>
     </div>
-    <script nonce="${nonce}">
+    <script nonce="${scriptNonce}">
       const vscodeApi = acquireVsCodeApi();
       const clickable = document.querySelectorAll('[data-action]');
 
