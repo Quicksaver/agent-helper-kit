@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 
 import {
@@ -143,7 +144,7 @@ function getWebviewHtml(
   selectedCommandId: string | undefined,
   selectedDetails: TerminalCommandDetails | undefined,
 ): string {
-  const nonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const nonce = randomBytes(16).toString('hex');
   const commandItems = commands.map(command => {
     const firstLine = command.command.split('\n')[0]?.trim() || '(empty command)';
     const selectedClass = command.id === selectedCommandId ? 'selected' : '';
