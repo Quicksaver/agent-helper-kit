@@ -97,7 +97,7 @@
       "panel": [
         {
           "id": "custom-vscode-shellCommandsPanel",
-          "title": "Shell Commands",
+          "title": "Shell Runs",
           "icon": "$(terminal)",
           "when": "config.custom-vscode.shellTools.enabled"
         }
@@ -108,7 +108,7 @@
         {
           "id": "custom-vscode.shellCommandsView",
           "type": "webview",
-          "name": "Shell Commands",
+          "name": "Shell Runs",
           "icon": "$(terminal)",
           "when": "config.custom-vscode.shellTools.enabled"
         }

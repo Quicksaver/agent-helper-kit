@@ -553,7 +553,7 @@ function getWebviewHtml(
       }
       .command-list {
         overflow: auto;
-        padding: 6px;
+        padding: 0;
         display: flex;
         flex-direction: column;
       }
@@ -562,7 +562,7 @@ function getWebviewHtml(
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 1px 8px;
+        padding: 2px 8px;
         cursor: pointer;
       }
       .command-item:hover { background: var(--vscode-list-hoverBackground); }
@@ -621,24 +621,32 @@ function getWebviewHtml(
       }
       .main-pane {
         min-height: 0;
-        overflow: auto;
-        padding: 10px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
         background: var(--vscode-sideBar-background);
       }
       .command-block {
-        margin: 0 0 10px;
+        margin: 0;
         padding: 8px;
-        border: 1px solid var(--vscode-editorWidget-border);
-        border-radius: 4px;
         background: var(--vscode-editorWidget-background);
         white-space: pre-wrap;
         word-break: break-word;
+        max-height: 40%;
+        overflow: auto;
+        flex: 0 0 auto;
+        border-bottom: 1px solid var(--vscode-editorWidget-border);
       }
       .output-block {
+        padding: 8px;
         margin: 0;
         white-space: pre-wrap;
         word-break: break-word;
         font-family: var(--vscode-editor-font-family, var(--vscode-font-family));
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
       }
     </style>
   </head>
