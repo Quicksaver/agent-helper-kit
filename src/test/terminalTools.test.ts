@@ -147,7 +147,7 @@ function getRegisteredTool(name: string) {
   }
 
   return call[1] as {
-    invoke: (options: unknown, token: unknown) => Promise<{ content: [{ value: string }] }>;
+    invoke: (options: unknown, token: unknown) => Promise<{ content: { value: string }[] }>;
   };
 }
 
@@ -199,31 +199,18 @@ function parseYamlObject(raw: string): Record<string, unknown> {
   }, {});
 }
 
-function getResultPayload(result: { content: [{ value: string }] }): Record<string, unknown> {
-  const raw = result.content[0].value;
+function getResultPayload(result: { content: { value: string }[] }): Record<string, unknown> {
+  const metadataRaw = result.content[0]?.value ?? '';
+  const metadata = parseYamlObject(metadataRaw);
 
-  if (raw.startsWith('---\n')) {
-    const closingIndex = raw.indexOf('\n---\n', 4);
-
-    if (closingIndex < 0) {
-      throw new Error('Invalid frontmatter result format');
-    }
-
-    const frontmatterRaw = raw.slice(4, closingIndex);
-    const markdownBody = raw.slice(closingIndex + 5);
-    const outputMatch = /^\n````text\n([\s\S]*?)\n````$/.exec(markdownBody);
-
-    if (!outputMatch) {
-      throw new Error('Invalid markdown output block format');
-    }
-
-    return {
-      ...parseYamlObject(frontmatterRaw),
-      output: outputMatch[1],
-    };
+  if (result.content.length < 2) {
+    return metadata;
   }
 
-  return parseYamlObject(raw);
+  return {
+    ...metadata,
+    output: result.content[1].value,
+  };
 }
 
 describe('terminal tools', () => {

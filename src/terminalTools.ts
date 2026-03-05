@@ -90,27 +90,17 @@ function buildYamlToolResult(payload: Record<string, unknown>): vscode.LanguageM
   ]);
 }
 
-function buildMarkdownOutputToolResult(payload: Record<string, unknown> & {
+function buildSplitOutputToolResult(payload: Record<string, unknown> & {
   output: string;
 }): vscode.LanguageModelToolResult {
   const {
     output,
-    ...frontmatter
+    ...metadata
   } = payload;
 
-  const normalizedOutput = output === '' || output.endsWith('\n') ? output : `${output}\n`;
-  const markdown = [
-    '---',
-    toYaml(frontmatter),
-    '---',
-    '',
-    '````text',
-    normalizedOutput,
-    '````',
-  ].join('\n');
-
   return new vscode.LanguageModelToolResult([
-    new vscode.LanguageModelTextPart(markdown),
+    new vscode.LanguageModelTextPart(toYaml(metadata)),
+    new vscode.LanguageModelTextPart(output),
   ]);
 }
 
@@ -201,7 +191,7 @@ const customRunInSyncTerminalTool: vscode.LanguageModelTool<RunInSyncTerminalInp
         result.output,
       );
 
-    return buildMarkdownOutputToolResult({
+    return buildSplitOutputToolResult({
       exitCode: result.exitCode,
       id,
       output,
@@ -230,7 +220,7 @@ const customAwaitTerminalTool: vscode.LanguageModelTool<AwaitTerminalInput> = {
   ): Promise<vscode.LanguageModelToolResult> {
     const result = await getTerminalRuntime().awaitBackgroundCommand(options.input);
 
-    return buildMarkdownOutputToolResult({
+    return buildSplitOutputToolResult({
       exitCode: result.exitCode,
       output: result.output,
       terminationSignal: result.terminationSignal,
@@ -252,7 +242,7 @@ const customGetTerminalOutputTool: vscode.LanguageModelTool<GetTerminalOutputInp
   ): Promise<vscode.LanguageModelToolResult> {
     const result = await getTerminalRuntime().readBackgroundOutput(options.input);
 
-    return buildMarkdownOutputToolResult({
+    return buildSplitOutputToolResult({
       exitCode: result.exitCode,
       isRunning: result.isRunning,
       output: result.output,
