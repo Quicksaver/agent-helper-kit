@@ -200,7 +200,11 @@ function parseYamlObject(raw: string): Record<string, unknown> {
 }
 
 function getResultPayload(result: { content: { value: string }[] }): Record<string, unknown> {
-  const metadataRaw = result.content[0]?.value ?? '';
+  if (result.content.length === 0) {
+    return {};
+  }
+
+  const metadataRaw = result.content[0].value;
   const metadata = parseYamlObject(metadataRaw);
 
   if (result.content.length < 2) {
