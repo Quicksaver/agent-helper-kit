@@ -369,7 +369,7 @@ describe('terminal tools', () => {
     }, {});
 
     const fullOutputPayload = getResultPayload(fullOutputResult);
-  expect(fullOutputPayload.output).toBe('hello\nworld\nmatch-line\nnomatch\nonly-match\nCaseSensitive\n');
+    expect(fullOutputPayload.output).toBe('hello\nworld\nmatch-line\nnomatch\nonly-match\nCaseSensitive\n');
 
     await expect(getOutputTool.invoke({
       input: {
