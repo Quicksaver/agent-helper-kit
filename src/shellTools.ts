@@ -217,7 +217,11 @@ const customRunInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = 
       shell: getRequestedOrDefaultShell(input.shell),
       timeout: input.timeout,
     });
-    const id = terminalRuntimeInstance.createCompletedCommandRecord(input.command, result);
+    const id = terminalRuntimeInstance.createCompletedCommandRecord(
+      input.command,
+      result,
+      getRequestedOrDefaultShell(input.shell),
+    );
     const publicId = toPublicCommandId(id);
 
     if (!shouldReturnOutput) {

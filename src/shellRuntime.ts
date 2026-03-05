@@ -48,6 +48,7 @@ interface BackgroundProcessState {
   outputInFile: boolean;
   readsSinceCompletion: number;
   resolveCompletion: () => void;
+  shell: string;
   signal: NodeJS.Signals | null;
   startedAt: string;
 }
@@ -59,6 +60,7 @@ export interface TerminalCommandListItem {
   id: string;
   isRunning: boolean;
   killedByUser: boolean;
+  shell: string;
   signal: NodeJS.Signals | null;
   startedAt: string;
 }
@@ -165,7 +167,7 @@ export class TerminalRuntime {
     return removedCount;
   }
 
-  createCompletedCommandRecord(command: string, result: RunCommandResult): string {
+  createCompletedCommandRecord(command: string, result: RunCommandResult, shell?: string): string {
     const id = this.createUniqueTerminalId();
     const startedAt = new Date().toISOString();
     const completedAt = new Date().toISOString();
@@ -183,6 +185,7 @@ export class TerminalRuntime {
       outputInFile: false,
       readsSinceCompletion: READS_SINCE_COMPLETION_FOR_SYNC_RECORD,
       resolveCompletion: () => undefined,
+      shell: this.resolveShellExecutable(shell),
       signal: result.terminationSignal,
       startedAt,
     };
@@ -384,6 +387,7 @@ export class TerminalRuntime {
       outputInFile: false,
       readsSinceCompletion: 0,
       resolveCompletion: () => undefined,
+      shell: shellInvocation.shell,
       signal: null,
       startedAt: new Date().toISOString(),
     };
@@ -572,6 +576,9 @@ export class TerminalRuntime {
       }
 
       const metadata = readTerminalCommandMetadata(id);
+      const hydratedShell = typeof metadata?.shell === 'string' && metadata.shell.length > 0
+        ? metadata.shell
+        : this.resolveShellExecutable();
       const state: BackgroundProcessState = {
         childProc: undefined,
         command: metadata?.command ?? '(command not recorded)',
@@ -586,6 +593,7 @@ export class TerminalRuntime {
         outputInFile: true,
         readsSinceCompletion: READS_SINCE_COMPLETION_FOR_SYNC_RECORD,
         resolveCompletion: () => undefined,
+        shell: hydratedShell,
         signal: metadata?.signal ?? null,
         startedAt: metadata?.startedAt ?? new Date().toISOString(),
       };
@@ -601,6 +609,7 @@ export class TerminalRuntime {
       exitCode: state.exitCode,
       id,
       killedByUser: state.killedByUser,
+      shell: state.shell,
       signal: state.signal,
       startedAt: state.startedAt,
     });
@@ -663,6 +672,7 @@ export class TerminalRuntime {
       id,
       isRunning: !state.completed,
       killedByUser: state.killedByUser,
+      shell: state.shell,
       signal: state.signal,
       startedAt: state.startedAt,
     };

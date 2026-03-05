@@ -12,7 +12,6 @@ import {
 const SHELL_COMMANDS_VIEW_ID = 'custom-vscode.shellCommandsView';
 const SHELL_COMMANDS_PANEL_CONTAINER_ID = 'custom-vscode-shellCommandsPanel';
 const RUNNING_POLL_MS = 1000;
-const COMMAND_SUMMARY_WORD_COUNT = 3;
 
 const ANSI_STANDARD_COLORS = [
   '#000000',
@@ -44,7 +43,7 @@ type ShellCommandTreeItem = {
 
 type WebviewMessage = {
   commandId?: string;
-  type: 'clear' | 'delete' | 'kill' | 'select';
+  type: 'clear' | 'copy' | 'delete' | 'kill' | 'runInTerminal' | 'select';
 };
 
 interface AnsiRenderState {
@@ -81,23 +80,31 @@ function formatTimestamp(value: null | string): string {
   return asDate.toLocaleString();
 }
 
-function getCommandSummary(commandText: string): string {
-  const firstLine = commandText.split('\n')[0]?.trim() ?? '';
+function getCommandListLabel(commandText: string): string {
+  const normalized = commandText.replaceAll(/\s+/gu, ' ').trim();
 
-  if (firstLine.length === 0) {
+  if (normalized.length === 0) {
     return '(empty command)';
   }
 
-  return firstLine
-    .split(/\s+/u)
-    .slice(0, COMMAND_SUMMARY_WORD_COUNT)
-    .join(' ');
+  return normalized;
 }
 
-function getCommandIdSuffix(commandId: string): string {
-  const idSegments = commandId.split('-');
+function getShellLabel(shellPath: string): string {
+  const normalizedPath = shellPath.trim();
 
-  return idSegments.at(-1) ?? commandId;
+  if (normalizedPath.length === 0) {
+    return 'unknown';
+  }
+
+  const shellName = normalizedPath
+    .split(/[\\/]/u)
+    .at(-1)
+    ?.replace(/\.(bat|cmd|exe)$/iu, '')
+    .trim()
+    .toLowerCase();
+
+  return shellName && shellName.length > 0 ? shellName : normalizedPath;
 }
 
 function getCommandStatusClass(command: TerminalCommandListItem): string {
@@ -118,6 +125,8 @@ function getCommandStatusClass(command: TerminalCommandListItem): string {
 
 function buildCommandTooltip(command: TerminalCommandListItem): string {
   const lines = [
+    `Id: ${command.id}`,
+    `Shell: ${command.shell}`,
     `Started: ${formatTimestamp(command.startedAt)}`,
   ];
 
@@ -500,12 +509,43 @@ function resolveCommandId(target: unknown): string | undefined {
 
 function buildDetailsMarkup(details: TerminalCommandDetails | undefined): string {
   if (!details) {
-    return '<div class="details-empty"></div>';
+    return '<div class="details-empty"></div><div id="output-block" class="output-block"></div>';
   }
 
   return `
-    <pre class="command-block">${escapeHtml(details.command)}</pre>
-    <div class="output-block">${convertAnsiToHtml(details.output)}</div>
+    <div class="command-header">
+      <pre class="command-block">${escapeHtml(details.command)}</pre>
+      <div class="command-actions">
+        <button
+          class="icon-action"
+          data-action="copy"
+          data-id="${escapeHtml(details.id)}"
+          title="Copy command"
+          aria-label="Copy command"
+        >📋</button>
+        <button
+          class="icon-action"
+          data-action="runInTerminal"
+          data-id="${escapeHtml(details.id)}"
+          title="Run in terminal"
+          aria-label="Run in terminal"
+        >🖥</button>
+      </div>
+    </div>
+    <div class="output-toolbar">
+      <input
+        id="output-find"
+        class="output-find-input"
+        type="text"
+        placeholder="Find in output"
+        aria-label="Find in output"
+        autocomplete="off"
+      />
+      <button id="output-find-prev" class="icon-action" title="Previous match" aria-label="Previous match">↑</button>
+      <button id="output-find-next" class="icon-action" title="Next match" aria-label="Next match">↓</button>
+      <span id="output-find-status" class="output-find-status" aria-live="polite"></span>
+    </div>
+    <div id="output-block" class="output-block">${convertAnsiToHtml(details.output)}</div>
   `;
 }
 
@@ -518,8 +558,8 @@ function getWebviewHtml(
   const scriptNonce = randomBytes(16).toString('hex');
   const styleNonce = randomBytes(16).toString('hex');
   const commandItems = commands.map(command => {
-    const commandPreview = getCommandSummary(command.command);
-    const commandIdSuffix = getCommandIdSuffix(command.id);
+    const commandPreview = getCommandListLabel(command.command);
+    const shellLabel = getShellLabel(command.shell);
     const selectedClass = command.id === selectedCommandId ? 'selected' : '';
     const rowAction = command.isRunning ? 'kill' : 'delete';
     const rowActionIcon = '✕';
@@ -533,13 +573,14 @@ function getWebviewHtml(
         data-id="${escapeHtml(command.id)}"
         data-filter-command="${escapeHtml(command.command.toLowerCase())}"
         data-filter-id="${escapeHtml(command.id.toLowerCase())}"
+        data-filter-shell="${escapeHtml(shellLabel)}"
         title="${escapeHtml(tooltip)}"
         role="button"
         tabindex="0"
       >
         <span class="status-dot ${getCommandStatusClass(command)}"></span>
         <span class="command-preview">${escapeHtml(commandPreview)}</span>
-        <span class="command-id">${escapeHtml(commandIdSuffix)}</span>
+        <span class="command-shell">${escapeHtml(shellLabel)}</span>
         <button
           class="icon-action row-action"
           data-action="${rowAction}"
@@ -632,9 +673,9 @@ function getWebviewHtml(
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        flex: 0 1 auto;
+        flex: 1 1 auto;
       }
-      .command-id {
+      .command-shell {
         margin-left: auto;
         color: var(--vscode-descriptionForeground);
         font-size: 11px;
@@ -675,6 +716,11 @@ function getWebviewHtml(
         overflow: hidden;
         background: var(--vscode-sideBar-background);
       }
+      .command-header {
+        display: flex;
+        align-items: stretch;
+        border-bottom: 1px solid var(--vscode-editorWidget-border);
+      }
       .command-block {
         margin: 0;
         padding: 8px;
@@ -683,8 +729,40 @@ function getWebviewHtml(
         word-break: break-word;
         max-height: 40%;
         overflow: auto;
-        flex: 0 0 auto;
+        flex: 1 1 auto;
+      }
+      .command-actions {
+        display: flex;
+        align-items: flex-start;
+        gap: 4px;
+        padding: 6px;
+        background: var(--vscode-editorWidget-background);
+        border-left: 1px solid var(--vscode-editorWidget-border);
+      }
+      .output-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 28px;
+        padding: 4px 8px;
         border-bottom: 1px solid var(--vscode-editorWidget-border);
+      }
+      .output-find-input {
+        min-width: 0;
+        flex: 1 1 auto;
+        border: none;
+        background: transparent;
+        color: var(--vscode-foreground);
+        padding: 0;
+      }
+      .output-find-input:focus {
+        outline: none;
+      }
+      .output-find-status {
+        color: var(--vscode-descriptionForeground);
+        font-size: 11px;
+        min-width: 64px;
+        text-align: right;
       }
       .output-block {
         padding: 8px;
@@ -760,6 +838,11 @@ function getWebviewHtml(
       const layout = document.getElementById('layout');
       const resizer = document.getElementById('resizer');
       const filterInput = document.getElementById('command-filter');
+      const outputBlock = document.getElementById('output-block');
+      const outputFindInput = document.getElementById('output-find');
+      const outputFindPrevious = document.getElementById('output-find-prev');
+      const outputFindNext = document.getElementById('output-find-next');
+      const outputFindStatus = document.getElementById('output-find-status');
       const previousState = vscodeApi.getState() || {};
 
       if (typeof previousState.sidebarWidth === 'number') {
@@ -784,7 +867,8 @@ function getWebviewHtml(
 
           const commandText = row.getAttribute('data-filter-command') ?? '';
           const idText = row.getAttribute('data-filter-id') ?? '';
-          const matches = commandText.includes(normalized) || idText.includes(normalized);
+          const shellText = row.getAttribute('data-filter-shell') ?? '';
+          const matches = commandText.includes(normalized) || idText.includes(normalized) || shellText.includes(normalized);
 
           row.style.display = matches ? '' : 'none';
         }
@@ -913,6 +997,123 @@ function getWebviewHtml(
           type: 'select',
         });
       });
+
+      const selectOutputContents = () => {
+        if (!(outputBlock instanceof HTMLElement)) {
+          return;
+        }
+
+        const selection = window.getSelection();
+
+        if (!selection) {
+          return;
+        }
+
+        const range = document.createRange();
+        range.selectNodeContents(outputBlock);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      };
+
+      const setFindStatus = message => {
+        if (outputFindStatus instanceof HTMLElement) {
+          outputFindStatus.textContent = message;
+        }
+      };
+
+      const collapseSelectionToOutputEdge = backwards => {
+        if (!(outputBlock instanceof HTMLElement)) {
+          return;
+        }
+
+        const selection = window.getSelection();
+
+        if (!selection) {
+          return;
+        }
+
+        const range = document.createRange();
+        range.selectNodeContents(outputBlock);
+        range.collapse(backwards);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      };
+
+      const selectionIsWithinOutput = () => {
+        if (!(outputBlock instanceof HTMLElement)) {
+          return false;
+        }
+
+        const selection = window.getSelection();
+
+        if (!selection || !selection.anchorNode) {
+          return false;
+        }
+
+        return outputBlock.contains(selection.anchorNode);
+      };
+
+      const findInOutput = backwards => {
+        if (!(outputFindInput instanceof HTMLInputElement)) {
+          return;
+        }
+
+        const term = outputFindInput.value.trim();
+
+        if (term.length === 0) {
+          setFindStatus('');
+          return;
+        }
+
+        if (!selectionIsWithinOutput()) {
+          collapseSelectionToOutputEdge(backwards);
+        }
+
+        let found = window.find(term, false, backwards, true, false, false, false);
+
+        if (!found || !selectionIsWithinOutput()) {
+          collapseSelectionToOutputEdge(backwards);
+          found = window.find(term, false, backwards, true, false, false, false);
+        }
+
+        setFindStatus(found && selectionIsWithinOutput() ? '' : 'No matches');
+      };
+
+      outputFindInput?.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') {
+          return;
+        }
+
+        event.preventDefault();
+        findInOutput(event.shiftKey);
+      });
+
+      outputFindPrevious?.addEventListener('click', event => {
+        event.preventDefault();
+        findInOutput(true);
+      });
+
+      outputFindNext?.addEventListener('click', event => {
+        event.preventDefault();
+        findInOutput(false);
+      });
+
+      window.addEventListener('keydown', event => {
+        const isSelectAll = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a';
+
+        if (!isSelectAll) {
+          return;
+        }
+
+        if (filterInput instanceof HTMLInputElement && document.activeElement === filterInput) {
+          event.preventDefault();
+          filterInput.select();
+          return;
+        }
+
+        event.preventDefault();
+        selectOutputContents();
+      });
     </script>
   </body>
 </html>
@@ -1019,6 +1220,34 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
       return;
     }
 
+    if (message.type === 'copy' && message.commandId) {
+      const details = await this.tryGetCommandDetails(message.commandId);
+
+      if (!details) {
+        return;
+      }
+
+      await vscode.env.clipboard.writeText(details.command);
+      return;
+    }
+
+    if (message.type === 'runInTerminal' && message.commandId) {
+      const details = await this.tryGetCommandDetails(message.commandId);
+
+      if (!details) {
+        return;
+      }
+
+      const terminal = vscode.window.createTerminal({
+        name: `Shell Run (${getShellLabel(details.shell)})`,
+        shellPath: details.shell,
+      });
+
+      terminal.show(true);
+      terminal.sendText(details.command, true);
+      return;
+    }
+
     if (message.type === 'kill' && message.commandId) {
       this.runtime.killBackgroundCommand(message.commandId);
       await this.refresh();
@@ -1058,6 +1287,15 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
 
     clearInterval(this.runningPoller);
     this.runningPoller = undefined;
+  }
+
+  private async tryGetCommandDetails(commandId: string): Promise<TerminalCommandDetails | undefined> {
+    try {
+      return await this.runtime.getCommandDetails(commandId);
+    }
+    catch {
+      return undefined;
+    }
   }
 
   private updatePolling(details: TerminalCommandDetails | undefined): void {

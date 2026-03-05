@@ -15,6 +15,7 @@ export interface TerminalCommandMetadata {
   exitCode: null | number;
   id: string;
   killedByUser: boolean;
+  shell: string;
   signal: NodeJS.Signals | null;
   startedAt: string;
 }
@@ -207,6 +208,7 @@ export function readTerminalCommandMetadata(terminalId: string): TerminalCommand
       exitCode: candidate.exitCode,
       id: candidate.id,
       killedByUser: candidate.killedByUser,
+      shell: typeof candidate.shell === 'string' ? candidate.shell : '',
       signal: candidate.signal,
       startedAt: candidate.startedAt,
     };
