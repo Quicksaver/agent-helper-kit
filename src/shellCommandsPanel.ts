@@ -701,6 +701,7 @@ function getWebviewHtml(
       .command-header {
         display: flex;
         align-items: stretch;
+        max-height: 40%;
         border-bottom: 1px solid var(--vscode-editorWidget-border);
       }
       .command-block {
@@ -709,7 +710,6 @@ function getWebviewHtml(
         background: var(--vscode-editorWidget-background);
         white-space: pre-wrap;
         word-break: break-word;
-        max-height: 40%;
         overflow: auto;
         flex: 1 1 auto;
       }
