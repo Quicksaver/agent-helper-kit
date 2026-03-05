@@ -9,9 +9,10 @@ import {
   getTerminalOutputDirectoryPath,
   getTerminalOutputFilePath,
 } from '@/shellOutputStore';
+import { SHELL_COMMAND_ID_PREFIX } from '@/shellRuntime';
 import { registerShellTools } from '@/shellTools';
 
-const TERMINAL_ID_REGEX = /^custom-terminal-[a-f0-9]{8}$/;
+const TERMINAL_ID_REGEX = /^[a-f0-9]{8}$/;
 
 type FakeReadable = EventEmitter;
 
@@ -283,7 +284,7 @@ describe('terminal tools', () => {
     expect(outputPayload.exitCode).toBeNull();
     expect(outputPayload.isRunning).toBe(true);
     expect(outputPayload.output).toBe('hello\n');
-    expect(outputPayload.terminationSignal).toBeNull();
+    expect(outputPayload).not.toHaveProperty('terminationSignal');
 
     const noNewOutputResult = await getOutputTool.invoke({
       input: { id: terminalId },
@@ -293,7 +294,7 @@ describe('terminal tools', () => {
     const noNewOutputPayload = getResultPayload(noNewOutputResult);
     expect(noNewOutputPayload.exitCode).toBeNull();
     expect(noNewOutputPayload.output).toBe('');
-    expect(noNewOutputPayload.terminationSignal).toBeNull();
+    expect(noNewOutputPayload).not.toHaveProperty('terminationSignal');
 
     fakeProcess.stdout.emit('data', 'world\nmatch-line\n');
 
@@ -366,7 +367,7 @@ describe('terminal tools', () => {
     }, {});
 
     const completedAwaitPayload = getResultPayload(completedAwaitResult);
-    expect(completedAwaitPayload.timedOut).toBe(false);
+    expect(completedAwaitPayload).not.toHaveProperty('timedOut');
     expect(fakeProcess.kill).toHaveBeenCalledWith('SIGTERM');
 
     const firstCompletedRead = await getOutputTool.invoke({
@@ -475,8 +476,6 @@ describe('terminal tools', () => {
     expect(runPayload).toEqual({
       exitCode: 0,
       id: terminalId,
-      terminationSignal: null,
-      timedOut: false,
     });
     expect(runPayload).not.toHaveProperty('output');
 
@@ -489,7 +488,7 @@ describe('terminal tools', () => {
     expect(outputPayload.isRunning).toBe(false);
     expect(outputPayload.output).toBe('hello\nworld\n');
     expect(outputPayload.exitCode).toBe(0);
-    expect(outputPayload.terminationSignal).toBeNull();
+    expect(outputPayload).not.toHaveProperty('terminationSignal');
   });
 
   it('returns opt-in foreground output when full_output, last_lines, or regex is provided', async () => {
@@ -702,7 +701,7 @@ describe('terminal tools', () => {
 
       await vi.advanceTimersByTimeAsync(2 * 60 * 1000 + 10);
 
-      const outputFilePath = getTerminalOutputFilePath(terminalId);
+      const outputFilePath = getTerminalOutputFilePath(`${SHELL_COMMAND_ID_PREFIX}${terminalId}`);
       expect(fs.existsSync(outputFilePath)).toBe(true);
 
       fakeProcess.emit('close', null, 'SIGTERM');

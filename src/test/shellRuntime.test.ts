@@ -12,7 +12,7 @@ import {
 
 import { TerminalRuntime } from '@/shellRuntime';
 
-const TERMINAL_ID_REGEX = /^custom-terminal-[a-f0-9]{8}$/;
+const TERMINAL_ID_REGEX = /^custom-shell-[a-f0-9]{8}$/;
 
 function normalizePath(value: string): string {
   return fs.realpathSync.native(value.trim()).replaceAll('\\', '/');
@@ -158,7 +158,7 @@ describe('TerminalRuntime terminal id generation', () => {
       timedOut: false,
     });
 
-    expect(secondId).toBe('custom-terminal-12345678');
+    expect(secondId).toBe('custom-shell-12345678');
     expect(randomUuidSpy).toHaveBeenCalledOnce();
   });
 });

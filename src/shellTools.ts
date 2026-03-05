@@ -6,7 +6,10 @@ import {
   getFilteredOutput,
   stripTerminalControlSequences,
 } from '@/shellOutputFilter';
-import { TerminalRuntime } from '@/shellRuntime';
+import {
+  TerminalRuntime,
+  toPublicCommandId,
+} from '@/shellRuntime';
 import {
   type AwaitShellInput,
   type GetShellOutputInput,
@@ -108,6 +111,28 @@ function buildSplitOutputToolResult(payload: Record<string, unknown> & {
   ]);
 }
 
+function addOptionalCompletionMetadata(
+  payload: Record<string, unknown>,
+  completion: {
+    terminationSignal?: NodeJS.Signals | null;
+    timedOut?: boolean;
+  },
+): Record<string, unknown> {
+  const nextPayload = {
+    ...payload,
+  };
+
+  if (completion.terminationSignal) {
+    nextPayload.terminationSignal = completion.terminationSignal;
+  }
+
+  if (completion.timedOut === true) {
+    nextPayload.timedOut = true;
+  }
+
+  return nextPayload;
+}
+
 let terminalRuntime: TerminalRuntime | undefined;
 
 function getTerminalRuntime(): TerminalRuntime {
@@ -145,7 +170,7 @@ const customRunInAsyncShellTool: vscode.LanguageModelTool<RunInAsyncShellInput> 
     const input = validateRunInAsyncShellInput(options.input);
     const id = getTerminalRuntime().startBackgroundCommand(input.command);
 
-    return buildYamlToolResult({ id });
+    return buildYamlToolResult({ id: toPublicCommandId(id) });
   },
   prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<RunInAsyncShellInput>,
@@ -175,14 +200,16 @@ const customRunInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = 
       timeout: input.timeout,
     });
     const id = terminalRuntimeInstance.createCompletedCommandRecord(input.command, result);
+    const publicId = toPublicCommandId(id);
 
     if (!shouldReturnOutput) {
-      return buildYamlToolResult({
+      return buildYamlToolResult(addOptionalCompletionMetadata({
         exitCode: result.exitCode,
-        id,
+        id: publicId,
+      }, {
         terminationSignal: result.terminationSignal,
         timedOut: result.timedOut,
-      });
+      }));
     }
 
     const output = input.full_output === true
@@ -195,12 +222,15 @@ const customRunInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = 
         result.output,
       );
 
-    return buildSplitOutputToolResult({
+    return buildSplitOutputToolResult(addOptionalCompletionMetadata({
       exitCode: result.exitCode,
-      id,
+      id: publicId,
       output,
+    }, {
       terminationSignal: result.terminationSignal,
       timedOut: result.timedOut,
+    }) as Record<string, unknown> & {
+      output: string;
     });
   },
   prepareInvocation(
@@ -224,11 +254,14 @@ const customAwaitShellTool: vscode.LanguageModelTool<AwaitShellInput> = {
   ): Promise<vscode.LanguageModelToolResult> {
     const result = await getTerminalRuntime().awaitBackgroundCommand(options.input);
 
-    return buildSplitOutputToolResult({
+    return buildSplitOutputToolResult(addOptionalCompletionMetadata({
       exitCode: result.exitCode,
       output: result.output,
+    }, {
       terminationSignal: result.terminationSignal,
       timedOut: result.timedOut,
+    }) as Record<string, unknown> & {
+      output: string;
     });
   },
   prepareInvocation(
@@ -246,11 +279,14 @@ const customGetShellOutputTool: vscode.LanguageModelTool<GetShellOutputInput> = 
   ): Promise<vscode.LanguageModelToolResult> {
     const result = await getTerminalRuntime().readBackgroundOutput(options.input);
 
-    return buildSplitOutputToolResult({
+    return buildSplitOutputToolResult(addOptionalCompletionMetadata({
       exitCode: result.exitCode,
       isRunning: result.isRunning,
       output: result.output,
+    }, {
       terminationSignal: result.terminationSignal,
+    }) as Record<string, unknown> & {
+      output: string;
     });
   },
   prepareInvocation(

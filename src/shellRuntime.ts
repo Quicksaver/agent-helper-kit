@@ -21,9 +21,17 @@ import {
 const DEFAULT_OUTPUT_LIMIT = 60 * 1024;
 const DEFAULT_MEMORY_TO_FILE_DELAY_MS = 2 * 60 * 1000;
 const READS_SINCE_COMPLETION_FOR_SYNC_RECORD = 1;
-const TERMINAL_ID_PREFIX = 'custom-terminal-';
+export const SHELL_COMMAND_ID_PREFIX = 'custom-shell-';
 const TERMINAL_ID_HEX_LENGTH = 8;
 const TERMINAL_ID_GENERATION_MAX_ATTEMPTS = 8;
+
+export function toPublicCommandId(id: string): string {
+  if (id.startsWith(SHELL_COMMAND_ID_PREFIX)) {
+    return id.slice(SHELL_COMMAND_ID_PREFIX.length);
+  }
+
+  return id;
+}
 
 interface BackgroundProcessState {
   childProc?: childProcess.ChildProcessWithoutNullStreams;
@@ -106,7 +114,10 @@ export class TerminalRuntime {
   }
 
   async awaitBackgroundCommand(input: AwaitBackgroundInput): Promise<RunCommandResult> {
-    const state = this.getBackgroundState(input.id);
+    const {
+      resolvedId,
+      state,
+    } = this.getBackgroundState(input.id);
 
     if (!state.completed) {
       if (input.timeout === 0) {
@@ -126,7 +137,7 @@ export class TerminalRuntime {
 
     return {
       exitCode: state.completed ? state.exitCode : null,
-      output: await this.getBackgroundOutput(input.id, state),
+      output: await this.getBackgroundOutput(resolvedId, state),
       terminationSignal: state.completed ? state.signal : null,
       timedOut,
     };
@@ -196,11 +207,14 @@ export class TerminalRuntime {
   }
 
   async getCommandDetails(id: string): Promise<TerminalCommandDetails> {
-    const state = this.getBackgroundState(id);
-    const output = await this.getBackgroundOutput(id, state);
+    const {
+      resolvedId,
+      state,
+    } = this.getBackgroundState(id);
+    const output = await this.getBackgroundOutput(resolvedId, state);
 
     return {
-      ...this.toCommandListItem(id, state),
+      ...this.toCommandListItem(resolvedId, state),
       output,
     };
   }
@@ -210,15 +224,18 @@ export class TerminalRuntime {
       return this.lastCommand;
     }
 
-    return this.getBackgroundState(id).command;
+    return this.getBackgroundState(id).state.command;
   }
 
   killBackgroundCommand(id: string): boolean {
-    const state = this.getBackgroundState(id);
+    const {
+      resolvedId,
+      state,
+    } = this.getBackgroundState(id);
 
     if (!state.completed && state.childProc) {
       state.killedByUser = true;
-      this.persistCommandMetadata(id, state);
+      this.persistCommandMetadata(resolvedId, state);
       this.emitCommandChange();
       state.childProc.kill('SIGTERM');
       return true;
@@ -247,8 +264,11 @@ export class TerminalRuntime {
     output: string;
     terminationSignal: NodeJS.Signals | null;
   }> {
-    const state = this.getBackgroundState(input.id);
-    const fullOutput = await this.getBackgroundOutput(input.id, state);
+    const {
+      resolvedId,
+      state,
+    } = this.getBackgroundState(input.id);
+    const fullOutput = await this.getBackgroundOutput(resolvedId, state);
     const boundedCursor = Math.max(0, Math.min(state.lastReadCursor, fullOutput.length));
 
     const shouldReturnFullOutput = input.full_output === true
@@ -461,7 +481,7 @@ export class TerminalRuntime {
 
   private createUniqueTerminalId(): string {
     for (let attempt = 0; attempt < TERMINAL_ID_GENERATION_MAX_ATTEMPTS; attempt += 1) {
-      const candidate = `${TERMINAL_ID_PREFIX}${randomBytes(TERMINAL_ID_HEX_LENGTH / 2).toString('hex')}`;
+      const candidate = `${SHELL_COMMAND_ID_PREFIX}${randomBytes(TERMINAL_ID_HEX_LENGTH / 2).toString('hex')}`;
 
       if (!this.backgroundProcesses.has(candidate)) {
         return candidate;
@@ -470,7 +490,7 @@ export class TerminalRuntime {
 
     // Extremely rare collision scenario: if repeated clashes exhaust all attempts,
     // fall back to UUID entropy to keep ID generation practically collision-free.
-    return `${TERMINAL_ID_PREFIX}${globalThis.crypto.randomUUID().replaceAll('-', '').slice(0, TERMINAL_ID_HEX_LENGTH)}`;
+    return `${SHELL_COMMAND_ID_PREFIX}${globalThis.crypto.randomUUID().replaceAll('-', '').slice(0, TERMINAL_ID_HEX_LENGTH)}`;
   }
 
   private emitCommandChange(): void {
@@ -487,14 +507,37 @@ export class TerminalRuntime {
     return state.output;
   }
 
-  private getBackgroundState(id: string): BackgroundProcessState {
-    const state = this.backgroundProcesses.get(id);
+  private getBackgroundState(id: string): {
+    resolvedId: string;
+    state: BackgroundProcessState;
+  } {
+    const directMatch = this.backgroundProcesses.get(id);
 
-    if (!state) {
-      throw new Error(`Unknown terminal id: ${id}`);
+    if (directMatch) {
+      return {
+        resolvedId: id,
+        state: directMatch,
+      };
     }
 
-    return state;
+    const candidates: string[] = [];
+
+    if (!id.startsWith(SHELL_COMMAND_ID_PREFIX)) {
+      candidates.push(`${SHELL_COMMAND_ID_PREFIX}${id}`);
+    }
+
+    for (const candidate of candidates) {
+      const state = this.backgroundProcesses.get(candidate);
+
+      if (state) {
+        return {
+          resolvedId: candidate,
+          state,
+        };
+      }
+    }
+
+    throw new Error(`Unknown shell command id: ${id}`);
   }
 
   private hydrateFromPersistedOutput(): void {
