@@ -158,7 +158,7 @@
         "displayName": "Run Shell Command (Sync)",
         "when": "config.custom-vscode.shellTools.enabled",
         "icon": "$(terminal)",
-        "modelDescription": "Run a shell command synchronously in workspace root (or home if no workspace). Returns an id and status metadata (shell, exitCode, terminationSignal, timedOut); provide full_output, last_lines, or regex to include output in the response, or use id to await or retrieve output.",
+        "modelDescription": "Run a shell command synchronously in workspace root (or home if no workspace). Returns an id and status metadata (shell, exitCode, terminationSignal, timedOut), with optional output via full_output/last_lines/regex. Compared with built-in run_in_terminal(isBackground:false), pro: agents can reliably detect running vs finished state (and why) and read unambiguous partial/full output; con: not interactive.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -253,7 +253,7 @@
         "displayName": "Run Shell Command (Async)",
         "when": "config.custom-vscode.shellTools.enabled",
         "icon": "$(terminal)",
-        "modelDescription": "Run a shell command asynchronously in workspace root (or home if no workspace). Returns a command id to await or retrieve output.",
+        "modelDescription": "Run a shell command asynchronously in workspace root (or home if no workspace). Returns a command id to await or retrieve output. Compared with built-in run_in_terminal(isBackground:true), pro: agents can reliably detect running vs finished state (and why) and read unambiguous partial/full output; con: not interactive.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
