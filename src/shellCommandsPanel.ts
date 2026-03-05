@@ -522,28 +522,15 @@ function buildDetailsMarkup(details: TerminalCommandDetails | undefined): string
           data-id="${escapeHtml(details.id)}"
           title="Copy command"
           aria-label="Copy command"
-        >📋</button>
+        ><span class="codicon codicon-copy" aria-hidden="true"></span></button>
         <button
           class="icon-action"
           data-action="runInTerminal"
           data-id="${escapeHtml(details.id)}"
           title="Run in terminal"
           aria-label="Run in terminal"
-        >🖥</button>
+        ><span class="codicon codicon-terminal" aria-hidden="true"></span></button>
       </div>
-    </div>
-    <div class="output-toolbar">
-      <input
-        id="output-find"
-        class="output-find-input"
-        type="text"
-        placeholder="Find in output"
-        aria-label="Find in output"
-        autocomplete="off"
-      />
-      <button id="output-find-prev" class="icon-action" title="Previous match" aria-label="Previous match">↑</button>
-      <button id="output-find-next" class="icon-action" title="Next match" aria-label="Next match">↓</button>
-      <span id="output-find-status" class="output-find-status" aria-live="polite"></span>
     </div>
     <div id="output-block" class="output-block">${convertAnsiToHtml(details.output)}</div>
   `;
@@ -562,7 +549,9 @@ function getWebviewHtml(
     const shellLabel = getShellLabel(command.shell);
     const selectedClass = command.id === selectedCommandId ? 'selected' : '';
     const rowAction = command.isRunning ? 'kill' : 'delete';
-    const rowActionIcon = '✕';
+    const rowActionIcon = command.isRunning
+      ? '<span class="codicon codicon-primitive-square" aria-hidden="true"></span>'
+      : '<span class="codicon codicon-trash" aria-hidden="true"></span>';
     const rowActionTitle = command.isRunning ? 'Kill' : 'Delete';
     const tooltip = buildCommandTooltip(command);
 
@@ -609,7 +598,25 @@ function getWebviewHtml(
         font-size: var(--vscode-font-size);
         color: var(--vscode-foreground);
         background: var(--vscode-sideBar-background);
+        user-select: none;
       }
+      .codicon {
+        display: inline-block;
+        font: normal normal normal 16px/1 codicon;
+        text-rendering: auto;
+        text-transform: none;
+        letter-spacing: normal;
+        text-align: center;
+        white-space: nowrap;
+        word-wrap: normal;
+        direction: ltr;
+        -webkit-font-smoothing: antialiased;
+      }
+      .codicon-copy::before { content: '\\ebcc'; }
+      .codicon-terminal::before { content: '\\ea85'; }
+      .codicon-clear-all::before { content: '\\ea0f'; }
+      .codicon-trash::before { content: '\\ea81'; }
+      .codicon-primitive-square::before { content: '\\ea73'; }
       .layout {
         display: grid;
         grid-template-columns: var(--sidebar-width, 340px) 1px minmax(0, 1fr);
@@ -636,6 +643,7 @@ function getWebviewHtml(
         background: transparent;
         color: var(--vscode-foreground);
         padding: 0;
+        user-select: text;
       }
       .filter-input:focus {
         outline: none;
@@ -739,31 +747,6 @@ function getWebviewHtml(
         background: var(--vscode-editorWidget-background);
         border-left: 1px solid var(--vscode-editorWidget-border);
       }
-      .output-toolbar {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        min-height: 28px;
-        padding: 4px 8px;
-        border-bottom: 1px solid var(--vscode-editorWidget-border);
-      }
-      .output-find-input {
-        min-width: 0;
-        flex: 1 1 auto;
-        border: none;
-        background: transparent;
-        color: var(--vscode-foreground);
-        padding: 0;
-      }
-      .output-find-input:focus {
-        outline: none;
-      }
-      .output-find-status {
-        color: var(--vscode-descriptionForeground);
-        font-size: 11px;
-        min-width: 64px;
-        text-align: right;
-      }
       .output-block {
         padding: 8px;
         margin: 0;
@@ -773,6 +756,7 @@ function getWebviewHtml(
         flex: 1 1 auto;
         min-height: 0;
         overflow: auto;
+        user-select: text;
       }
       .output-block .ansi-fg-0 { color: #000000; }
       .output-block .ansi-fg-1 { color: #cd3131; }
@@ -825,7 +809,7 @@ function getWebviewHtml(
             aria-label="Filter commands"
             autocomplete="off"
           />
-          <button class="icon-action" data-action="clear" title="Clear Finished" aria-label="Clear Finished">✕</button>
+          <button class="icon-action" data-action="clear" title="Clear Finished" aria-label="Clear Finished"><span class="codicon codicon-clear-all" aria-hidden="true"></span></button>
         </div>
         <div class="command-list">${commandItems}</div>
       </aside>
@@ -839,10 +823,6 @@ function getWebviewHtml(
       const resizer = document.getElementById('resizer');
       const filterInput = document.getElementById('command-filter');
       const outputBlock = document.getElementById('output-block');
-      const outputFindInput = document.getElementById('output-find');
-      const outputFindPrevious = document.getElementById('output-find-prev');
-      const outputFindNext = document.getElementById('output-find-next');
-      const outputFindStatus = document.getElementById('output-find-status');
       const previousState = vscodeApi.getState() || {};
 
       if (typeof previousState.sidebarWidth === 'number') {
@@ -1015,89 +995,6 @@ function getWebviewHtml(
         selection.addRange(range);
       };
 
-      const setFindStatus = message => {
-        if (outputFindStatus instanceof HTMLElement) {
-          outputFindStatus.textContent = message;
-        }
-      };
-
-      const collapseSelectionToOutputEdge = backwards => {
-        if (!(outputBlock instanceof HTMLElement)) {
-          return;
-        }
-
-        const selection = window.getSelection();
-
-        if (!selection) {
-          return;
-        }
-
-        const range = document.createRange();
-        range.selectNodeContents(outputBlock);
-        range.collapse(backwards);
-        selection.removeAllRanges();
-        selection.addRange(range);
-      };
-
-      const selectionIsWithinOutput = () => {
-        if (!(outputBlock instanceof HTMLElement)) {
-          return false;
-        }
-
-        const selection = window.getSelection();
-
-        if (!selection || !selection.anchorNode) {
-          return false;
-        }
-
-        return outputBlock.contains(selection.anchorNode);
-      };
-
-      const findInOutput = backwards => {
-        if (!(outputFindInput instanceof HTMLInputElement)) {
-          return;
-        }
-
-        const term = outputFindInput.value.trim();
-
-        if (term.length === 0) {
-          setFindStatus('');
-          return;
-        }
-
-        if (!selectionIsWithinOutput()) {
-          collapseSelectionToOutputEdge(backwards);
-        }
-
-        let found = window.find(term, false, backwards, true, false, false, false);
-
-        if (!found || !selectionIsWithinOutput()) {
-          collapseSelectionToOutputEdge(backwards);
-          found = window.find(term, false, backwards, true, false, false, false);
-        }
-
-        setFindStatus(found && selectionIsWithinOutput() ? '' : 'No matches');
-      };
-
-      outputFindInput?.addEventListener('keydown', event => {
-        if (event.key !== 'Enter') {
-          return;
-        }
-
-        event.preventDefault();
-        findInOutput(event.shiftKey);
-      });
-
-      outputFindPrevious?.addEventListener('click', event => {
-        event.preventDefault();
-        findInOutput(true);
-      });
-
-      outputFindNext?.addEventListener('click', event => {
-        event.preventDefault();
-        findInOutput(false);
-      });
-
       window.addEventListener('keydown', event => {
         const isSelectAll = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a';
 
@@ -1107,13 +1004,15 @@ function getWebviewHtml(
 
         if (filterInput instanceof HTMLInputElement && document.activeElement === filterInput) {
           event.preventDefault();
+          event.stopPropagation();
           filterInput.select();
           return;
         }
 
         event.preventDefault();
+        event.stopPropagation();
         selectOutputContents();
-      });
+      }, true);
     </script>
   </body>
 </html>
@@ -1213,6 +1112,40 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     this.selectedCommandId = commandId;
   }
 
+  private buildOutputReplayCommand(output: string, shellPath: string): string | undefined {
+    if (output.length === 0) {
+      return undefined;
+    }
+
+    const shellName = getShellLabel(shellPath);
+
+    if (shellName === 'powershell' || shellName === 'pwsh') {
+      const escapedOutput = output.replaceAll('`', '``').replaceAll('@\'', '@`\'');
+
+      return `$text = @'\n${escapedOutput}\n'@; Write-Output $text`;
+    }
+
+    if (shellName === 'cmd') {
+      const escapedOutput = output
+        .replaceAll('^', '^^')
+        .replaceAll('&', '^&')
+        .replaceAll('<', '^<')
+        .replaceAll('>', '^>')
+        .replaceAll('|', '^|')
+        .replaceAll('%', '%%')
+        .replaceAll('(', '^(')
+        .replaceAll(')', '^)')
+        .replaceAll('\r', '');
+      const lines = escapedOutput.split('\n').map(line => `echo(${line}`);
+
+      return lines.join(' & ');
+    }
+
+    const delimiter = `__CUSTOM_VSCODE_OUTPUT_${randomBytes(6).toString('hex')}__`;
+
+    return `cat <<'${delimiter}'\n${output}\n${delimiter}`;
+  }
+
   private async handleMessage(message: WebviewMessage): Promise<void> {
     if (message.type === 'select' && message.commandId) {
       this.selectedCommandId = message.commandId;
@@ -1244,7 +1177,19 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
       });
 
       terminal.show(true);
-      terminal.sendText(details.command, true);
+
+      setTimeout(() => {
+        const outputReplayCommand = this.buildOutputReplayCommand(details.output, details.shell);
+
+        if (outputReplayCommand) {
+          terminal.sendText(outputReplayCommand, true);
+        }
+
+        setTimeout(() => {
+          terminal.sendText(details.command, false);
+        }, 120);
+      }, 120);
+
       return;
     }
 
