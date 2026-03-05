@@ -2,7 +2,12 @@
 
 Use the VS Code Chat tool-calling flow (or an agent capable of invoking extension LM tools) and run this sequence.
 
-## 1) Run a foreground command
+Result format legend used below:
+
+- **YAML-only**: single text part containing YAML metadata.
+- **Split result**: first text part is YAML metadata, second text part is raw output text.
+
+## 1) Run a sync command
 
 Invoke `run_in_sync_shell` with:
 
@@ -20,10 +25,9 @@ Expected response format: YAML-only (no output block by default).
 Example response:
 
 ```yaml
-id: 'custom-terminal-...'
+id: '...'
+shell: '...'
 exitCode: 0
-terminationSignal: null
-timedOut: false
 ```
 
 Then read output by id:
@@ -46,9 +50,25 @@ via `get_shell_output`, or request inline output directly from `run_in_sync_shel
 { "regex": "ready|error" }
 ```
 
+```json
+{ "regex": "ready|error", "regex_flags": "i" }
+```
+
 `full_output`, `last_lines`, and `regex` are mutually exclusive for `run_in_sync_shell` input (choose exactly one when requesting inline output).
 
-When using `full_output` in step 1, example output block:
+`regex_flags` requires `regex`.
+
+When using `full_output` in step 1, expected response format is **split result**.
+
+Example metadata:
+
+```yaml
+id: '...'
+shell: '...'
+exitCode: 0
+```
+
+Example output text part:
 
 ```text
 /workspace
@@ -68,10 +88,10 @@ Invoke `run_in_async_shell` with:
 }
 ```
 
-Expected response format: YAML-only (id by default), for example:
+Expected response format: YAML-only (id only), for example:
 
 ```yaml
-id: 'custom-terminal-...'
+id: '...'
 ```
 
 ## 3) Poll output while running
@@ -83,14 +103,17 @@ Invoke `get_shell_output`:
 ```
 
 Expected response format: Markdown with YAML frontmatter and a fenced output block.
+Expected response format: **split result** (YAML metadata + raw output text).
 
-Example frontmatter:
+Example metadata:
 
 ```yaml
 isRunning: true
+shell: '...'
+exitCode: null
 ```
 
-Example output:
+Example output text part:
 
 ```text
 tick-1
@@ -106,13 +129,18 @@ Optional output filters:
 { "id": "<id-from-step-2>", "regex": "error|warning" }
 ```
 
+```json
+{ "id": "<id-from-step-2>", "regex": "error|warning", "regex_flags": "i" }
+```
+
 Notes:
 
 - `last_lines` and `regex` are mutually exclusive.
+- `regex_flags` requires `regex`.
 - If neither is supplied, all available output is returned.
-- `get_shell_output` frontmatter includes `exitCode`, `isRunning`, and `terminationSignal` (it does not include `timedOut`).
-- `run_in_sync_shell` supports `full_output`, `last_lines`, and `regex`; `run_in_async_shell` always returns only `id`.
-- For `run_in_async_shell`, `timeout` applies to shell execution timeout, not to `await_shell` waiting time.
+- `get_shell_output` metadata includes `exitCode`, `isRunning`, and `shell`; it may include `terminationSignal`, and does not include `timedOut`.
+- `run_in_sync_shell` supports `full_output`, `last_lines`, `regex`, and `regex_flags`; `run_in_async_shell` always returns only `id`.
+- For `run_in_async_shell`, `timeout` is currently ignored; waiting behavior is controlled by `await_shell.timeout`.
 
 ## 3b) Manual long-running check (`isRunning: true` + await behavior)
 
@@ -133,7 +161,7 @@ Immediately call `get_shell_output` with that new id:
 { "id": "<id-from-long-running-command>" }
 ```
 
-Expected (if called quickly): frontmatter includes `isRunning: true` and output is partial (for example, only first tick(s)).
+Expected (if called quickly): includes `isRunning: true` and output is partial (for example, only first tick(s)).
 
 Then call `await_shell` with:
 
@@ -141,7 +169,9 @@ Then call `await_shell` with:
 { "id": "<id-from-long-running-command>", "timeout": 0 }
 ```
 
-Expected: markdown+frontmatter with `timedOut: false` and output containing terminal completion details.
+Expected response format: **split result**.
+
+Expected metadata includes `exitCode` and `shell`; `timedOut` appears only when true.
 
 ## 4) Wait for completion
 
@@ -151,7 +181,9 @@ Invoke `await_shell`:
 { "id": "<id-from-step-2>", "timeout": 5000 }
 ```
 
-Expected: markdown+frontmatter result with `exitCode`/`timedOut` in frontmatter and captured text in the fenced output block.
+Expected response format: **split result**.
+
+Metadata includes `exitCode` and `shell`; `timedOut` appears only if wait timed out.
 
 ## 5) Verify last command tracking
 
@@ -184,3 +216,4 @@ killed: true
 ```
 
 A subsequent `await_shell` eventually reports completion in markdown+frontmatter format.
+A subsequent `await_shell` eventually reports completion as a split result (YAML metadata + raw output text).
