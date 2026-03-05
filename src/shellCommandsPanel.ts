@@ -3,7 +3,6 @@ import * as vscode from 'vscode';
 
 import ansiRegex from 'ansi-regex';
 
-import { stripTerminalControlSequences } from '@/shellOutputFilter';
 import {
   type TerminalCommandDetails,
   type TerminalCommandListItem,
@@ -44,7 +43,7 @@ type ShellCommandTreeItem = {
 
 type WebviewMessage = {
   commandId?: string;
-  type: 'clear' | 'copy' | 'delete' | 'kill' | 'runInTerminal' | 'select';
+  type: 'clear' | 'copy' | 'delete' | 'kill' | 'select';
 };
 
 interface AnsiRenderState {
@@ -523,14 +522,7 @@ function buildDetailsMarkup(details: TerminalCommandDetails | undefined): string
           data-id="${escapeHtml(details.id)}"
           title="Copy command"
           aria-label="Copy command"
-        ><span class="codicon codicon-copy" aria-hidden="true"></span></button>
-        <button
-          class="icon-action"
-          data-action="runInTerminal"
-          data-id="${escapeHtml(details.id)}"
-          title="Run in terminal"
-          aria-label="Run in terminal"
-        ><span class="codicon codicon-terminal" aria-hidden="true"></span></button>
+        >⧉</button>
       </div>
     </div>
     <div id="output-block" class="output-block">${convertAnsiToHtml(details.output)}</div>
@@ -550,9 +542,7 @@ function getWebviewHtml(
     const shellLabel = getShellLabel(command.shell);
     const selectedClass = command.id === selectedCommandId ? 'selected' : '';
     const rowAction = command.isRunning ? 'kill' : 'delete';
-    const rowActionIcon = command.isRunning
-      ? '<span class="codicon codicon-primitive-square" aria-hidden="true"></span>'
-      : '<span class="codicon codicon-trash" aria-hidden="true"></span>';
+    const rowActionIcon = command.isRunning ? '■' : '✕';
     const rowActionTitle = command.isRunning ? 'Kill' : 'Delete';
     const tooltip = buildCommandTooltip(command);
 
@@ -601,27 +591,6 @@ function getWebviewHtml(
         background: var(--vscode-sideBar-background);
         user-select: none;
       }
-      .codicon {
-        display: inline-block;
-        font-family: var(--vscode-icon-font-family, codicon);
-        font-size: 16px;
-        font-style: normal;
-        font-weight: normal;
-        line-height: 1;
-        text-rendering: auto;
-        text-transform: none;
-        letter-spacing: normal;
-        text-align: center;
-        white-space: nowrap;
-        word-wrap: normal;
-        direction: ltr;
-        -webkit-font-smoothing: antialiased;
-      }
-      .codicon-copy::before { content: '\\ebcc'; }
-      .codicon-terminal::before { content: '\\ea85'; }
-      .codicon-clear-all::before { content: '\\ea0f'; }
-      .codicon-trash::before { content: '\\ea81'; }
-      .codicon-primitive-square::before { content: '\\ea73'; }
       .layout {
         display: grid;
         grid-template-columns: var(--sidebar-width, 340px) 1px minmax(0, 1fr);
@@ -814,7 +783,7 @@ function getWebviewHtml(
             aria-label="Filter commands"
             autocomplete="off"
           />
-          <button class="icon-action" data-action="clear" title="Clear Finished" aria-label="Clear Finished"><span class="codicon codicon-clear-all" aria-hidden="true"></span></button>
+          <button class="icon-action" data-action="clear" title="Clear Finished" aria-label="Clear Finished">✕</button>
         </div>
         <div class="command-list">${commandItems}</div>
       </aside>
@@ -1117,27 +1086,6 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     this.selectedCommandId = commandId;
   }
 
-  private buildOutputReplayCommand(output: string, shellPath: string): string | undefined {
-    const sanitizedOutput = stripTerminalControlSequences(output);
-
-    if (sanitizedOutput.length === 0) {
-      return undefined;
-    }
-
-    const shellName = getShellLabel(shellPath);
-    const outputBase64 = Buffer.from(sanitizedOutput, 'utf8').toString('base64');
-
-    if (shellName === 'powershell' || shellName === 'pwsh') {
-      return `[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${outputBase64}')) | Write-Output`;
-    }
-
-    if (shellName === 'cmd') {
-      return `powershell -NoLogo -NoProfile -Command "[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${outputBase64}')) | Write-Output"`;
-    }
-
-    return `printf %s '${outputBase64}' | base64 --decode`;
-  }
-
   private async handleMessage(message: WebviewMessage): Promise<void> {
     if (message.type === 'select' && message.commandId) {
       this.selectedCommandId = message.commandId;
@@ -1153,34 +1101,6 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
       }
 
       await vscode.env.clipboard.writeText(details.command);
-      return;
-    }
-
-    if (message.type === 'runInTerminal' && message.commandId) {
-      const details = await this.tryGetCommandDetails(message.commandId);
-
-      if (!details) {
-        return;
-      }
-
-      const terminal = vscode.window.createTerminal({
-        name: `Shell Run (${getShellLabel(details.shell)})`,
-        shellPath: details.shell,
-      });
-
-      terminal.show(true);
-      await this.waitForTerminalReady(terminal);
-
-      const outputReplayCommand = this.buildOutputReplayCommand(details.output, details.shell);
-
-      if (outputReplayCommand) {
-        terminal.sendText(outputReplayCommand, true);
-      }
-
-      setTimeout(() => {
-        terminal.sendText(details.command, false);
-      }, 150);
-
       return;
     }
 
@@ -1247,15 +1167,6 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     this.runningPoller = setInterval(() => {
       void this.refresh();
     }, RUNNING_POLL_MS);
-  }
-
-  private async waitForTerminalReady(terminal: vscode.Terminal): Promise<void> {
-    await Promise.race([
-      terminal.processId,
-      new Promise<undefined>(resolve => {
-        setTimeout(resolve, 2500, undefined);
-      }),
-    ]);
   }
 }
 
