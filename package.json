@@ -107,6 +107,7 @@
       "custom-vscode-shellCommandsPanel": [
         {
           "id": "custom-vscode.shellCommandsView",
+          "type": "webview",
           "name": "Shell Commands",
           "icon": "$(terminal)",
           "when": "config.custom-vscode.shellTools.enabled"
