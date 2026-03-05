@@ -15,12 +15,12 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished",
-    "onLanguageModelTool:run_in_sync_terminal",
-    "onLanguageModelTool:run_in_async_terminal",
-    "onLanguageModelTool:await_terminal_enhanced",
-    "onLanguageModelTool:get_terminal_output_enhanced",
-    "onLanguageModelTool:kill_terminal_enhanced",
-    "onLanguageModelTool:terminal_last_command_enhanced"
+    "onLanguageModelTool:run_in_sync_shell",
+    "onLanguageModelTool:run_in_async_shell",
+    "onLanguageModelTool:await_shell",
+    "onLanguageModelTool:get_shell_output",
+    "onLanguageModelTool:kill_shell",
+    "onLanguageModelTool:shell_last_command"
   ],
   "contributes": {
     "commands": [
@@ -35,28 +35,28 @@
         "command": "custom-vscode.shellCommands.clearFinished",
         "title": "Clear",
         "category": "Shell Commands",
-        "enablement": "config.custom-vscode.terminalTools.enabled",
+        "enablement": "config.custom-vscode.shellTools.enabled",
         "icon": "$(clear-all)"
       },
       {
         "command": "custom-vscode.shellCommands.killEntry",
         "title": "Kill",
         "category": "Shell Commands",
-        "enablement": "config.custom-vscode.terminalTools.enabled",
+        "enablement": "config.custom-vscode.shellTools.enabled",
         "icon": "$(close)"
       },
       {
         "command": "custom-vscode.shellCommands.deleteEntry",
         "title": "Delete",
         "category": "Shell Commands",
-        "enablement": "config.custom-vscode.terminalTools.enabled",
+        "enablement": "config.custom-vscode.shellTools.enabled",
         "icon": "$(trash)"
       },
       {
         "command": "custom-vscode.shellCommands.openEntry",
         "title": "Show Output",
         "category": "Shell Commands",
-        "enablement": "config.custom-vscode.terminalTools.enabled"
+        "enablement": "config.custom-vscode.shellTools.enabled"
       }
     ],
     "menus": {
@@ -77,19 +77,19 @@
         {
           "command": "custom-vscode.shellCommands.killEntry",
           "group": "inline",
-          "when": "view == custom-vscode.shellCommandsView && viewItem == running && config.custom-vscode.terminalTools.enabled"
+          "when": "view == custom-vscode.shellCommandsView && viewItem == running && config.custom-vscode.shellTools.enabled"
         },
         {
           "command": "custom-vscode.shellCommands.deleteEntry",
           "group": "inline",
-          "when": "view == custom-vscode.shellCommandsView && viewItem == finished && config.custom-vscode.terminalTools.enabled"
+          "when": "view == custom-vscode.shellCommandsView && viewItem == finished && config.custom-vscode.shellTools.enabled"
         }
       ],
       "view/title": [
         {
           "command": "custom-vscode.shellCommands.clearFinished",
           "group": "navigation",
-          "when": "view == custom-vscode.shellCommandsView && config.custom-vscode.terminalTools.enabled"
+          "when": "view == custom-vscode.shellCommandsView && config.custom-vscode.shellTools.enabled"
         }
       ]
     },
@@ -99,7 +99,7 @@
           "id": "custom-vscode-shellCommandsPanel",
           "title": "Shell Commands",
           "icon": "$(terminal)",
-          "when": "config.custom-vscode.terminalTools.enabled"
+          "when": "config.custom-vscode.shellTools.enabled"
         }
       ]
     },
@@ -109,7 +109,7 @@
           "id": "custom-vscode.shellCommandsView",
           "name": "Shell Commands",
           "icon": "$(terminal)",
-          "when": "config.custom-vscode.terminalTools.enabled"
+          "when": "config.custom-vscode.shellTools.enabled"
         }
       ]
     },
@@ -130,20 +130,20 @@
           "description": "Enable the bring-to-chat feature (chat participant, command, and review comment button).",
           "type": "boolean"
         },
-        "custom-vscode.terminalTools.enabled": {
+        "custom-vscode.shellTools.enabled": {
           "default": true,
-          "description": "Enable custom terminal language model tools.",
+          "description": "Enable custom shell command language model tools.",
           "type": "boolean"
         },
-        "custom-vscode.terminalOutput.memoryToFileSpillMinutes": {
+        "custom-vscode.shellOutput.memoryToFileSpillMinutes": {
           "default": 2,
-          "description": "Minutes to keep terminal output in memory before spilling it to a temp file.",
+          "description": "Minutes to keep shell command output in memory before spilling it to a temp file.",
           "minimum": 0,
           "type": "number"
         },
-        "custom-vscode.terminalOutput.startupPurgeMaxAgeHours": {
+        "custom-vscode.shellOutput.startupPurgeMaxAgeHours": {
           "default": 6,
-          "description": "On extension host startup, purge persisted terminal output files older than this many hours.",
+          "description": "On extension host startup, purge persisted shell command output files older than this many hours.",
           "minimum": 0,
           "type": "number"
         }
@@ -151,12 +151,12 @@
     },
     "languageModelTools": [
       {
-        "name": "run_in_sync_terminal",
-        "toolReferenceName": "runInSyncTerminal",
-        "displayName": "Run In Sync Terminal",
-        "when": "config.custom-vscode.terminalTools.enabled",
+        "name": "run_in_sync_shell",
+        "toolReferenceName": "runInSyncShell",
+        "displayName": "Run Shell Command (Sync)",
+        "when": "config.custom-vscode.shellTools.enabled",
         "icon": "$(terminal)",
-        "modelDescription": "Run a shell command synchronously. First run starts in workspace root (or home if no workspace); later runs reuse the last resolved PWD from previous sync commands. Returns an id and status metadata (exitCode, terminationSignal, timedOut); provide full_output, last_lines, or regex to include output in the response, or use id to await or retrieve output.",
+        "modelDescription": "Run a shell command synchronously in workspace root (or home if no workspace). Returns an id and status metadata (exitCode, terminationSignal, timedOut); provide full_output, last_lines, or regex to include output in the response, or use id to await or retrieve output.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -226,12 +226,12 @@
         }
       },
       {
-        "name": "run_in_async_terminal",
-        "toolReferenceName": "runInAsyncTerminal",
-        "displayName": "Run In Async Terminal",
-        "when": "config.custom-vscode.terminalTools.enabled",
+        "name": "run_in_async_shell",
+        "toolReferenceName": "runInAsyncShell",
+        "displayName": "Run Shell Command (Async)",
+        "when": "config.custom-vscode.shellTools.enabled",
         "icon": "$(terminal)",
-        "modelDescription": "Run a shell command asynchronously. Each call runs in workspace root (or home if no workspace). Returns a terminal id to await or retrieve output.",
+        "modelDescription": "Run a shell command asynchronously in workspace root (or home if no workspace). Returns a command id to await or retrieve output.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -262,12 +262,12 @@
         }
       },
       {
-        "name": "await_terminal_enhanced",
-        "toolReferenceName": "awaitTerminalEnhanced",
-        "displayName": "Await Terminal",
-        "when": "config.custom-vscode.terminalTools.enabled",
+        "name": "await_shell",
+        "toolReferenceName": "awaitShell",
+        "displayName": "Await Shell Command",
+        "when": "config.custom-vscode.shellTools.enabled",
         "icon": "$(clock)",
-        "modelDescription": "Wait for a terminal command to finish for an id from run_in_async_terminal or run_in_sync_terminal, then return output and status (exitCode, terminationSignal, timedOut); sync ids return immediately.",
+        "modelDescription": "Wait for a shell command to finish for an id from run_in_async_shell or run_in_sync_shell, then return output and status (exitCode, terminationSignal, timedOut); sync ids return immediately.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -278,7 +278,7 @@
           "properties": {
             "id": {
               "type": "string",
-              "description": "Terminal id from run_in_sync_terminal or run_in_async_terminal."
+              "description": "Command id from run_in_sync_shell or run_in_async_shell."
             },
             "timeout": {
               "type": "number",
@@ -288,12 +288,12 @@
         }
       },
       {
-        "name": "get_terminal_output_enhanced",
-        "toolReferenceName": "getTerminalOutputEnhanced",
-        "displayName": "Get Terminal Output",
-        "when": "config.custom-vscode.terminalTools.enabled",
+        "name": "get_shell_output",
+        "toolReferenceName": "getShellOutput",
+        "displayName": "Get Shell Command Output",
+        "when": "config.custom-vscode.shellTools.enabled",
         "icon": "$(output)",
-        "modelDescription": "Read output and status (isRunning, exitCode, terminationSignal) for a terminal id from run_in_sync_terminal or run_in_async_terminal (returns only new output since last read by default).",
+        "modelDescription": "Read output and status (isRunning, exitCode, terminationSignal) for a command id from run_in_sync_shell or run_in_async_shell (returns only new output since last read by default).",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -303,7 +303,7 @@
           "properties": {
             "id": {
               "type": "string",
-              "description": "Terminal id from run_in_sync_terminal or run_in_async_terminal."
+              "description": "Command id from run_in_sync_shell or run_in_async_shell."
             },
             "full_output": {
               "type": "boolean",
@@ -332,12 +332,12 @@
         }
       },
       {
-        "name": "kill_terminal_enhanced",
-        "toolReferenceName": "killTerminalEnhanced",
-        "displayName": "Kill Terminal",
-        "when": "config.custom-vscode.terminalTools.enabled",
+        "name": "kill_shell",
+        "toolReferenceName": "killShell",
+        "displayName": "Stop Shell Command",
+        "when": "config.custom-vscode.shellTools.enabled",
         "icon": "$(close)",
-        "modelDescription": "Stop a running background terminal command.",
+        "modelDescription": "Stop a running background shell command.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -347,25 +347,25 @@
           "properties": {
             "id": {
               "type": "string",
-              "description": "Terminal id from run_in_sync_terminal or run_in_async_terminal."
+              "description": "Command id from run_in_sync_shell or run_in_async_shell."
             }
           }
         }
       },
       {
-        "name": "terminal_last_command_enhanced",
-        "toolReferenceName": "terminalLastCommandEnhanced",
-        "displayName": "Terminal Last Command",
-        "when": "config.custom-vscode.terminalTools.enabled",
+        "name": "shell_last_command",
+        "toolReferenceName": "shellLastCommand",
+        "displayName": "Last Shell Command",
+        "when": "config.custom-vscode.shellTools.enabled",
         "icon": "$(history)",
-        "modelDescription": "Get the last command executed via run_in_sync_terminal or run_in_async_terminal.",
+        "modelDescription": "Get the last shell command executed via run_in_sync_shell or run_in_async_shell.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
           "properties": {
             "id": {
               "type": "string",
-              "description": "Optional terminal id from run_in_sync_terminal or run_in_async_terminal to scope the lookup."
+              "description": "Optional command id from run_in_sync_shell or run_in_async_shell to scope the lookup."
             }
           }
         }

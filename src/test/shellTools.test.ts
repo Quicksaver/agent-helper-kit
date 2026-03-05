@@ -8,8 +8,8 @@ import {
 import {
   getTerminalOutputDirectoryPath,
   getTerminalOutputFilePath,
-} from '@/terminalOutputStore';
-import { registerTerminalTools } from '@/terminalTools';
+} from '@/shellOutputStore';
+import { registerShellTools } from '@/shellTools';
 
 const TERMINAL_ID_REGEX = /^custom-terminal-[a-f0-9]{8}$/;
 
@@ -227,14 +227,14 @@ describe('terminal tools', () => {
   });
 
   it('registers all custom terminal tools', () => {
-    const registration = registerTerminalTools();
+    const registration = registerShellTools();
 
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_sync_terminal', expect.any(Object));
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_async_terminal', expect.any(Object));
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith('await_terminal_enhanced', expect.any(Object));
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith('get_terminal_output_enhanced', expect.any(Object));
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith('kill_terminal_enhanced', expect.any(Object));
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith('terminal_last_command_enhanced', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_sync_shell', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_async_shell', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('await_shell', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('get_shell_output', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('kill_shell', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('shell_last_command', expect.any(Object));
     expect(vscode.Disposable.from).toHaveBeenCalledTimes(2);
     expect(registration).toBeDefined();
   });
@@ -243,13 +243,13 @@ describe('terminal tools', () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
 
-    registerTerminalTools();
+    registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_async_terminal');
-    const getOutputTool = getRegisteredTool('get_terminal_output_enhanced');
-    const awaitTool = getRegisteredTool('await_terminal_enhanced');
-    const killTool = getRegisteredTool('kill_terminal_enhanced');
-    const lastCommandTool = getRegisteredTool('terminal_last_command_enhanced');
+    const runTool = getRegisteredTool('run_in_async_shell');
+    const getOutputTool = getRegisteredTool('get_shell_output');
+    const awaitTool = getRegisteredTool('await_shell');
+    const killTool = getRegisteredTool('kill_shell');
+    const lastCommandTool = getRegisteredTool('shell_last_command');
 
     expect(runTool).toBeDefined();
     expect(getOutputTool).toBeDefined();
@@ -410,10 +410,10 @@ describe('terminal tools', () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
 
-    registerTerminalTools();
+    registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_async_terminal');
-    const awaitTool = getRegisteredTool('await_terminal_enhanced');
+    const runTool = getRegisteredTool('run_in_async_shell');
+    const awaitTool = getRegisteredTool('await_shell');
 
     const runResult = await runTool.invoke({
       input: {
@@ -444,14 +444,14 @@ describe('terminal tools', () => {
     expect(awaitPayload.terminationSignal).toBe('SIGINT');
   });
 
-  it('returns only id by default for foreground runs and exposes output via get_terminal_output_enhanced', async () => {
+  it('returns only id by default for foreground runs and exposes output via get_shell_output', async () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
 
-    registerTerminalTools();
+    registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_sync_terminal');
-    const getOutputTool = getRegisteredTool('get_terminal_output_enhanced');
+    const runTool = getRegisteredTool('run_in_sync_shell');
+    const getOutputTool = getRegisteredTool('get_shell_output');
 
     const runPromise = runTool.invoke({
       input: {
@@ -492,9 +492,9 @@ describe('terminal tools', () => {
   });
 
   it('returns opt-in foreground output when full_output, last_lines, or regex is provided', async () => {
-    registerTerminalTools();
+    registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_sync_terminal');
+    const runTool = getRegisteredTool('run_in_sync_shell');
 
     const fullOutputProcess = createFakeProcess();
     spawn.mockReturnValueOnce(fullOutputProcess);
@@ -600,12 +600,12 @@ describe('terminal tools', () => {
   });
 
   it('strips ANSI escape sequences from terminal output payloads', async () => {
-    registerTerminalTools();
+    registerShellTools();
 
-    const runSyncTool = getRegisteredTool('run_in_sync_terminal');
-    const runAsyncTool = getRegisteredTool('run_in_async_terminal');
-    const getOutputTool = getRegisteredTool('get_terminal_output_enhanced');
-    const awaitTool = getRegisteredTool('await_terminal_enhanced');
+    const runSyncTool = getRegisteredTool('run_in_sync_shell');
+    const runAsyncTool = getRegisteredTool('run_in_async_shell');
+    const getOutputTool = getRegisteredTool('get_shell_output');
+    const awaitTool = getRegisteredTool('await_shell');
     const ansiDecoratedOutput = '\u001B[1m\u001B[46m RUN \u001B[49m\u001B[22m \u001B[36mv4.0.18\u001B[39m\n';
 
     const syncProcess = createFakeProcess();
@@ -679,10 +679,10 @@ describe('terminal tools', () => {
       const fakeProcess = createFakeProcess();
       spawn.mockReturnValue(fakeProcess);
 
-      registerTerminalTools();
+      registerShellTools();
 
-      const runTool = getRegisteredTool('run_in_async_terminal');
-      const awaitTool = getRegisteredTool('await_terminal_enhanced');
+      const runTool = getRegisteredTool('run_in_async_shell');
+      const awaitTool = getRegisteredTool('await_shell');
 
       const runResult = await runTool.invoke({
         input: {

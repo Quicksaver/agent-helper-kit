@@ -4,7 +4,7 @@ Use the VS Code Chat tool-calling flow (or an agent capable of invoking extensio
 
 ## 1) Run a foreground command
 
-Invoke `run_in_sync_terminal` with:
+Invoke `run_in_sync_shell` with:
 
 ```json
 {
@@ -32,7 +32,7 @@ Then read output by id:
 { "id": "<id-from-step-1>" }
 ```
 
-via `get_terminal_output_enhanced`, or request inline output directly from `run_in_sync_terminal` by passing one of:
+via `get_shell_output`, or request inline output directly from `run_in_sync_shell` by passing one of:
 
 ```json
 { "full_output": true }
@@ -46,7 +46,7 @@ via `get_terminal_output_enhanced`, or request inline output directly from `run_
 { "regex": "ready|error" }
 ```
 
-`full_output`, `last_lines`, and `regex` are mutually exclusive for `run_in_sync_terminal` input (choose exactly one when requesting inline output).
+`full_output`, `last_lines`, and `regex` are mutually exclusive for `run_in_sync_shell` input (choose exactly one when requesting inline output).
 
 When using `full_output` in step 1, example output block:
 
@@ -57,7 +57,7 @@ ready
 
 ## 2) Start a background command
 
-Invoke `run_in_async_terminal` with:
+Invoke `run_in_async_shell` with:
 
 ```json
 {
@@ -76,7 +76,7 @@ id: 'custom-terminal-...'
 
 ## 3) Poll output while running
 
-Invoke `get_terminal_output_enhanced`:
+Invoke `get_shell_output`:
 
 ```json
 { "id": "<id-from-step-2>" }
@@ -110,9 +110,9 @@ Notes:
 
 - `last_lines` and `regex` are mutually exclusive.
 - If neither is supplied, all available output is returned.
-- `get_terminal_output_enhanced` frontmatter includes `exitCode`, `isRunning`, and `terminationSignal` (it does not include `timedOut`).
-- `run_in_sync_terminal` supports `full_output`, `last_lines`, and `regex`; `run_in_async_terminal` always returns only `id`.
-- For `run_in_async_terminal`, `timeout` applies to shell execution timeout, not to `await_terminal_enhanced` waiting time.
+- `get_shell_output` frontmatter includes `exitCode`, `isRunning`, and `terminationSignal` (it does not include `timedOut`).
+- `run_in_sync_shell` supports `full_output`, `last_lines`, and `regex`; `run_in_async_shell` always returns only `id`.
+- For `run_in_async_shell`, `timeout` applies to shell execution timeout, not to `await_shell` waiting time.
 
 ## 3b) Manual long-running check (`isRunning: true` + await behavior)
 
@@ -127,7 +127,7 @@ Start a longer background command:
 }
 ```
 
-Immediately call `get_terminal_output_enhanced` with that new id:
+Immediately call `get_shell_output` with that new id:
 
 ```json
 { "id": "<id-from-long-running-command>" }
@@ -135,7 +135,7 @@ Immediately call `get_terminal_output_enhanced` with that new id:
 
 Expected (if called quickly): frontmatter includes `isRunning: true` and output is partial (for example, only first tick(s)).
 
-Then call `await_terminal_enhanced` with:
+Then call `await_shell` with:
 
 ```json
 { "id": "<id-from-long-running-command>", "timeout": 0 }
@@ -145,7 +145,7 @@ Expected: markdown+frontmatter with `timedOut: false` and output containing term
 
 ## 4) Wait for completion
 
-Invoke `await_terminal_enhanced`:
+Invoke `await_shell`:
 
 ```json
 { "id": "<id-from-step-2>", "timeout": 5000 }
@@ -155,9 +155,9 @@ Expected: markdown+frontmatter result with `exitCode`/`timedOut` in frontmatter 
 
 ## 5) Verify last command tracking
 
-Invoke `terminal_last_command_enhanced` with `{}`.
+Invoke `shell_last_command` with `{}`.
 
-Expected response format: YAML-only with `command`, which equals the last command passed to `run_in_sync_terminal` or `run_in_async_terminal`.
+Expected response format: YAML-only with `command`, which equals the last command passed to `run_in_sync_shell` or `run_in_async_shell`.
 
 To query a specific background terminal instead, pass an optional `id`:
 
@@ -175,7 +175,7 @@ Start a long-running background command (e.g. `sleep 30`), then call:
 { "id": "<id>" }
 ```
 
-via `kill_terminal_enhanced`.
+via `kill_shell`.
 
 Expected response format: YAML-only, for example:
 
@@ -183,4 +183,4 @@ Expected response format: YAML-only, for example:
 killed: true
 ```
 
-A subsequent `await_terminal_enhanced` eventually reports completion in markdown+frontmatter format.
+A subsequent `await_shell` eventually reports completion in markdown+frontmatter format.

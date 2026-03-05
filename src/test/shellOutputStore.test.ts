@@ -12,7 +12,7 @@ import {
   getTerminalOutputDirectoryPath,
   getTerminalOutputFilePath,
   initializeTerminalOutputStore,
-} from '@/terminalOutputStore';
+} from '@/shellOutputStore';
 
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 const SEVEN_HOURS_MS = 7 * 60 * 60 * 1000;

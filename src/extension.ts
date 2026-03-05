@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 
 import { registerReviewParticipant, reviewCommentToChat } from '@/reviewComments';
-import { registerTerminalTools } from '@/terminalTools';
+import { registerShellTools } from '@/shellTools';
 
 const EXTENSION_CONFIG_SECTION = 'custom-vscode';
 const BRING_TO_CHAT_ENABLED_KEY = 'bringToChat.enabled';
-const TERMINAL_TOOLS_ENABLED_KEY = 'terminalTools.enabled';
+const SHELL_TOOLS_ENABLED_KEY = 'shellTools.enabled';
 
 function isFeatureEnabled(key: string): boolean {
   return vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get<boolean>(key, true);
@@ -25,11 +25,11 @@ function disposeAndRemoveSubscription(
 
 export function activate(context: vscode.ExtensionContext): void {
   let bringToChatRegistration: undefined | vscode.Disposable;
-  let terminalToolsRegistration: undefined | vscode.Disposable;
+  let shellToolsRegistration: undefined | vscode.Disposable;
 
   const applyFeatureConfiguration = (): void => {
     const isBringToChatEnabled = isFeatureEnabled(BRING_TO_CHAT_ENABLED_KEY);
-    const isTerminalToolsEnabled = isFeatureEnabled(TERMINAL_TOOLS_ENABLED_KEY);
+    const isShellToolsEnabled = isFeatureEnabled(SHELL_TOOLS_ENABLED_KEY);
 
     if (isBringToChatEnabled && !bringToChatRegistration) {
       bringToChatRegistration = vscode.Disposable.from(
@@ -43,13 +43,13 @@ export function activate(context: vscode.ExtensionContext): void {
       bringToChatRegistration = undefined;
     }
 
-    if (isTerminalToolsEnabled && !terminalToolsRegistration) {
-      terminalToolsRegistration = registerTerminalTools();
-      context.subscriptions.push(terminalToolsRegistration);
+    if (isShellToolsEnabled && !shellToolsRegistration) {
+      shellToolsRegistration = registerShellTools();
+      context.subscriptions.push(shellToolsRegistration);
     }
-    else if (!isTerminalToolsEnabled && terminalToolsRegistration) {
-      disposeAndRemoveSubscription(terminalToolsRegistration, context.subscriptions);
-      terminalToolsRegistration = undefined;
+    else if (!isShellToolsEnabled && shellToolsRegistration) {
+      disposeAndRemoveSubscription(shellToolsRegistration, context.subscriptions);
+      shellToolsRegistration = undefined;
     }
   };
 
@@ -59,7 +59,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeConfiguration(event => {
       if (
         event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${BRING_TO_CHAT_ENABLED_KEY}`)
-        || event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${TERMINAL_TOOLS_ENABLED_KEY}`)
+        || event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${SHELL_TOOLS_ENABLED_KEY}`)
       ) {
         applyFeatureConfiguration();
       }

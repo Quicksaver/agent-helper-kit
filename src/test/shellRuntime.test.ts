@@ -10,7 +10,7 @@ import {
   vi,
 } from 'vitest';
 
-import { TerminalRuntime } from '@/terminalRuntime';
+import { TerminalRuntime } from '@/shellRuntime';
 
 const TERMINAL_ID_REGEX = /^custom-terminal-[a-f0-9]{8}$/;
 

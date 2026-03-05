@@ -7,7 +7,7 @@ import {
 
 import { activate } from '@/extension';
 import { reviewCommentToChat } from '@/reviewComments';
-import { TERMINAL_TOOL_NAMES } from '@/terminalToolContracts';
+import { SHELL_TOOL_NAMES } from '@/shellToolContracts';
 
 type ConfigurationChangeEventLike = {
   affectsConfiguration: (section: string) => boolean;
@@ -48,7 +48,7 @@ const vscode = vi.hoisted(() => {
   const changeHandlers: ((event: { affectsConfiguration: (section: string) => boolean }) => void)[] = [];
   const getConfiguration = vi.fn(() => ({
     get: vi.fn((key: string, defaultValue: boolean) => {
-      if (key === 'bringToChat.enabled' || key === 'terminalTools.enabled') {
+      if (key === 'bringToChat.enabled' || key === 'shellTools.enabled') {
         return defaultValue;
       }
 
@@ -152,27 +152,27 @@ describe('Extension', () => {
     activate(context);
 
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      TERMINAL_TOOL_NAMES.runInSyncTerminal,
+      SHELL_TOOL_NAMES.runInSyncShell,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      TERMINAL_TOOL_NAMES.runInAsyncTerminal,
+      SHELL_TOOL_NAMES.runInAsyncShell,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      TERMINAL_TOOL_NAMES.awaitTerminal,
+      SHELL_TOOL_NAMES.awaitShell,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      TERMINAL_TOOL_NAMES.getTerminalOutput,
+      SHELL_TOOL_NAMES.getShellOutput,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      TERMINAL_TOOL_NAMES.killTerminal,
+      SHELL_TOOL_NAMES.killShell,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      TERMINAL_TOOL_NAMES.terminalLastCommand,
+      SHELL_TOOL_NAMES.shellLastCommand,
       expect.any(Object),
     );
   });
@@ -210,7 +210,7 @@ describe('Extension', () => {
 
     getConfigurationMock.mockReturnValue({
       get: vi.fn((key: string, defaultValue: boolean) => {
-        if (key === 'terminalTools.enabled') {
+        if (key === 'shellTools.enabled') {
           return terminalEnabled;
         }
 
@@ -221,34 +221,34 @@ describe('Extension', () => {
     activate(context);
 
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      TERMINAL_TOOL_NAMES.runInSyncTerminal,
+      SHELL_TOOL_NAMES.runInSyncShell,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      TERMINAL_TOOL_NAMES.runInAsyncTerminal,
+      SHELL_TOOL_NAMES.runInAsyncShell,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      TERMINAL_TOOL_NAMES.awaitTerminal,
+      SHELL_TOOL_NAMES.awaitShell,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      TERMINAL_TOOL_NAMES.getTerminalOutput,
+      SHELL_TOOL_NAMES.getShellOutput,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      TERMINAL_TOOL_NAMES.killTerminal,
+      SHELL_TOOL_NAMES.killShell,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      TERMINAL_TOOL_NAMES.terminalLastCommand,
+      SHELL_TOOL_NAMES.shellLastCommand,
       expect.any(Object),
     );
 
     const handlers = vscode.changeHandlers as ((event: ConfigurationChangeEventLike) => void)[];
     terminalEnabled = false;
     handlers[0]?.({
-      affectsConfiguration: (section: string) => section === 'custom-vscode.terminalTools.enabled',
+      affectsConfiguration: (section: string) => section === 'custom-vscode.shellTools.enabled',
     });
 
     expect(vscode.lm.registerTool).toHaveBeenCalled();

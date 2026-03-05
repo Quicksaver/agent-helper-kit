@@ -4,7 +4,7 @@ import {
   type TerminalCommandDetails,
   type TerminalCommandListItem,
   type TerminalRuntime,
-} from '@/terminalRuntime';
+} from '@/shellRuntime';
 
 const SHELL_COMMANDS_VIEW_ID = 'custom-vscode.shellCommandsView';
 const SHELL_COMMANDS_OUTPUT_CHANNEL_NAME = 'Shell Commands';

@@ -3,13 +3,13 @@ import * as path from 'node:path';
 
 import { z } from 'zod';
 
-export const TERMINAL_TOOL_NAMES = {
-  awaitTerminal: 'await_terminal_enhanced',
-  getTerminalOutput: 'get_terminal_output_enhanced',
-  killTerminal: 'kill_terminal_enhanced',
-  runInAsyncTerminal: 'run_in_async_terminal',
-  runInSyncTerminal: 'run_in_sync_terminal',
-  terminalLastCommand: 'terminal_last_command_enhanced',
+export const SHELL_TOOL_NAMES = {
+  awaitShell: 'await_shell',
+  getShellOutput: 'get_shell_output',
+  killShell: 'kill_shell',
+  runInAsyncShell: 'run_in_async_shell',
+  runInSyncShell: 'run_in_sync_shell',
+  shellLastCommand: 'shell_last_command',
 } as const;
 
 interface ContributedLanguageModelTool {
@@ -133,47 +133,47 @@ function getToolMetadata(name: string): {
   };
 }
 
-export const TERMINAL_TOOL_METADATA = {
-  awaitTerminal: {
-    ...getToolMetadata(TERMINAL_TOOL_NAMES.awaitTerminal),
-    invocationMessage: (id: string) => `Waiting for terminal ${id}`,
+export const SHELL_TOOL_METADATA = {
+  awaitShell: {
+    ...getToolMetadata(SHELL_TOOL_NAMES.awaitShell),
+    invocationMessage: (id: string) => `Waiting for shell command ${id}`,
   },
-  getTerminalOutput: {
-    ...getToolMetadata(TERMINAL_TOOL_NAMES.getTerminalOutput),
-    invocationMessage: (id: string) => `Reading output for terminal ${id}`,
+  getShellOutput: {
+    ...getToolMetadata(SHELL_TOOL_NAMES.getShellOutput),
+    invocationMessage: (id: string) => `Reading output for shell command ${id}`,
   },
-  killTerminal: {
-    confirmationMessage: (id: string) => `Stop terminal ${id}`,
-    confirmationTitle: 'Stop running terminal?',
-    ...getToolMetadata(TERMINAL_TOOL_NAMES.killTerminal),
-    invocationMessage: (id: string) => `Stopping terminal ${id}`,
+  killShell: {
+    confirmationMessage: (id: string) => `Stop shell command ${id}`,
+    confirmationTitle: 'Stop running shell command?',
+    ...getToolMetadata(SHELL_TOOL_NAMES.killShell),
+    invocationMessage: (id: string) => `Stopping shell command ${id}`,
   },
-  runInAsyncTerminal: {
+  runInAsyncShell: {
     confirmationMessage: (commandPreview: string) => `Run shell command: ${commandPreview}`,
-    confirmationTitle: 'Run async terminal command?',
-    ...getToolMetadata(TERMINAL_TOOL_NAMES.runInAsyncTerminal),
-    invocationMessage: (commandPreview: string) => `Running async terminal command: ${commandPreview}`,
+    confirmationTitle: 'Run async shell command?',
+    ...getToolMetadata(SHELL_TOOL_NAMES.runInAsyncShell),
+    invocationMessage: (commandPreview: string) => `Running async shell command: ${commandPreview}`,
   },
-  runInSyncTerminal: {
+  runInSyncShell: {
     confirmationMessage: (commandPreview: string) => `Run shell command: ${commandPreview}`,
-    confirmationTitle: 'Run sync terminal command?',
-    ...getToolMetadata(TERMINAL_TOOL_NAMES.runInSyncTerminal),
-    invocationMessage: (commandPreview: string) => `Running sync terminal command: ${commandPreview}`,
+    confirmationTitle: 'Run sync shell command?',
+    ...getToolMetadata(SHELL_TOOL_NAMES.runInSyncShell),
+    invocationMessage: (commandPreview: string) => `Running sync shell command: ${commandPreview}`,
   },
-  terminalLastCommand: {
-    invocationMessage: 'Reading last terminal command',
-    ...getToolMetadata(TERMINAL_TOOL_NAMES.terminalLastCommand),
+  shellLastCommand: {
+    invocationMessage: 'Reading last shell command',
+    ...getToolMetadata(SHELL_TOOL_NAMES.shellLastCommand),
   },
 } as const;
 
-export interface RunInAsyncTerminalInput {
+export interface RunInAsyncShellInput {
   command: string;
   explanation: string;
   goal: string;
   timeout: number;
 }
 
-export interface RunInSyncTerminalInput {
+export interface RunInSyncShellInput {
   command: string;
   explanation: string;
   full_output?: boolean;
@@ -183,34 +183,34 @@ export interface RunInSyncTerminalInput {
   timeout: number;
 }
 
-export interface AwaitTerminalInput {
+export interface AwaitShellInput {
   id: string;
   timeout: number;
 }
 
-export interface GetTerminalOutputInput {
+export interface GetShellOutputInput {
   full_output?: boolean;
   id: string;
   last_lines?: number;
   regex?: string;
 }
 
-export interface KillTerminalInput {
+export interface KillShellInput {
   id: string;
 }
 
-export interface TerminalLastCommandInput {
+export interface ShellLastCommandInput {
   id?: string;
 }
 
-export const runInAsyncTerminalInputSchema = {
+export const runInAsyncShellInputSchema = {
   command: z.string(),
   explanation: z.string(),
   goal: z.string(),
   timeout: z.number(),
 } satisfies z.ZodRawShape;
 
-export const runInSyncTerminalInputSchema = {
+export const runInSyncShellInputSchema = {
   command: z.string(),
   explanation: z.string(),
   full_output: z.boolean().optional(),
@@ -220,28 +220,28 @@ export const runInSyncTerminalInputSchema = {
   timeout: z.number(),
 } satisfies z.ZodRawShape;
 
-export const awaitTerminalInputSchema = {
+export const awaitShellInputSchema = {
   id: z.string(),
   timeout: z.number(),
 } satisfies z.ZodRawShape;
 
-export const getTerminalOutputInputSchema = {
+export const getShellOutputInputSchema = {
   full_output: z.boolean().optional(),
   id: z.string(),
   last_lines: z.number().int().nonnegative().optional(),
   regex: z.string().optional(),
 } satisfies z.ZodRawShape;
 
-const getTerminalOutputInputValidator = z.object(getTerminalOutputInputSchema).refine(
+const getShellOutputInputValidator = z.object(getShellOutputInputSchema).refine(
   value => !(typeof value.last_lines === 'number' && typeof value.regex === 'string'),
   {
     message: 'last_lines and regex are mutually exclusive',
   },
 );
 
-const runInAsyncTerminalInputValidator = z.object(runInAsyncTerminalInputSchema);
+const runInAsyncShellInputValidator = z.object(runInAsyncShellInputSchema);
 
-const runInSyncTerminalInputValidator = z.object(runInSyncTerminalInputSchema).refine(
+const runInSyncShellInputValidator = z.object(runInSyncShellInputSchema).refine(
   value => !(
     (typeof value.last_lines === 'number' && typeof value.regex === 'string')
     || (value.full_output === true && typeof value.last_lines === 'number')
@@ -252,22 +252,22 @@ const runInSyncTerminalInputValidator = z.object(runInSyncTerminalInputSchema).r
   },
 );
 
-export const killTerminalInputSchema = {
+export const killShellInputSchema = {
   id: z.string(),
 } satisfies z.ZodRawShape;
 
-export const terminalLastCommandInputSchema = {
+export const shellLastCommandInputSchema = {
   id: z.string().optional(),
 } satisfies z.ZodRawShape;
 
-export function validateGetTerminalOutputInput(input: GetTerminalOutputInput): GetTerminalOutputInput {
-  return getTerminalOutputInputValidator.parse(input);
+export function validateGetShellOutputInput(input: GetShellOutputInput): GetShellOutputInput {
+  return getShellOutputInputValidator.parse(input);
 }
 
-export function validateRunInAsyncTerminalInput(input: RunInAsyncTerminalInput): RunInAsyncTerminalInput {
-  return runInAsyncTerminalInputValidator.parse(input);
+export function validateRunInAsyncShellInput(input: RunInAsyncShellInput): RunInAsyncShellInput {
+  return runInAsyncShellInputValidator.parse(input);
 }
 
-export function validateRunInSyncTerminalInput(input: RunInSyncTerminalInput): RunInSyncTerminalInput {
-  return runInSyncTerminalInputValidator.parse(input);
+export function validateRunInSyncShellInput(input: RunInSyncShellInput): RunInSyncShellInput {
+  return runInSyncShellInputValidator.parse(input);
 }

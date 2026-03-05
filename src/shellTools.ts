@@ -5,20 +5,20 @@ import { registerShellCommandsPanel } from '@/shellCommandsPanel';
 import {
   getFilteredOutput,
   stripTerminalControlSequences,
-} from '@/terminalOutputFilter';
-import { TerminalRuntime } from '@/terminalRuntime';
+} from '@/shellOutputFilter';
+import { TerminalRuntime } from '@/shellRuntime';
 import {
-  type AwaitTerminalInput,
-  type GetTerminalOutputInput,
-  type KillTerminalInput,
-  type RunInAsyncTerminalInput,
-  type RunInSyncTerminalInput,
-  TERMINAL_TOOL_METADATA,
-  TERMINAL_TOOL_NAMES,
-  type TerminalLastCommandInput,
-  validateRunInAsyncTerminalInput,
-  validateRunInSyncTerminalInput,
-} from '@/terminalToolContracts';
+  type AwaitShellInput,
+  type GetShellOutputInput,
+  type KillShellInput,
+  type RunInAsyncShellInput,
+  type RunInSyncShellInput,
+  SHELL_TOOL_METADATA,
+  SHELL_TOOL_NAMES,
+  type ShellLastCommandInput,
+  validateRunInAsyncShellInput,
+  validateRunInSyncShellInput,
+} from '@/shellToolContracts';
 
 const DEFAULT_MEMORY_TO_FILE_SPILL_MINUTES = 2;
 const DEFAULT_STARTUP_PURGE_MAX_AGE_HOURS = 6;
@@ -37,11 +37,11 @@ function getTerminalOutputSettings(): {
 } {
   const configuration = vscode.workspace.getConfiguration('custom-vscode');
   const memoryToFileSpillMinutes = getNumericSettingOrDefault(
-    configuration.get<number>('terminalOutput.memoryToFileSpillMinutes'),
+    configuration.get<number>('shellOutput.memoryToFileSpillMinutes'),
     DEFAULT_MEMORY_TO_FILE_SPILL_MINUTES,
   );
   const startupPurgeMaxAgeHours = getNumericSettingOrDefault(
-    configuration.get<number>('terminalOutput.startupPurgeMaxAgeHours'),
+    configuration.get<number>('shellOutput.startupPurgeMaxAgeHours'),
     DEFAULT_STARTUP_PURGE_MAX_AGE_HOURS,
   );
 
@@ -138,35 +138,35 @@ function hasRunOutputOverrides(input: {
     || typeof input.regex === 'string';
 }
 
-const customRunInAsyncTerminalTool: vscode.LanguageModelTool<RunInAsyncTerminalInput> = {
+const customRunInAsyncShellTool: vscode.LanguageModelTool<RunInAsyncShellInput> = {
   async invoke(
-    options: vscode.LanguageModelToolInvocationOptions<RunInAsyncTerminalInput>,
+    options: vscode.LanguageModelToolInvocationOptions<RunInAsyncShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
-    const input = validateRunInAsyncTerminalInput(options.input);
+    const input = validateRunInAsyncShellInput(options.input);
     const id = getTerminalRuntime().startBackgroundCommand(input.command);
 
     return buildYamlToolResult({ id });
   },
   prepareInvocation(
-    options: vscode.LanguageModelToolInvocationPrepareOptions<RunInAsyncTerminalInput>,
+    options: vscode.LanguageModelToolInvocationPrepareOptions<RunInAsyncShellInput>,
   ): vscode.PreparedToolInvocation {
     const commandPreview = options.input.command.split('\n')[0]?.trim() || '(empty command)';
 
     return {
       confirmationMessages: {
-        message: TERMINAL_TOOL_METADATA.runInAsyncTerminal.confirmationMessage(commandPreview),
-        title: TERMINAL_TOOL_METADATA.runInAsyncTerminal.confirmationTitle,
+        message: SHELL_TOOL_METADATA.runInAsyncShell.confirmationMessage(commandPreview),
+        title: SHELL_TOOL_METADATA.runInAsyncShell.confirmationTitle,
       },
-      invocationMessage: TERMINAL_TOOL_METADATA.runInAsyncTerminal.invocationMessage(commandPreview),
+      invocationMessage: SHELL_TOOL_METADATA.runInAsyncShell.invocationMessage(commandPreview),
     };
   },
 };
 
-const customRunInSyncTerminalTool: vscode.LanguageModelTool<RunInSyncTerminalInput> = {
+const customRunInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = {
   async invoke(
-    options: vscode.LanguageModelToolInvocationOptions<RunInSyncTerminalInput>,
+    options: vscode.LanguageModelToolInvocationOptions<RunInSyncShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
-    const input = validateRunInSyncTerminalInput(options.input);
+    const input = validateRunInSyncShellInput(options.input);
     const shouldReturnOutput = hasRunOutputOverrides(input);
     const terminalRuntimeInstance = getTerminalRuntime();
 
@@ -204,23 +204,23 @@ const customRunInSyncTerminalTool: vscode.LanguageModelTool<RunInSyncTerminalInp
     });
   },
   prepareInvocation(
-    options: vscode.LanguageModelToolInvocationPrepareOptions<RunInSyncTerminalInput>,
+    options: vscode.LanguageModelToolInvocationPrepareOptions<RunInSyncShellInput>,
   ): vscode.PreparedToolInvocation {
     const commandPreview = options.input.command.split('\n')[0]?.trim() || '(empty command)';
 
     return {
       confirmationMessages: {
-        message: TERMINAL_TOOL_METADATA.runInSyncTerminal.confirmationMessage(commandPreview),
-        title: TERMINAL_TOOL_METADATA.runInSyncTerminal.confirmationTitle,
+        message: SHELL_TOOL_METADATA.runInSyncShell.confirmationMessage(commandPreview),
+        title: SHELL_TOOL_METADATA.runInSyncShell.confirmationTitle,
       },
-      invocationMessage: TERMINAL_TOOL_METADATA.runInSyncTerminal.invocationMessage(commandPreview),
+      invocationMessage: SHELL_TOOL_METADATA.runInSyncShell.invocationMessage(commandPreview),
     };
   },
 };
 
-const customAwaitTerminalTool: vscode.LanguageModelTool<AwaitTerminalInput> = {
+const customAwaitShellTool: vscode.LanguageModelTool<AwaitShellInput> = {
   async invoke(
-    options: vscode.LanguageModelToolInvocationOptions<AwaitTerminalInput>,
+    options: vscode.LanguageModelToolInvocationOptions<AwaitShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
     const result = await getTerminalRuntime().awaitBackgroundCommand(options.input);
 
@@ -232,17 +232,17 @@ const customAwaitTerminalTool: vscode.LanguageModelTool<AwaitTerminalInput> = {
     });
   },
   prepareInvocation(
-    options: vscode.LanguageModelToolInvocationPrepareOptions<AwaitTerminalInput>,
+    options: vscode.LanguageModelToolInvocationPrepareOptions<AwaitShellInput>,
   ): vscode.PreparedToolInvocation {
     return {
-      invocationMessage: TERMINAL_TOOL_METADATA.awaitTerminal.invocationMessage(options.input.id),
+      invocationMessage: SHELL_TOOL_METADATA.awaitShell.invocationMessage(options.input.id),
     };
   },
 };
 
-const customGetTerminalOutputTool: vscode.LanguageModelTool<GetTerminalOutputInput> = {
+const customGetShellOutputTool: vscode.LanguageModelTool<GetShellOutputInput> = {
   async invoke(
-    options: vscode.LanguageModelToolInvocationOptions<GetTerminalOutputInput>,
+    options: vscode.LanguageModelToolInvocationOptions<GetShellOutputInput>,
   ): Promise<vscode.LanguageModelToolResult> {
     const result = await getTerminalRuntime().readBackgroundOutput(options.input);
 
@@ -254,17 +254,17 @@ const customGetTerminalOutputTool: vscode.LanguageModelTool<GetTerminalOutputInp
     });
   },
   prepareInvocation(
-    options: vscode.LanguageModelToolInvocationPrepareOptions<GetTerminalOutputInput>,
+    options: vscode.LanguageModelToolInvocationPrepareOptions<GetShellOutputInput>,
   ): vscode.PreparedToolInvocation {
     return {
-      invocationMessage: TERMINAL_TOOL_METADATA.getTerminalOutput.invocationMessage(options.input.id),
+      invocationMessage: SHELL_TOOL_METADATA.getShellOutput.invocationMessage(options.input.id),
     };
   },
 };
 
-const customKillTerminalTool: vscode.LanguageModelTool<KillTerminalInput> = {
+const customKillShellTool: vscode.LanguageModelTool<KillShellInput> = {
   async invoke(
-    options: vscode.LanguageModelToolInvocationOptions<KillTerminalInput>,
+    options: vscode.LanguageModelToolInvocationOptions<KillShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
     const killed = getTerminalRuntime().killBackgroundCommand(options.input.id);
 
@@ -273,21 +273,21 @@ const customKillTerminalTool: vscode.LanguageModelTool<KillTerminalInput> = {
     });
   },
   prepareInvocation(
-    options: vscode.LanguageModelToolInvocationPrepareOptions<KillTerminalInput>,
+    options: vscode.LanguageModelToolInvocationPrepareOptions<KillShellInput>,
   ): vscode.PreparedToolInvocation {
     return {
       confirmationMessages: {
-        message: TERMINAL_TOOL_METADATA.killTerminal.confirmationMessage(options.input.id),
-        title: TERMINAL_TOOL_METADATA.killTerminal.confirmationTitle,
+        message: SHELL_TOOL_METADATA.killShell.confirmationMessage(options.input.id),
+        title: SHELL_TOOL_METADATA.killShell.confirmationTitle,
       },
-      invocationMessage: TERMINAL_TOOL_METADATA.killTerminal.invocationMessage(options.input.id),
+      invocationMessage: SHELL_TOOL_METADATA.killShell.invocationMessage(options.input.id),
     };
   },
 };
 
-const customTerminalLastCommandTool: vscode.LanguageModelTool<TerminalLastCommandInput> = {
+const customShellLastCommandTool: vscode.LanguageModelTool<ShellLastCommandInput> = {
   async invoke(
-    options: vscode.LanguageModelToolInvocationOptions<TerminalLastCommandInput>,
+    options: vscode.LanguageModelToolInvocationOptions<ShellLastCommandInput>,
   ): Promise<vscode.LanguageModelToolResult> {
     const command = getTerminalRuntime().getLastCommand(options.input.id);
 
@@ -297,19 +297,19 @@ const customTerminalLastCommandTool: vscode.LanguageModelTool<TerminalLastComman
   },
   prepareInvocation(): vscode.PreparedToolInvocation {
     return {
-      invocationMessage: TERMINAL_TOOL_METADATA.terminalLastCommand.invocationMessage,
+      invocationMessage: SHELL_TOOL_METADATA.shellLastCommand.invocationMessage,
     };
   },
 };
 
-export function registerTerminalTools(): vscode.Disposable {
+export function registerShellTools(): vscode.Disposable {
   const registrations = [
-    vscode.lm.registerTool(TERMINAL_TOOL_NAMES.runInSyncTerminal, customRunInSyncTerminalTool),
-    vscode.lm.registerTool(TERMINAL_TOOL_NAMES.runInAsyncTerminal, customRunInAsyncTerminalTool),
-    vscode.lm.registerTool(TERMINAL_TOOL_NAMES.awaitTerminal, customAwaitTerminalTool),
-    vscode.lm.registerTool(TERMINAL_TOOL_NAMES.getTerminalOutput, customGetTerminalOutputTool),
-    vscode.lm.registerTool(TERMINAL_TOOL_NAMES.killTerminal, customKillTerminalTool),
-    vscode.lm.registerTool(TERMINAL_TOOL_NAMES.terminalLastCommand, customTerminalLastCommandTool),
+    vscode.lm.registerTool(SHELL_TOOL_NAMES.runInSyncShell, customRunInSyncShellTool),
+    vscode.lm.registerTool(SHELL_TOOL_NAMES.runInAsyncShell, customRunInAsyncShellTool),
+    vscode.lm.registerTool(SHELL_TOOL_NAMES.awaitShell, customAwaitShellTool),
+    vscode.lm.registerTool(SHELL_TOOL_NAMES.getShellOutput, customGetShellOutputTool),
+    vscode.lm.registerTool(SHELL_TOOL_NAMES.killShell, customKillShellTool),
+    vscode.lm.registerTool(SHELL_TOOL_NAMES.shellLastCommand, customShellLastCommandTool),
     registerShellCommandsPanel(getTerminalRuntime),
   ];
 

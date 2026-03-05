@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import {
   getFilteredOutput,
   type TerminalOutputFilterInput,
-} from '@/terminalOutputFilter';
+} from '@/shellOutputFilter';
 import {
   appendTerminalOutput,
   initializeTerminalOutputStore,
@@ -16,7 +16,7 @@ import {
   removeTerminalCommandMetadata,
   removeTerminalOutputFile,
   writeTerminalCommandMetadata,
-} from '@/terminalOutputStore';
+} from '@/shellOutputStore';
 
 const DEFAULT_OUTPUT_LIMIT = 60 * 1024;
 const DEFAULT_MEMORY_TO_FILE_DELAY_MS = 2 * 60 * 1000;
