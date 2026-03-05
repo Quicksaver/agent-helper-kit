@@ -695,12 +695,12 @@ function getWebviewHtml(
       }
       .row-action {
         position: absolute;
-        left: 26px;
+        right: 8px;
         top: 50%;
         transform: translateY(-50%);
         opacity: 0;
         pointer-events: none;
-        background: var(--vscode-list-hoverBackground);
+        background: var(--vscode-sideBar-background);
       }
       .command-item:hover .row-action,
       .command-item:focus-within .row-action {
