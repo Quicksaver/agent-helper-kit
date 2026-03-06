@@ -8,6 +8,8 @@ import { toUri } from '@/uri';
 /** Sentinel values used when a standalone comment has no associated file or line. */
 const STANDALONE_FILE = 'unknown';
 const STANDALONE_LINE = 1;
+const EXTENSION_CONFIG_SECTION = 'agent-helper-kit';
+const QUEUE_BEFORE_SEND_KEY = 'bringToChat.queueBeforeSend';
 
 const queuedPendingComments: {
   comment: ReviewComment;
@@ -42,6 +44,10 @@ export function dismissQueueToast(): void {
 export function clearQueuedPendingComments(): void {
   queuedPendingComments.splice(0);
   dismissQueueToast();
+}
+
+function shouldQueueBeforeSend(): boolean {
+  return vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get<boolean>(QUEUE_BEFORE_SEND_KEY, false);
 }
 
 /** Checks whether a comment with the same body, file, and line is already queued. */
@@ -254,6 +260,22 @@ function showQueueToast(): void {
   });
 }
 
+function sendQueuedCommentsToChat(): void {
+  void vscode.commands.executeCommand('workbench.action.chat.open', {
+    query: '@bringCommentsToChat',
+  });
+}
+
+function handleQueuedCommentsUpdated(): void {
+  if (shouldQueueBeforeSend()) {
+    showQueueToast();
+    return;
+  }
+
+  dismissQueueToast();
+  sendQueuedCommentsToChat();
+}
+
 /**
  * Attempts to resolve a {@link vscode.CommentThread} from the command argument.
  *
@@ -278,8 +300,9 @@ function resolveCommentThread(arg: unknown): undefined | vscode.CommentThread {
  * Command handler for `agent-helper-kit.reviewCommentToChat`.
  *
  * Extracts the comment data from the provided {@link vscode.CommentThread} or {@link vscode.Comment},
- * stores it as a pending review comment, and opens the chat panel with the `@bringCommentsToChat` participant
- * so the user can review and send.
+ * stores it as a pending review comment, then either sends it to chat immediately or,
+ * when the legacy queue mode is enabled, opens chat with the participant prefilled so
+ * the user can send all queued comments together.
  */
 export function reviewCommentToChat(arg: unknown): void {
   const thread = resolveCommentThread(arg);
@@ -315,7 +338,7 @@ export function reviewCommentToChat(arg: unknown): void {
     const title = parseTitle(thread);
 
     if (isAlreadyQueued(body, relativePath, line)) {
-      showQueueToast();
+      handleQueuedCommentsUpdated();
       return;
     }
 
@@ -325,7 +348,7 @@ export function reviewCommentToChat(arg: unknown): void {
       title,
     });
 
-    showQueueToast();
+    handleQueuedCommentsUpdated();
     return;
   }
 
@@ -343,7 +366,7 @@ export function reviewCommentToChat(arg: unknown): void {
     };
 
     if (isAlreadyQueued(body, STANDALONE_FILE, STANDALONE_LINE)) {
-      showQueueToast();
+      handleQueuedCommentsUpdated();
       return;
     }
 
@@ -353,7 +376,7 @@ export function reviewCommentToChat(arg: unknown): void {
       title: 'Review',
     });
 
-    showQueueToast();
+    handleQueuedCommentsUpdated();
   }
 }
 

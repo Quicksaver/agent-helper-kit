@@ -4,6 +4,7 @@ import {
 
 const vscode = vi.hoisted(() => {
   const _cancelHandlers: (() => void)[] = [];
+  const queueModeState = { enabled: false };
 
   return {
     _cancelHandlers,
@@ -13,6 +14,7 @@ const vscode = vi.hoisted(() => {
     ProgressLocation: {
       Notification: 15,
     },
+    queueModeState,
     window: {
       withProgress: vi.fn().mockImplementation(
         (
@@ -43,6 +45,15 @@ const vscode = vi.hoisted(() => {
         const p = typeof uri === 'string' ? uri : uri.fsPath;
         return p.replace(/^\/workspace\//, '');
       }),
+      getConfiguration: vi.fn(() => ({
+        get: vi.fn((key: string, defaultValue: boolean) => {
+          if (key === 'bringToChat.queueBeforeSend') {
+            return queueModeState.enabled;
+          }
+
+          return defaultValue;
+        }),
+      })),
     },
   };
 });
@@ -68,9 +79,10 @@ describe('reviewCommentToChat', () => {
     vi.clearAllMocks();
     clearQueuedPendingComments();
     vscode._cancelHandlers.splice(0);
+    vscode.queueModeState.enabled = false;
   });
 
-  it('should extract comment body and open chat when given a CommentThread', () => {
+  it('should extract comment body and send chat immediately when given a CommentThread', () => {
     const thread = {
       comments: [
         { body: 'First comment' },
@@ -97,6 +109,36 @@ describe('reviewCommentToChat', () => {
       comments: [ pending.comment ],
       target: 'src/foo.ts',
     });
+    expect(vscode.window.withProgress).not.toHaveBeenCalled();
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+      'workbench.action.chat.open',
+      { query: '@bringCommentsToChat' },
+    );
+  });
+
+  it('should prefill the participant and wait for send in queue-before-send mode', () => {
+    vscode.queueModeState.enabled = true;
+
+    const thread = {
+      comments: [ { body: 'Queued comment' } ],
+      label: 'Review',
+      range: { start: { line: 0 } },
+      uri: mockUri('/workspace/src/queued.ts'),
+    };
+
+    reviewCommentToChat(thread);
+
+    expect(vscode.window.withProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Queued for chat: Review' }),
+      expect.any(Function),
+    );
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+      'workbench.action.chat.open',
+      {
+        isPartialQuery: true,
+        query: '@bringCommentsToChat',
+      },
+    );
   });
 
   it('should handle MarkdownString comment bodies', () => {
@@ -376,6 +418,8 @@ describe('reviewCommentToChat', () => {
   });
 
   it('should not add duplicate comments and show already-queued toast', () => {
+    vscode.queueModeState.enabled = true;
+
     const thread = {
       comments: [ { body: 'Duplicate me' } ],
       label: 'Lint | warning',
@@ -401,6 +445,8 @@ describe('reviewCommentToChat', () => {
   });
 
   it('should show queued toast with thread label title portion', () => {
+    vscode.queueModeState.enabled = true;
+
     const thread = {
       comments: [ { body: 'Toast test' } ],
       label: 'Security | high',
@@ -421,6 +467,8 @@ describe('reviewCommentToChat', () => {
   });
 
   it('should use "Review" as title when thread has no label', () => {
+    vscode.queueModeState.enabled = true;
+
     const thread = {
       comments: [ { body: 'No label toast' } ],
       label: undefined,
@@ -437,6 +485,8 @@ describe('reviewCommentToChat', () => {
   });
 
   it('should not add duplicate standalone comments', () => {
+    vscode.queueModeState.enabled = true;
+
     const comment = { body: 'Standalone dup' };
 
     reviewCommentToChat(comment);
@@ -451,6 +501,8 @@ describe('reviewCommentToChat', () => {
   });
 
   it('should extract title from label with multiple pipes', () => {
+    vscode.queueModeState.enabled = true;
+
     const thread = {
       comments: [ { body: 'Multi-pipe test' } ],
       label: 'Title | Sub | high',
@@ -467,6 +519,8 @@ describe('reviewCommentToChat', () => {
   });
 
   it('should fallback to "Review" when title before pipe is empty', () => {
+    vscode.queueModeState.enabled = true;
+
     const thread = {
       comments: [ { body: 'Empty title test' } ],
       label: ' | high',
@@ -483,6 +537,8 @@ describe('reviewCommentToChat', () => {
   });
 
   it('should use full label as title when there is no pipe', () => {
+    vscode.queueModeState.enabled = true;
+
     const thread = {
       comments: [ { body: 'No pipe title test' } ],
       label: 'Custom Title',
@@ -499,6 +555,8 @@ describe('reviewCommentToChat', () => {
   });
 
   it('should use title portion when label has trailing pipe with empty severity', () => {
+    vscode.queueModeState.enabled = true;
+
     const thread = {
       comments: [ { body: 'Trailing pipe test' } ],
       label: 'Foo | ',
@@ -515,6 +573,8 @@ describe('reviewCommentToChat', () => {
   });
 
   it('should dismiss previous toast when showing a new one', () => {
+    vscode.queueModeState.enabled = true;
+
     const thread1 = {
       comments: [ { body: 'First' } ],
       label: undefined,
@@ -540,6 +600,8 @@ describe('reviewCommentToChat', () => {
   });
 
   it('should allow external dismissal via dismissQueueToast', () => {
+    vscode.queueModeState.enabled = true;
+
     const thread = {
       comments: [ { body: 'Dismissable' } ],
       label: undefined,
@@ -558,6 +620,8 @@ describe('reviewCommentToChat', () => {
   });
 
   it('should clear the queue when notification is cancelled', () => {
+    vscode.queueModeState.enabled = true;
+
     const thread = {
       comments: [ { body: 'Cancel test' } ],
       label: undefined,
@@ -576,6 +640,8 @@ describe('reviewCommentToChat', () => {
   });
 
   it('should aggregate multiple titles with counts in the toast message', () => {
+    vscode.queueModeState.enabled = true;
+
     const securityThread = {
       comments: [ { body: 'Security issue 1' } ],
       label: 'Security | critical',

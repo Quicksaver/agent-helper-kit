@@ -30,7 +30,9 @@ I have reviewed the code for accuracy and tested thoroughly. Please use caution 
 
 ![Copy to Chat](./docs/screens/copy-to-chat.png)
 
-Select code comments, e.g. from Copilot Code Review or CodeRabbit. When all are selected, run the command or call up the chat participant to include them in the chat context, formatted and with source location context.
+Select code comments, e.g. from Copilot Code Review or CodeRabbit, to format and include them in the chat context, with source location context.
+
+By default, each `Copy to Chat` click sends that review comment straight into chat history. If you prefer batching, enable `agent-helper-kit.bringToChat.queueBeforeSend` to enqueue the comments. When ready, call up the chat participant `@bringCommentsToChat` (should be already prefilled) and all enqueued comments are then brought in.
 
 - Command: `Copy to Chat` (`agent-helper-kit.reviewCommentToChat`)
 - Chat participant: `@bringCommentsToChat` (`agent-helper-kit.bringCommentsToChat`)
@@ -57,6 +59,7 @@ Tradeoffs:
 ## Configuration
 
 - `agent-helper-kit.bringToChat.enabled`: enable or disable bring-to-chat actions.
+- `agent-helper-kit.bringToChat.queueBeforeSend`: queue comments and bring-all-to-chat flow instead of immediate send on each click.
 - `agent-helper-kit.shellTools.enabled`: enable or disable shell tool registration.
 - `agent-helper-kit.shellOutput.memoryToFileSpillMinutes`: minutes to keep output in memory before spilling to file.
 - `agent-helper-kit.shellOutput.startupPurgeMaxAgeHours`: startup cleanup threshold for old persisted output.

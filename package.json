@@ -133,6 +133,11 @@
           "description": "Enable the bring-to-chat feature (chat participant, command, and review comment button).",
           "type": "boolean"
         },
+        "agent-helper-kit.bringToChat.queueBeforeSend": {
+          "default": false,
+          "description": "Queue selected review comments and prefill @bringCommentsToChat until you press Enter, instead of sending each Copy to Chat click immediately.",
+          "type": "boolean"
+        },
         "agent-helper-kit.shellTools.enabled": {
           "default": true,
           "description": "Enable shell command language model tools.",
