@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 
 import { buildComment } from '@/chat';
+import {
+  EXTENSION_CONFIG_SECTION,
+  QUEUE_BEFORE_SEND_SETTING,
+} from '@/reviewCommentConfig';
 import { type FileComments } from '@/types/FileComments';
 import { type ReviewComment } from '@/types/ReviewComment';
 import { toUri } from '@/uri';
@@ -8,8 +12,6 @@ import { toUri } from '@/uri';
 /** Sentinel values used when a standalone comment has no associated file or line. */
 const STANDALONE_FILE = 'unknown';
 const STANDALONE_LINE = 1;
-const EXTENSION_CONFIG_SECTION = 'agent-helper-kit';
-const QUEUE_BEFORE_SEND_KEY = 'bringToChat.queueBeforeSend';
 
 const queuedPendingComments: {
   comment: ReviewComment;
@@ -47,7 +49,7 @@ export function clearQueuedPendingComments(): void {
 }
 
 function shouldQueueBeforeSend(): boolean {
-  return vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get<boolean>(QUEUE_BEFORE_SEND_KEY, false);
+  return vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get<boolean>(QUEUE_BEFORE_SEND_SETTING, false);
 }
 
 /** Checks whether a comment with the same body, file, and line is already queued. */

@@ -2,6 +2,15 @@ import {
   beforeEach, describe, expect, it, vi,
 } from 'vitest';
 
+import { QUEUE_BEFORE_SEND_SETTING } from '@/reviewCommentConfig';
+import {
+  clearQueuedPendingComments,
+  dismissQueueToast,
+  formatQueueParts,
+  getQueuedPendingComments,
+  reviewCommentToChat,
+} from '@/reviewComments';
+
 const vscode = vi.hoisted(() => {
   const _cancelHandlers: (() => void)[] = [];
   const queueModeState = { enabled: false };
@@ -47,7 +56,7 @@ const vscode = vi.hoisted(() => {
       }),
       getConfiguration: vi.fn(() => ({
         get: vi.fn((key: string, defaultValue: boolean) => {
-          if (key === 'bringToChat.queueBeforeSend') {
+          if (key === QUEUE_BEFORE_SEND_SETTING) {
             return queueModeState.enabled;
           }
 
@@ -64,15 +73,6 @@ const mockUri = (fsPath: string) => ({
   fsPath,
   toString: () => `file://${fsPath}`,
 });
-
-// eslint-disable-next-line import/first -- must follow vi.mock
-import {
-  clearQueuedPendingComments,
-  dismissQueueToast,
-  formatQueueParts,
-  getQueuedPendingComments,
-  reviewCommentToChat,
-} from '@/reviewComments';
 
 describe('reviewCommentToChat', () => {
   beforeEach(() => {
