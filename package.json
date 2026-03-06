@@ -5,6 +5,10 @@
   "version": "0.5.14",
   "publisher": "Quicksaver",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Quicksaver/agent-helper-kit"
+  },
   "private": true,
   "engines": {
     "vscode": "^1.109.0"
@@ -440,8 +444,9 @@
     "lint:prettier": "prettier --log-level=warn --check .",
     "lint:tsc": "tsc --noEmit",
     "package": "yarn package:build && yarn package:install",
-    "package:build": "vsce package --no-dependencies --allow-missing-repository --skip-license --no-rewrite-relative-links",
+    "package:build": "vsce package --yarn --no-dependencies",
     "package:install": "code --install-extension $(ls -t *.vsix | head -1)",
+    "package:publish": "env-cmd -f ./.env.local vsce publish --yarn --no-dependencies",
     "test": "vitest run",
     "test:watch": "vitest",
     "vscode:prepublish": "yarn lint:check && yarn build",
@@ -454,6 +459,7 @@
     "@types/node": "^25.3.3",
     "@types/vscode": "^1.109.0",
     "@vscode/vsce": "^3.7.1",
+    "env-cmd": "^11.0.0",
     "esbuild": "^0.27.3",
     "eslint": "^9.39.3",
     "eslint-import-resolver-typescript": "^4.4.4",

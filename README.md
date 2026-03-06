@@ -16,13 +16,8 @@ It focuses on two practical jobs:
 - **reviewing agents:** Claude Opus 4.6, Gemini 3.1 Pro, Raptor mini
 - **reviewing tools:** Copilot Code Review, CodeRabbit
 
-I have reviewed the code for accuracy and tested thoroughly. Please use caution when using this extension in your IDE.
-
-## Why use it
-
-- Keep review context in one place while you prompt and fix code.
-- Run shell commands through extension-owned tools with consistent IDs and status tracking.
-- Use async and sync flows depending on whether you need background execution or immediate completion.
+> I have reviewed the code for accuracy and tested thoroughly.
+> Please use caution when using this extension in your IDE.
 
 ## Features
 
@@ -56,7 +51,7 @@ Compared with built-in terminal tools, these extension tools are optimized for a
 - No interactive terminal session (these are command-execution APIs, not full terminal UIs).
 - No state/environment persistence between command runs, each command runs in a fresh shell instance.
 
-**Recommendation:** for development flows where most or all commands are non-interactive and require no environment state persistency, you can disable the built-in terminal tools
+**Recommendation:** for development flows where most or all commands are non-interactive and require no environment state persistency, you can disable the built-in terminal tools.
 
 ![terminal tools](./docs/screens/terminal-tools.jpg)
 
@@ -76,4 +71,4 @@ Compared with built-in terminal tools, these extension tools are optimized for a
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+MIT - see [LICENSE](./LICENSE).

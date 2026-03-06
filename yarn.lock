@@ -165,6 +165,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@commander-js/extra-typings@npm:^13.1.0":
+  version: 13.1.0
+  resolution: "@commander-js/extra-typings@npm:13.1.0"
+  peerDependencies:
+    commander: ~13.1.0
+  checksum: 10/cdb7f854ac6c0b60c073ae928f2b836517ae7c1a8e86eb603144337fc87087ab9adebce67ed60d35beb82d80ef834ec40e7c20ef6053f4b115def21f1cd1d25f
+  languageName: node
+  linkType: hard
+
 "@emnapi/core@npm:^1.4.3":
   version: 1.8.1
   resolution: "@emnapi/core@npm:1.8.1"
@@ -1635,6 +1644,7 @@ __metadata:
     "@types/vscode": "npm:^1.109.0"
     "@vscode/vsce": "npm:^3.7.1"
     ansi-regex: "npm:^6.2.2"
+    env-cmd: "npm:^11.0.0"
     esbuild: "npm:^0.27.3"
     eslint: "npm:^9.39.3"
     eslint-import-resolver-typescript: "npm:^4.4.4"
@@ -2143,6 +2153,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"commander@npm:^13.1.0":
+  version: 13.1.0
+  resolution: "commander@npm:13.1.0"
+  checksum: 10/d3b4b79e6be8471ddadacbb8cd441fe82154d7da7393b50e76165a9e29ccdb74fa911a186437b9a211d0fc071db6051915c94fb8ef16d77511d898e9dbabc6af
+  languageName: node
+  linkType: hard
+
 "concat-map@npm:0.0.1":
   version: 0.0.1
   resolution: "concat-map@npm:0.0.1"
@@ -2447,6 +2464,19 @@ __metadata:
   version: 7.0.1
   resolution: "entities@npm:7.0.1"
   checksum: 10/3c0c58d869c45148463e96d21dee2d1b801bd3fe4cf47aa470cd26dfe81d59e9e0a9be92ae083fa02fa441283c883a471486e94538dcfb8544428aa80a55271b
+  languageName: node
+  linkType: hard
+
+"env-cmd@npm:^11.0.0":
+  version: 11.0.0
+  resolution: "env-cmd@npm:11.0.0"
+  dependencies:
+    "@commander-js/extra-typings": "npm:^13.1.0"
+    commander: "npm:^13.1.0"
+    cross-spawn: "npm:^7.0.6"
+  bin:
+    env-cmd: bin/env-cmd.js
+  checksum: 10/80f81646010dd1be9997b8ccc452f9a3622c3d0ff7ea611f3329a2b31ca7b9c1a5c195ff97d4cae3c89eda40f2177f2ad493fa677b0328a9be0e5f8193c68220
   languageName: node
   linkType: hard
 
