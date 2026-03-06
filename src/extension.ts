@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 
+import { EXTENSION_CONFIG_SECTION } from '@/reviewCommentConfig';
 import { registerReviewParticipant, reviewCommentToChat } from '@/reviewComments';
 import { registerShellTools } from '@/shellTools';
 
-const EXTENSION_CONFIG_SECTION = 'agent-helper-kit';
 const BRING_TO_CHAT_ENABLED_KEY = 'bringToChat.enabled';
 const SHELL_TOOLS_ENABLED_KEY = 'shellTools.enabled';
 

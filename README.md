@@ -11,7 +11,7 @@ It focuses on two practical jobs:
 
 **A large portion of this extension was generated via an AI-first development flow:**
 
-- **agent environment / orchestration layer:** Github Copilot Chat in VS Code
+- **agent environment / orchestration layer:** GitHub Copilot Chat in VS Code
 - **main lead agents:** GPT-5.3-Codex, GPT-5.4
 - **reviewing agents:** Claude Opus 4.6, Gemini 3.1 Pro, Raptor mini
 - **reviewing tools:** Copilot Code Review, CodeRabbit
