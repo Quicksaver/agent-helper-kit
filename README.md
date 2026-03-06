@@ -7,6 +7,17 @@ It focuses on two practical jobs:
 - Move code review comments into chat with file/line context.
 - Provide reliable shell tools for agent workflows that need command status and structured output.
 
+## AI-Enhanced Project
+
+**A large portion of this extension was generated via an AI-first development flow:**
+
+- **agent environment / orchestration layer:** Github Copilot Chat in VS Code
+- **main lead agents:** GPT-5.3-Codex, GPT-5.4
+- **reviewing agents:** Claude Opus 4.6, Gemini 3.1 Pro, Raptor mini
+- **reviewing tools:** Copilot Code Review, CodeRabbit
+
+I have reviewed the code for accuracy and tested thoroughly. Please use caution when using this extension in your IDE.
+
 ## Why use it
 
 - Keep review context in one place while you prompt and fix code.
