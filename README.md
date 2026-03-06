@@ -28,7 +28,7 @@ I have reviewed the code for accuracy and tested thoroughly. Please use caution 
 
 ### Bring review comments to chat
 
-![Copy to Chat](./docs/screens/copy-to-chat.png)
+![Copy to Chat](./docs/screens/copy-to-chat.jpg)
 
 Select code comments, e.g. from Copilot Code Review or CodeRabbit, to format and include them in the chat context, with source location context.
 
@@ -39,11 +39,11 @@ By default, each `Copy to Chat` click sends that review comment straight into ch
 
 ### Agent-friendly shell tools
 
-![sync command](./docs/screens/sync-command.png)
+![sync command](./docs/screens/sync-command.jpg)
 
 Compared with built-in terminal tools, these extension tools are optimized for agent workflows.
 
-Benefits:
+**Benefits:**
 
 - Deterministic command lifecycle with stable IDs you can await, poll, and kill.
 - Structured metadata (`exitCode`, `terminationSignal`, `timedOut`, `shell`) that is easier to automate against.
@@ -51,10 +51,14 @@ Benefits:
 - `run_in_sync_shell` is optimal for single- or multi-step deterministic commands.
 - `run_in_async_shell` is optimal for long-running detached jobs plus explicit polling.
 
-Tradeoffs:
+**Tradeoffs:**
 
 - No interactive terminal session (these are command-execution APIs, not full terminal UIs).
 - No state/environment persistence between command runs, each command runs in a fresh shell instance.
+
+**Recommendation:** for development flows where most or all commands are non-interactive and require no environment state persistency, you can disable the built-in terminal tools
+
+![terminal tools](./docs/screens/terminal-tools.jpg)
 
 ## Configuration
 
