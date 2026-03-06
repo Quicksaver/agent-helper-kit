@@ -29,35 +29,35 @@
       {
         "command": "agent-helper-kit.reviewCommentToChat",
         "title": "Copy to Chat",
-        "category": "Custom",
+        "category": "Agent Helper Kit",
         "enablement": "config.agent-helper-kit.bringToChat.enabled",
         "icon": "$(comment-discussion)"
       },
       {
         "command": "agent-helper-kit.shellCommands.clearFinished",
-        "title": "Clear",
-        "category": "Shell Commands",
+        "title": "Clear Shell Command History",
+        "category": "Agent Helper Kit",
         "enablement": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(clear-all)"
       },
       {
         "command": "agent-helper-kit.shellCommands.killEntry",
-        "title": "Kill",
-        "category": "Shell Commands",
+        "title": "Kill Shell Command",
+        "category": "Agent Helper Kit",
         "enablement": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(close)"
       },
       {
         "command": "agent-helper-kit.shellCommands.deleteEntry",
-        "title": "Delete",
-        "category": "Shell Commands",
+        "title": "Remove Shell Command from History",
+        "category": "Agent Helper Kit",
         "enablement": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(trash)"
       },
       {
         "command": "agent-helper-kit.shellCommands.openEntry",
-        "title": "Show Output",
-        "category": "Shell Commands",
+        "title": "Show Shell Command Output",
+        "category": "Agent Helper Kit",
         "enablement": "config.agent-helper-kit.shellTools.enabled"
       }
     ],
