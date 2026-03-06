@@ -391,14 +391,20 @@ const customGetShellCommandTool: vscode.LanguageModelTool<GetShellCommandInput> 
 };
 
 const customGetLastShellCommandTool: vscode.LanguageModelTool<GetLastShellCommandInput> = {
-  async invoke(): Promise<vscode.LanguageModelToolResult> {
+  async invoke(
+    options: vscode.LanguageModelToolInvocationOptions<GetLastShellCommandInput>,
+  ): Promise<vscode.LanguageModelToolResult> {
+    void options;
     const command = getTerminalRuntime().getLastCommand();
 
     return buildYamlToolResult({
       command: command ?? null,
     });
   },
-  prepareInvocation(): vscode.PreparedToolInvocation {
+  prepareInvocation(
+    options: vscode.LanguageModelToolInvocationPrepareOptions<GetLastShellCommandInput>,
+  ): vscode.PreparedToolInvocation {
+    void options;
     return {
       invocationMessage: SHELL_TOOL_METADATA.getLastShellCommand.invocationMessage,
     };

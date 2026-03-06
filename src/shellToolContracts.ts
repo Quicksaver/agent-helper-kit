@@ -140,8 +140,8 @@ export const SHELL_TOOL_METADATA = {
     invocationMessage: (id: string) => `Waiting for shell command ${id}`,
   },
   getLastShellCommand: {
-    invocationMessage: 'Reading most recent shell command',
     ...getToolMetadata(SHELL_TOOL_NAMES.getLastShellCommand),
+    invocationMessage: 'Reading most recent shell command',
   },
   getShellCommand: {
     invocationMessage: (id: string) => `Reading shell command ${id}`,
