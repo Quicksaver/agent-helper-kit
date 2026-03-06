@@ -4,7 +4,7 @@ This file provides context for AI agents working in this codebase.
 
 ## Project Overview
 
-**custom-vscode** is a VS Code extension (TypeScript) to add custom functionality to my personal VSCode setup.
+**agent-helper-kit** is a VS Code extension (TypeScript) that helps developers move review context into chat and run agent-friendly shell workflows directly in the editor.
 
 **Entry point:**
 
@@ -24,9 +24,9 @@ This file provides context for AI agents working in this codebase.
 
 **Bring code review comments into VS Code Chat:**
 
-- Registers command: `custom-vscode.reviewCommentToChat`
+- Registers command: `agent-helper-kit.reviewCommentToChat`
 - Contributes command in comment thread title menu (`Copy to Chat`)
-- Registers chat participant: `custom-vscode.bringCommentsToChat` (`@bringCommentsToChat`)
+- Registers chat participant: `agent-helper-kit.bringCommentsToChat` (`@bringCommentsToChat`)
 - Queues selected review comments, opens chat, and streams formatted markdown with anchors/line links
 
 ## Conventions and Constraints

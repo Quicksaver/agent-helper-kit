@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-const OUTPUT_DIR_NAME = 'custom-vscode-terminal-output';
+const OUTPUT_DIR_NAME = 'agent-helper-kit-terminal-output';
 const OUTPUT_FILE_PREFIX = 'terminal-';
 const OUTPUT_FILE_SUFFIX = '.log';
 const METADATA_FILE_PREFIX = 'metadata-';
@@ -76,7 +76,7 @@ export function initializeTerminalOutputStore(startupPurgeMaxAgeMs = DEFAULT_STA
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    globalThis.process.stderr.write(`[custom-vscode] Failed to read terminal output directory ${directoryPath}: ${message}\n`);
+    globalThis.process.stderr.write(`[agent-helper-kit] Failed to read terminal output directory ${directoryPath}: ${message}\n`);
     return;
   }
 
@@ -95,7 +95,7 @@ export function initializeTerminalOutputStore(startupPurgeMaxAgeMs = DEFAULT_STA
     }
     catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      globalThis.process.stderr.write(`[custom-vscode] Failed to stat terminal output file ${filePath}: ${message}\n`);
+      globalThis.process.stderr.write(`[agent-helper-kit] Failed to stat terminal output file ${filePath}: ${message}\n`);
       continue;
     }
 
@@ -108,7 +108,7 @@ export function initializeTerminalOutputStore(startupPurgeMaxAgeMs = DEFAULT_STA
       }
       catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        globalThis.process.stderr.write(`[custom-vscode] Failed to purge stale terminal output artifacts for ${terminalId}: ${message}\n`);
+        globalThis.process.stderr.write(`[agent-helper-kit] Failed to purge stale terminal output artifacts for ${terminalId}: ${message}\n`);
       }
     }
   }
@@ -141,7 +141,7 @@ export function overwriteTerminalOutput(terminalId: string, output: string): voi
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    globalThis.process.stderr.write(`[custom-vscode] Failed to overwrite terminal output for ${terminalId}: ${message}\n`);
+    globalThis.process.stderr.write(`[agent-helper-kit] Failed to overwrite terminal output for ${terminalId}: ${message}\n`);
   }
 }
 
@@ -151,7 +151,7 @@ export function appendTerminalOutput(terminalId: string, chunk: string): void {
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    globalThis.process.stderr.write(`[custom-vscode] Failed to append terminal output for ${terminalId}: ${message}\n`);
+    globalThis.process.stderr.write(`[agent-helper-kit] Failed to append terminal output for ${terminalId}: ${message}\n`);
   }
 }
 
@@ -232,7 +232,7 @@ export function writeTerminalCommandMetadata(metadata: TerminalCommandMetadata):
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    globalThis.process.stderr.write(`[custom-vscode] Failed to write terminal metadata for ${metadata.id}: ${message}\n`);
+    globalThis.process.stderr.write(`[agent-helper-kit] Failed to write terminal metadata for ${metadata.id}: ${message}\n`);
   }
 }
 

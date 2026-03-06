@@ -131,7 +131,7 @@ describe('Extension', () => {
     activate(context);
 
     expect(vscode.commands.registerCommand).toHaveBeenCalledWith(
-      'custom-vscode.reviewCommentToChat',
+      'agent-helper-kit.reviewCommentToChat',
       reviewCommentToChat,
     );
   });
@@ -142,7 +142,7 @@ describe('Extension', () => {
     activate(context);
 
     expect(vscode.chat.createChatParticipant).toHaveBeenCalledWith(
-      'custom-vscode.bringCommentsToChat',
+      'agent-helper-kit.bringCommentsToChat',
       expect.any(Function),
     );
   });
@@ -199,11 +199,11 @@ describe('Extension', () => {
     activate(context);
 
     expect(vscode.commands.registerCommand).not.toHaveBeenCalledWith(
-      'custom-vscode.reviewCommentToChat',
+      'agent-helper-kit.reviewCommentToChat',
       reviewCommentToChat,
     );
     expect(vscode.chat.createChatParticipant).not.toHaveBeenCalledWith(
-      'custom-vscode.bringCommentsToChat',
+      'agent-helper-kit.bringCommentsToChat',
       expect.any(Function),
     );
   });
@@ -257,7 +257,7 @@ describe('Extension', () => {
     const handlers = vscode.changeHandlers as ((event: ConfigurationChangeEventLike) => void)[];
     terminalEnabled = false;
     handlers[0]?.({
-      affectsConfiguration: (section: string) => section === 'custom-vscode.shellTools.enabled',
+      affectsConfiguration: (section: string) => section === 'agent-helper-kit.shellTools.enabled',
     });
 
     expect(vscode.lm.registerTool).toHaveBeenCalled();

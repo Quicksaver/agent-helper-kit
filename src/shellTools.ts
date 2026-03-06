@@ -39,7 +39,7 @@ function getTerminalOutputSettings(): {
   memoryToFileDelayMs: number;
   startupPurgeMaxAgeMs: number;
 } {
-  const configuration = vscode.workspace.getConfiguration('custom-vscode');
+  const configuration = vscode.workspace.getConfiguration('agent-helper-kit');
   const memoryToFileSpillMinutes = getNumericSettingOrDefault(
     configuration.get<number>('shellOutput.memoryToFileSpillMinutes'),
     DEFAULT_MEMORY_TO_FILE_SPILL_MINUTES,

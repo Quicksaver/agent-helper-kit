@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { registerReviewParticipant, reviewCommentToChat } from '@/reviewComments';
 import { registerShellTools } from '@/shellTools';
 
-const EXTENSION_CONFIG_SECTION = 'custom-vscode';
+const EXTENSION_CONFIG_SECTION = 'agent-helper-kit';
 const BRING_TO_CHAT_ENABLED_KEY = 'bringToChat.enabled';
 const SHELL_TOOLS_ENABLED_KEY = 'shellTools.enabled';
 
@@ -34,7 +34,7 @@ export function activate(context: vscode.ExtensionContext): void {
     if (isBringToChatEnabled && !bringToChatRegistration) {
       bringToChatRegistration = vscode.Disposable.from(
         registerReviewParticipant(),
-        vscode.commands.registerCommand('custom-vscode.reviewCommentToChat', reviewCommentToChat),
+        vscode.commands.registerCommand('agent-helper-kit.reviewCommentToChat', reviewCommentToChat),
       );
       context.subscriptions.push(bringToChatRegistration);
     }

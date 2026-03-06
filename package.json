@@ -1,7 +1,7 @@
 {
-  "name": "custom-vscode",
-  "displayName": "Custom VS Code",
-  "description": "Personal VS Code extension",
+  "name": "agent-helper-kit",
+  "displayName": "Agent Helper Kit",
+  "description": "VS Code extension for review-to-chat workflows and agent-friendly shell tools",
   "version": "0.5.14",
   "publisher": "Quicksaver",
   "license": "MIT",
@@ -27,98 +27,98 @@
   "contributes": {
     "commands": [
       {
-        "command": "custom-vscode.reviewCommentToChat",
+        "command": "agent-helper-kit.reviewCommentToChat",
         "title": "Copy to Chat",
         "category": "Custom",
-        "enablement": "config.custom-vscode.bringToChat.enabled",
+        "enablement": "config.agent-helper-kit.bringToChat.enabled",
         "icon": "$(comment-discussion)"
       },
       {
-        "command": "custom-vscode.shellCommands.clearFinished",
+        "command": "agent-helper-kit.shellCommands.clearFinished",
         "title": "Clear",
         "category": "Shell Commands",
-        "enablement": "config.custom-vscode.shellTools.enabled",
+        "enablement": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(clear-all)"
       },
       {
-        "command": "custom-vscode.shellCommands.killEntry",
+        "command": "agent-helper-kit.shellCommands.killEntry",
         "title": "Kill",
         "category": "Shell Commands",
-        "enablement": "config.custom-vscode.shellTools.enabled",
+        "enablement": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(close)"
       },
       {
-        "command": "custom-vscode.shellCommands.deleteEntry",
+        "command": "agent-helper-kit.shellCommands.deleteEntry",
         "title": "Delete",
         "category": "Shell Commands",
-        "enablement": "config.custom-vscode.shellTools.enabled",
+        "enablement": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(trash)"
       },
       {
-        "command": "custom-vscode.shellCommands.openEntry",
+        "command": "agent-helper-kit.shellCommands.openEntry",
         "title": "Show Output",
         "category": "Shell Commands",
-        "enablement": "config.custom-vscode.shellTools.enabled"
+        "enablement": "config.agent-helper-kit.shellTools.enabled"
       }
     ],
     "menus": {
       "commandPalette": [
         {
-          "command": "custom-vscode.reviewCommentToChat",
-          "when": "config.custom-vscode.bringToChat.enabled"
+          "command": "agent-helper-kit.reviewCommentToChat",
+          "when": "config.agent-helper-kit.bringToChat.enabled"
         }
       ],
       "comments/commentThread/title": [
         {
-          "command": "custom-vscode.reviewCommentToChat",
+          "command": "agent-helper-kit.reviewCommentToChat",
           "group": "inline",
-          "when": "config.custom-vscode.bringToChat.enabled"
+          "when": "config.agent-helper-kit.bringToChat.enabled"
         }
       ],
       "view/item/context": [
         {
-          "command": "custom-vscode.shellCommands.killEntry",
+          "command": "agent-helper-kit.shellCommands.killEntry",
           "group": "inline",
-          "when": "view == custom-vscode.shellCommandsView && viewItem == running && config.custom-vscode.shellTools.enabled"
+          "when": "view == agent-helper-kit.shellCommandsView && viewItem == running && config.agent-helper-kit.shellTools.enabled"
         },
         {
-          "command": "custom-vscode.shellCommands.deleteEntry",
+          "command": "agent-helper-kit.shellCommands.deleteEntry",
           "group": "inline",
-          "when": "view == custom-vscode.shellCommandsView && viewItem == finished && config.custom-vscode.shellTools.enabled"
+          "when": "view == agent-helper-kit.shellCommandsView && viewItem == finished && config.agent-helper-kit.shellTools.enabled"
         }
       ],
       "view/title": [
         {
-          "command": "custom-vscode.shellCommands.clearFinished",
+          "command": "agent-helper-kit.shellCommands.clearFinished",
           "group": "navigation",
-          "when": "view == custom-vscode.shellCommandsView && config.custom-vscode.shellTools.enabled"
+          "when": "view == agent-helper-kit.shellCommandsView && config.agent-helper-kit.shellTools.enabled"
         }
       ]
     },
     "viewsContainers": {
       "panel": [
         {
-          "id": "custom-vscode-shellCommandsPanel",
+          "id": "agent-helper-kit-shellCommandsPanel",
           "title": "Shell Runs",
           "icon": "$(terminal)",
-          "when": "config.custom-vscode.shellTools.enabled"
+          "when": "config.agent-helper-kit.shellTools.enabled"
         }
       ]
     },
     "views": {
-      "custom-vscode-shellCommandsPanel": [
+      "agent-helper-kit-shellCommandsPanel": [
         {
-          "id": "custom-vscode.shellCommandsView",
+          "id": "agent-helper-kit.shellCommandsView",
           "type": "webview",
           "name": "Shell Runs",
           "icon": "$(terminal)",
-          "when": "config.custom-vscode.shellTools.enabled"
+          "when": "config.agent-helper-kit.shellTools.enabled"
         }
       ]
     },
     "chatParticipants": [
       {
-        "id": "custom-vscode.bringCommentsToChat",
+        "id": "agent-helper-kit.bringCommentsToChat",
         "name": "bringCommentsToChat",
         "fullName": "Code Review Comment",
         "description": "Copy code review comment content to chat, including file path and line number",
@@ -126,25 +126,25 @@
       }
     ],
     "configuration": {
-      "title": "Custom VS Code",
+      "title": "Agent Helper Kit",
       "properties": {
-        "custom-vscode.bringToChat.enabled": {
+        "agent-helper-kit.bringToChat.enabled": {
           "default": true,
           "description": "Enable the bring-to-chat feature (chat participant, command, and review comment button).",
           "type": "boolean"
         },
-        "custom-vscode.shellTools.enabled": {
+        "agent-helper-kit.shellTools.enabled": {
           "default": true,
           "description": "Enable custom shell command language model tools.",
           "type": "boolean"
         },
-        "custom-vscode.shellOutput.memoryToFileSpillMinutes": {
+        "agent-helper-kit.shellOutput.memoryToFileSpillMinutes": {
           "default": 2,
           "description": "Minutes to keep shell command output in memory before spilling it to a temp file.",
           "minimum": 0,
           "type": "number"
         },
-        "custom-vscode.shellOutput.startupPurgeMaxAgeHours": {
+        "agent-helper-kit.shellOutput.startupPurgeMaxAgeHours": {
           "default": 6,
           "description": "On extension host startup, purge persisted shell command output files older than this many hours.",
           "minimum": 0,
@@ -157,7 +157,7 @@
         "name": "run_in_sync_shell",
         "toolReferenceName": "runInSyncShell",
         "displayName": "Run Shell Command (Sync)",
-        "when": "config.custom-vscode.shellTools.enabled",
+        "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(terminal)",
         "modelDescription": "Run a shell command synchronously in workspace root (or home if no workspace). Returns an id and status (shell, exitCode, terminationSignal if any SIG* sent, timedOut if timed out), with optional output via full_output/last_lines/regex. Compared with built-in run_in_terminal(isBackground:false), pro: reliably detect finished state (and why), read unambiguous/filtered output as needed, smaller context window footprint when only success/failure is needed; con: not interactive.",
         "canBeReferencedInPrompt": true,
@@ -251,7 +251,7 @@
         "name": "run_in_async_shell",
         "toolReferenceName": "runInAsyncShell",
         "displayName": "Run Shell Command (Async)",
-        "when": "config.custom-vscode.shellTools.enabled",
+        "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(terminal)",
         "modelDescription": "Run a shell command asynchronously in workspace root (or home if no workspace). Returns a command id to await status and read output. Compared with built-in run_in_terminal(isBackground:true), pro: reliably detect running vs finished state (and why), read unambiguous/filtered streamed/full output, smaller context window footprint when only success/failure is needed; con: not interactive.",
         "canBeReferencedInPrompt": true,
@@ -286,7 +286,7 @@
         "name": "await_shell",
         "toolReferenceName": "awaitShell",
         "displayName": "Await Shell Command",
-        "when": "config.custom-vscode.shellTools.enabled",
+        "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(clock)",
         "modelDescription": "Wait for a shell command to finish for an id from run_in_async_shell or run_in_sync_shell, then return status (shell, exitCode, terminationSignal if any SIG* sent, timedOut if timed out); sync ids return immediately.",
         "canBeReferencedInPrompt": true,
@@ -312,7 +312,7 @@
         "name": "get_shell_output",
         "toolReferenceName": "getShellOutput",
         "displayName": "Get Shell Command Output",
-        "when": "config.custom-vscode.shellTools.enabled",
+        "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(output)",
         "modelDescription": "Read output and status (shell, exitCode if finished, terminationSignal if any SIG* sent; isRunning if still running); for async commands still running returns only new output since last read by default.",
         "canBeReferencedInPrompt": true,
@@ -372,7 +372,7 @@
         "name": "kill_shell",
         "toolReferenceName": "killShell",
         "displayName": "Stop Shell Command",
-        "when": "config.custom-vscode.shellTools.enabled",
+        "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(close)",
         "modelDescription": "Stop a running shell command.",
         "canBeReferencedInPrompt": true,
@@ -393,7 +393,7 @@
         "name": "get_shell_command",
         "toolReferenceName": "getShellCommand",
         "displayName": "Get Shell Command",
-        "when": "config.custom-vscode.shellTools.enabled",
+        "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(history)",
         "modelDescription": "Get the command that was run for a specific shell command id.",
         "canBeReferencedInPrompt": true,
@@ -414,7 +414,7 @@
         "name": "get_last_shell_command",
         "toolReferenceName": "getLastShellCommand",
         "displayName": "Get Last Shell Command",
-        "when": "config.custom-vscode.shellTools.enabled",
+        "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(history)",
         "modelDescription": "Get the most recent command executed via run_in_sync_shell or run_in_async_shell.",
         "canBeReferencedInPrompt": true,

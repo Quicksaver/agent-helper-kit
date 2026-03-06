@@ -9,8 +9,8 @@ import {
   type TerminalRuntime,
 } from '@/shellRuntime';
 
-const SHELL_COMMANDS_VIEW_ID = 'custom-vscode.shellCommandsView';
-const SHELL_COMMANDS_PANEL_CONTAINER_ID = 'custom-vscode-shellCommandsPanel';
+const SHELL_COMMANDS_VIEW_ID = 'agent-helper-kit.shellCommandsView';
+const SHELL_COMMANDS_PANEL_CONTAINER_ID = 'agent-helper-kit-shellCommandsPanel';
 const RUNNING_POLL_MS = 1000;
 
 const ANSI_STANDARD_COLORS = [
@@ -1206,7 +1206,7 @@ export function registerShellCommandsPanel(getRuntime: () => TerminalRuntime): v
   );
 
   const openCommand = vscode.commands.registerCommand(
-    'custom-vscode.shellCommands.openEntry',
+    'agent-helper-kit.shellCommands.openEntry',
     async (item?: ShellCommandTreeItem | string): Promise<void> => {
       const commandId = resolveCommandId(item);
 
@@ -1215,7 +1215,7 @@ export function registerShellCommandsPanel(getRuntime: () => TerminalRuntime): v
   );
 
   const killCommand = vscode.commands.registerCommand(
-    'custom-vscode.shellCommands.killEntry',
+    'agent-helper-kit.shellCommands.killEntry',
     async (item?: ShellCommandTreeItem | string): Promise<void> => {
       const commandId = resolveCommandId(item) ?? provider.getSelectedCommandId();
 
@@ -1230,7 +1230,7 @@ export function registerShellCommandsPanel(getRuntime: () => TerminalRuntime): v
   );
 
   const deleteCommand = vscode.commands.registerCommand(
-    'custom-vscode.shellCommands.deleteEntry',
+    'agent-helper-kit.shellCommands.deleteEntry',
     async (item?: ShellCommandTreeItem | string): Promise<void> => {
       const commandId = resolveCommandId(item) ?? provider.getSelectedCommandId();
 
@@ -1253,7 +1253,7 @@ export function registerShellCommandsPanel(getRuntime: () => TerminalRuntime): v
   );
 
   const clearCommand = vscode.commands.registerCommand(
-    'custom-vscode.shellCommands.clearFinished',
+    'agent-helper-kit.shellCommands.clearFinished',
     async () => {
       const removedCount = runtime.clearCompletedCommands();
 

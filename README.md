@@ -1,41 +1,41 @@
-# Custom VS Code Extension
+# Agent Helper Kit
 
-Personal VS Code extension focused on improving in-editor workflows with chat integrations and language model tools.
+Agent Helper Kit is a VS Code extension for developers who want faster AI-assisted workflows inside the editor.
 
-## Goals
+It focuses on two practical jobs:
 
-- Make code-review context available directly inside VS Code chat.
-- Expose terminal automation primitives as extension-owned language model tools.
-- Keep workflows lightweight and scriptable for agentic usage.
+- Move code review comments into chat with file/line context.
+- Provide reliable shell tools for agent workflows that need command status and structured output.
+
+## Why use it
+
+- Keep review context in one place while you chat and fix code.
+- Run shell commands through extension-owned tools with consistent IDs and status tracking.
+- Use async and sync flows depending on whether you need background execution or immediate completion.
 
 ## Features
 
-### 1) Bring review comments to chat
+### Bring review comments to chat
 
-- Command: `custom-vscode.reviewCommentToChat`
-- Chat participant: `@bringCommentsToChat` (`custom-vscode.bringCommentsToChat`)
-- Purpose: copy review comment content into chat with file/line context.
+- Command: `agent-helper-kit.reviewCommentToChat`
+- Chat participant: `@bringCommentsToChat` (`agent-helper-kit.bringCommentsToChat`)
+- Result: selected review comments are formatted for chat with source location context.
 
-### 2) Enhanced terminal tools for agents
+### Agent-friendly shell tools
 
-The extension contributes and registers these language model tools:
+Contributed tools:
 
 - `run_in_sync_shell`
 - `run_in_async_shell`
 - `await_shell`
 - `get_shell_output`
 - `kill_shell`
-- `shell_last_command`
+- `get_shell_command`
+- `get_last_shell_command`
 
-These are extension-scoped copies of the built-in terminal-style tool APIs.
+`run_in_sync_shell` returns completion metadata and can optionally include output (`full_output`, `last_lines`, or `regex`).
 
-Run tool behavior:
-
-- `run_in_sync_shell` returns YAML metadata by default (`id`, `exitCode`, `terminationSignal`, `timedOut`) and supports inline output options via `full_output`, `last_lines`, or `regex`.
-- `run_in_async_shell` returns YAML with `id` by default.
-- `run_in_async_shell` is id-only; use `get_shell_output` for output.
-
-`get_shell_output` returns Markdown frontmatter with `exitCode`, `isRunning`, and `terminationSignal` plus a fenced output block.
+`run_in_async_shell` returns an `id` so you can await completion and retrieve output separately.
 
 ## Requirements
 
@@ -45,17 +45,13 @@ Run tool behavior:
 
 ## Install
 
-### Option A: Install a packaged `.vsix`
-
-If you already have a `.vsix` file:
+### Install from `.vsix`
 
 ```bash
-code --install-extension custom-vscode-<version>.vsix
+code --install-extension agent-helper-kit-<version>.vsix
 ```
 
-### Option B: Build and install from source
-
-From the project root:
+### Build and install locally
 
 ```bash
 yarn install
@@ -63,34 +59,31 @@ yarn package:build
 yarn package:install
 ```
 
-This creates a `.vsix` and installs the latest one into your local VS Code.
+## Configuration
+
+- `agent-helper-kit.bringToChat.enabled`: enable or disable bring-to-chat actions.
+- `agent-helper-kit.shellTools.enabled`: enable or disable shell tool registration.
+- `agent-helper-kit.shellOutput.memoryToFileSpillMinutes`: minutes to keep output in memory before spilling to file.
+- `agent-helper-kit.shellOutput.startupPurgeMaxAgeHours`: startup cleanup threshold for old persisted output.
 
 ## Development
-
-Useful commands:
 
 ```bash
 yarn build
 yarn watch
-yarn test
 yarn lint:check
+yarn test
 ```
 
-## Output persistence and cleanup
+For terminal-tool integration checks after install, see `docs/integration-checks.md`.
 
-- Output is kept in memory first for each terminal id.
-- After a short delay (a few minutes), in-memory output is copied to a per-command file in the system temp directory and then purged from memory.
-- The in-memory spill delay is configurable via `custom-vscode.shellOutput.memoryToFileSpillMinutes` (default: 2).
-- If a terminal process receives `SIGINT` (for example Ctrl+C), signal handling does not trigger output purging.
-- For other termination signals (for example `SIGTERM`/`SIGKILL`):
-  - if output is still in memory, it remains there until the normal spill time and is purged then (not written to disk)
-  - if output is already on disk, it is purged immediately
-- On host startup, persisted output files older than a configurable max age are purged; use `custom-vscode.shellOutput.startupPurgeMaxAgeHours` (default: 6).
+## Contributing
 
-## How an agent can test terminal tools integration (after install)
-
-See <docs/integration-checks.md>.
+- Open a ticket for bug reports, questions, and feature suggestions.
+- Pull requests are welcome for fixes and improvements.
+- Use Node.js 22+ and Yarn 4+, then run `yarn install`.
+- Before opening a PR, run `yarn lint:check` and `yarn test`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).

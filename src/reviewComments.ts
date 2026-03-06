@@ -275,7 +275,7 @@ function resolveCommentThread(arg: unknown): undefined | vscode.CommentThread {
 }
 
 /**
- * Command handler for `custom-vscode.reviewCommentToChat`.
+ * Command handler for `agent-helper-kit.reviewCommentToChat`.
  *
  * Extracts the comment data from the provided {@link vscode.CommentThread} or {@link vscode.Comment},
  * stores it as a pending review comment, and opens the chat panel with the `@bringCommentsToChat` participant
@@ -414,7 +414,7 @@ async function handleCopyCommentToChatRequest(
 /** Registers the `@review` chat participant. */
 export function registerReviewParticipant(): vscode.Disposable {
   const participant = vscode.chat.createChatParticipant(
-    'custom-vscode.bringCommentsToChat',
+    'agent-helper-kit.bringCommentsToChat',
     handleCopyCommentToChatRequest,
   );
   participant.iconPath = new vscode.ThemeIcon('comment-discussion');

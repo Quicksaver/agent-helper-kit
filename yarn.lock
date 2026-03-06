@@ -1624,6 +1624,32 @@ __metadata:
   languageName: node
   linkType: hard
 
+"agent-helper-kit@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "agent-helper-kit@workspace:."
+  dependencies:
+    "@eslint/eslintrc": "npm:^3.3.4"
+    "@eslint/js": "npm:^10.0.1"
+    "@stylistic/eslint-plugin": "npm:^5.9.0"
+    "@types/node": "npm:^25.3.3"
+    "@types/vscode": "npm:^1.109.0"
+    "@vscode/vsce": "npm:^3.7.1"
+    ansi-regex: "npm:^6.2.2"
+    esbuild: "npm:^0.27.3"
+    eslint: "npm:^9.39.3"
+    eslint-import-resolver-typescript: "npm:^4.4.4"
+    eslint-plugin-import: "npm:^2.32.0"
+    eslint-plugin-perfectionist: "npm:^5.6.0"
+    globals: "npm:^17.4.0"
+    jiti: "npm:^2.6.1"
+    prettier: "npm:^3.8.1"
+    typescript: "npm:^5.9.3"
+    typescript-eslint: "npm:^8.56.1"
+    vitest: "npm:^4.0.18"
+    zod: "npm:^4.3.6"
+  languageName: unknown
+  linkType: soft
+
 "ajv@npm:^6.12.4":
   version: 6.12.6
   resolution: "ajv@npm:6.12.6"
@@ -2154,32 +2180,6 @@ __metadata:
   checksum: 10/3c5a53be94728089bd1716f915f7f96adde5dd8bf374610eb03982266f3d860bf1ebaf108cda30509d02ef748fe33eaa59aa75911e2c49ee05a85ef1f9fb5223
   languageName: node
   linkType: hard
-
-"custom-vscode@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "custom-vscode@workspace:."
-  dependencies:
-    "@eslint/eslintrc": "npm:^3.3.4"
-    "@eslint/js": "npm:^10.0.1"
-    "@stylistic/eslint-plugin": "npm:^5.9.0"
-    "@types/node": "npm:^25.3.3"
-    "@types/vscode": "npm:^1.109.0"
-    "@vscode/vsce": "npm:^3.7.1"
-    ansi-regex: "npm:^6.2.2"
-    esbuild: "npm:^0.27.3"
-    eslint: "npm:^9.39.3"
-    eslint-import-resolver-typescript: "npm:^4.4.4"
-    eslint-plugin-import: "npm:^2.32.0"
-    eslint-plugin-perfectionist: "npm:^5.6.0"
-    globals: "npm:^17.4.0"
-    jiti: "npm:^2.6.1"
-    prettier: "npm:^3.8.1"
-    typescript: "npm:^5.9.3"
-    typescript-eslint: "npm:^8.56.1"
-    vitest: "npm:^4.0.18"
-    zod: "npm:^4.3.6"
-  languageName: unknown
-  linkType: soft
 
 "data-view-buffer@npm:^1.0.2":
   version: 1.0.2
