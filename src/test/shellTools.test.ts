@@ -286,7 +286,6 @@ describe('terminal tools', () => {
         command: 'echo hello',
         explanation: 'prints a value',
         goal: 'test background execution',
-        timeout: 0,
       },
       toolInvocationToken: undefined,
     }, {});
@@ -303,7 +302,7 @@ describe('terminal tools', () => {
     }, {});
 
     const outputPayload = getResultPayload(outputResult);
-    expect(outputPayload.exitCode).toBeNull();
+    expect(outputPayload).not.toHaveProperty('exitCode');
     expect(outputPayload.isRunning).toBe(true);
     expect(outputPayload.output).toBe('hello\n');
     expect(outputPayload.shell).toBe('/bin/zsh');
@@ -315,7 +314,7 @@ describe('terminal tools', () => {
     }, {});
 
     const noNewOutputPayload = getResultPayload(noNewOutputResult);
-    expect(noNewOutputPayload.exitCode).toBeNull();
+    expect(noNewOutputPayload).not.toHaveProperty('exitCode');
     expect(noNewOutputPayload.output).toBe('');
     expect(noNewOutputPayload.shell).toBe('/bin/zsh');
     expect(noNewOutputPayload).not.toHaveProperty('terminationSignal');
@@ -397,6 +396,7 @@ describe('terminal tools', () => {
     }, {});
 
     const timedAwaitPayload = getResultPayload(timedAwaitResult);
+    expect(timedAwaitPayload).not.toHaveProperty('output');
     expect(timedAwaitPayload.timedOut).toBe(true);
 
     await killTool.invoke({
@@ -413,6 +413,7 @@ describe('terminal tools', () => {
     }, {});
 
     const completedAwaitPayload = getResultPayload(completedAwaitResult);
+    expect(completedAwaitPayload).not.toHaveProperty('output');
     expect(completedAwaitPayload).not.toHaveProperty('timedOut');
     expect(fakeProcess.kill).toHaveBeenCalledWith('SIGTERM');
 
@@ -422,8 +423,8 @@ describe('terminal tools', () => {
     }, {});
 
     const firstCompletedReadPayload = getResultPayload(firstCompletedRead);
-    expect(firstCompletedReadPayload.exitCode).toBeNull();
-    expect(firstCompletedReadPayload.isRunning).toBe(false);
+    expect(firstCompletedReadPayload).not.toHaveProperty('exitCode');
+    expect(firstCompletedReadPayload).not.toHaveProperty('isRunning');
     expect(firstCompletedReadPayload.output).toBe('');
     expect(firstCompletedReadPayload.shell).toBe('/bin/zsh');
     expect(firstCompletedReadPayload.terminationSignal).toBe('SIGTERM');
@@ -434,7 +435,7 @@ describe('terminal tools', () => {
     }, {});
 
     const secondCompletedReadPayload = getResultPayload(secondCompletedRead);
-    expect(secondCompletedReadPayload.exitCode).toBeNull();
+    expect(secondCompletedReadPayload).not.toHaveProperty('exitCode');
     expect(secondCompletedReadPayload.output).toBe('hello\nworld\nmatch-line\nnomatch\nonly-match\nCaseSensitive\n');
     expect(secondCompletedReadPayload.shell).toBe('/bin/zsh');
     expect(secondCompletedReadPayload.terminationSignal).toBe('SIGTERM');
@@ -464,13 +465,13 @@ describe('terminal tools', () => {
 
     const runTool = getRegisteredTool('run_in_async_shell');
     const awaitTool = getRegisteredTool('await_shell');
+    const getOutputTool = getRegisteredTool('get_shell_output');
 
     const runResult = await runTool.invoke({
       input: {
         command: 'echo keep',
         explanation: 'sigint behavior test',
         goal: 'verify no purge on sigint',
-        timeout: 0,
       },
       toolInvocationToken: undefined,
     }, {});
@@ -490,8 +491,18 @@ describe('terminal tools', () => {
     }, {});
 
     const awaitPayload = getResultPayload(awaitResult);
-    expect(awaitPayload.output).toContain('before-int');
+    expect(awaitPayload).not.toHaveProperty('output');
     expect(awaitPayload.terminationSignal).toBe('SIGINT');
+
+    const outputResult = await getOutputTool.invoke({
+      input: {
+        full_output: true,
+        id: terminalId,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+    const outputPayload = getResultPayload(outputResult);
+    expect(outputPayload.output).toContain('before-int');
   });
 
   it('returns only id by default for foreground runs and exposes output via get_shell_output', async () => {
@@ -534,7 +545,7 @@ describe('terminal tools', () => {
     }, {});
 
     const outputPayload = getResultPayload(outputResult);
-    expect(outputPayload.isRunning).toBe(false);
+    expect(outputPayload).not.toHaveProperty('isRunning');
     expect(outputPayload.output).toBe('hello\nworld\n');
     expect(outputPayload.exitCode).toBe(0);
     expect(outputPayload.shell).toBe('/bin/zsh');
@@ -698,7 +709,6 @@ describe('terminal tools', () => {
         explanation: 'verify selected shell is used',
         goal: 'shell selection',
         shell: selectedShell,
-        timeout: 0,
       },
       toolInvocationToken: undefined,
     }, {});
@@ -796,7 +806,6 @@ describe('terminal tools', () => {
         command: 'vitest run --watch=false',
         explanation: 'strip ansi codes from async output',
         goal: 'improve readability',
-        timeout: 0,
       },
       toolInvocationToken: undefined,
     }, {});
@@ -816,7 +825,17 @@ describe('terminal tools', () => {
     }, {});
 
     const awaitPayload = getResultPayload(awaitResult);
-    expect(awaitPayload.output).toBe(' RUN  v4.0.18\n');
+    expect(awaitPayload).not.toHaveProperty('output');
+
+    const asyncOutputResult = await getOutputTool.invoke({
+      input: {
+        full_output: true,
+        id: asyncTerminalId,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+    const asyncOutputPayload = getResultPayload(asyncOutputResult);
+    expect(asyncOutputPayload.output).toBe(' RUN  v4.0.18\n');
   });
 
   it('retains disk output when process closes with non-SIGINT signal', async () => {
@@ -830,13 +849,13 @@ describe('terminal tools', () => {
 
       const runTool = getRegisteredTool('run_in_async_shell');
       const awaitTool = getRegisteredTool('await_shell');
+      const getOutputTool = getRegisteredTool('get_shell_output');
 
       const runResult = await runTool.invoke({
         input: {
           command: 'echo spill',
           explanation: 'signal purge test',
           goal: 'verify disk purge on sigterm',
-          timeout: 0,
         },
         toolInvocationToken: undefined,
       }, {});
@@ -864,8 +883,18 @@ describe('terminal tools', () => {
       }, {});
 
       const awaitPayload = getResultPayload(awaitResult);
-      expect(awaitPayload.output).toBe('spill-me\n');
+      expect(awaitPayload).not.toHaveProperty('output');
       expect(awaitPayload.terminationSignal).toBe('SIGTERM');
+
+      const outputResult = await getOutputTool.invoke({
+        input: {
+          full_output: true,
+          id: terminalId,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+      const outputPayload = getResultPayload(outputResult);
+      expect(outputPayload.output).toBe('spill-me\n');
     }
     finally {
       vi.useRealTimers();

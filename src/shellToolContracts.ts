@@ -171,7 +171,6 @@ export interface RunInAsyncShellInput {
   explanation: string;
   goal: string;
   shell?: string;
-  timeout: number;
 }
 
 export interface RunInSyncShellInput {
@@ -212,7 +211,6 @@ export const runInAsyncShellInputSchema = {
   explanation: z.string(),
   goal: z.string(),
   shell: z.string().optional(),
-  timeout: z.number(),
 } satisfies z.ZodRawShape;
 
 export const runInSyncShellInputSchema = {

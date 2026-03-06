@@ -158,15 +158,14 @@
         "displayName": "Run Shell Command (Sync)",
         "when": "config.custom-vscode.shellTools.enabled",
         "icon": "$(terminal)",
-        "modelDescription": "Run a shell command synchronously in workspace root (or home if no workspace). Returns an id and status metadata (shell, exitCode, terminationSignal, timedOut), with optional output via full_output/last_lines/regex. Compared with built-in run_in_terminal(isBackground:false), pro: agents can reliably detect running vs finished state (and why) and read unambiguous partial/full output; con: not interactive.",
+        "modelDescription": "Run a shell command synchronously in workspace root (or home if no workspace). Returns an id and status (shell, exitCode, terminationSignal if any SIG* sent, timedOut if timed out), with optional output via full_output/last_lines/regex. Compared with built-in run_in_terminal(isBackground:false), pro: reliably detect finished state (and why), read unambiguous/filtered output as needed, smaller context window footprint when only success/failure is needed; con: not interactive.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
           "required": [
             "command",
             "explanation",
-            "goal",
-            "timeout"
+            "goal"
           ],
           "properties": {
             "command": {
@@ -187,16 +186,16 @@
             },
             "full_output": {
               "type": "boolean",
-              "description": "When true, include output from the beginning in this tool response."
+              "description": "When true, include whole output in response."
             },
             "last_lines": {
               "type": "number",
-              "description": "Optional trailing line count to include in this tool response; mutually exclusive with regex.",
+              "description": "Optional output trailing line count to include in response; mutually exclusive with full_output/regex.",
               "minimum": 0
             },
             "regex": {
               "type": "string",
-              "description": "Optional regex filter for lines included in this tool response; mutually exclusive with last_lines."
+              "description": "Optional regex filter for output lines included in response; mutually exclusive with full_output/last_lines."
             },
             "regex_flags": {
               "type": "string",
@@ -253,15 +252,14 @@
         "displayName": "Run Shell Command (Async)",
         "when": "config.custom-vscode.shellTools.enabled",
         "icon": "$(terminal)",
-        "modelDescription": "Run a shell command asynchronously in workspace root (or home if no workspace). Returns a command id to await or retrieve output. Compared with built-in run_in_terminal(isBackground:true), pro: agents can reliably detect running vs finished state (and why) and read unambiguous partial/full output; con: not interactive.",
+        "modelDescription": "Run a shell command asynchronously in workspace root (or home if no workspace). Returns a command id to await status and read output. Compared with built-in run_in_terminal(isBackground:true), pro: reliably detect running vs finished state (and why), read unambiguous/filtered streamed/full output, smaller context window footprint when only success/failure is needed; con: not interactive.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
           "required": [
             "command",
             "explanation",
-            "goal",
-            "timeout"
+            "goal"
           ],
           "properties": {
             "command": {
@@ -279,10 +277,6 @@
             "shell": {
               "type": "string",
               "description": "Optional shell executable path or name. Uses VS Code/default shell when omitted (preferred)."
-            },
-            "timeout": {
-              "type": "number",
-              "description": "Timeout in ms; use 0 for no timeout."
             }
           }
         }
@@ -293,7 +287,7 @@
         "displayName": "Await Shell Command",
         "when": "config.custom-vscode.shellTools.enabled",
         "icon": "$(clock)",
-        "modelDescription": "Wait for a shell command to finish for an id from run_in_async_shell or run_in_sync_shell, then return output and status (shell, exitCode, terminationSignal, timedOut); sync ids return immediately.",
+        "modelDescription": "Wait for a shell command to finish for an id from run_in_async_shell or run_in_sync_shell, then return status (shell, exitCode, terminationSignal if any SIG* sent, timedOut if timed out); sync ids return immediately.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -319,7 +313,7 @@
         "displayName": "Get Shell Command Output",
         "when": "config.custom-vscode.shellTools.enabled",
         "icon": "$(output)",
-        "modelDescription": "Read output and status (isRunning, shell, exitCode, terminationSignal) for a command id from run_in_sync_shell or run_in_async_shell (returns only new output since last read by default).",
+        "modelDescription": "Read output and status (shell, exitCode if finished, terminationSignal if any SIG* sent; isRunning if still running); for async commands still running returns only new output since last read by default.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -379,7 +373,7 @@
         "displayName": "Stop Shell Command",
         "when": "config.custom-vscode.shellTools.enabled",
         "icon": "$(close)",
-        "modelDescription": "Stop a running background shell command.",
+        "modelDescription": "Stop a running shell command.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",

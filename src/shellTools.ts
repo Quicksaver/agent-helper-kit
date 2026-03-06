@@ -294,16 +294,13 @@ const customAwaitShellTool: vscode.LanguageModelTool<AwaitShellInput> = {
   ): Promise<vscode.LanguageModelToolResult> {
     const result = await getTerminalRuntime().awaitBackgroundCommand(options.input);
 
-    return buildSplitOutputToolResult(addOptionalCompletionMetadata({
+    return buildYamlToolResult(addOptionalCompletionMetadata({
       exitCode: result.exitCode,
-      output: result.output,
       shell: result.shell,
     }, {
       terminationSignal: result.terminationSignal,
       timedOut: result.timedOut,
-    }) as Record<string, unknown> & {
-      output: string;
-    });
+    }));
   },
   prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<AwaitShellInput>,
@@ -319,12 +316,22 @@ const customGetShellOutputTool: vscode.LanguageModelTool<GetShellOutputInput> = 
     options: vscode.LanguageModelToolInvocationOptions<GetShellOutputInput>,
   ): Promise<vscode.LanguageModelToolResult> {
     const result = await getTerminalRuntime().readBackgroundOutput(options.input);
+    const exitCodeState = typeof result.exitCode === 'number'
+      ? {
+        exitCode: result.exitCode,
+      }
+      : {};
+    const runningState = result.isRunning
+      ? {
+        isRunning: true,
+      }
+      : {};
 
     return buildSplitOutputToolResult(addOptionalCompletionMetadata({
-      exitCode: result.exitCode,
-      isRunning: result.isRunning,
       output: result.output,
       shell: result.shell,
+      ...exitCodeState,
+      ...runningState,
     }, {
       terminationSignal: result.terminationSignal,
     }) as Record<string, unknown> & {
