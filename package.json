@@ -159,7 +159,7 @@
         "displayName": "Run Shell Command (Sync)",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(terminal)",
-        "modelDescription": "Run a shell command synchronously in workspace root (or home if no workspace). Returns an id and status (shell, exitCode, terminationSignal if any SIG* sent, timedOut if timed out), with optional output via full_output/last_lines/regex. Compared with built-in run_in_terminal(isBackground:false), pro: reliably detect finished state (and why), read unambiguous/filtered output as needed, smaller context window footprint when only success/failure is needed; con: not interactive.",
+        "modelDescription": "Run a shell command synchronously in workspace root (or home if no workspace). Returns an id and status (shell, exitCode, terminationSignal if any SIG* sent, timedOut if timed out), with optional output via full_output/last_lines/regex. Optimal for single- or multi-step deterministic commands. Compared with built-in run_in_terminal(isBackground:false), pro: reliably detect finished state (and why), read unambiguous/filtered output as needed, smaller context window footprint when only success/failure is needed; con: not interactive, no persisted shell state.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -253,7 +253,7 @@
         "displayName": "Run Shell Command (Async)",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(terminal)",
-        "modelDescription": "Run a shell command asynchronously in workspace root (or home if no workspace). Returns a command id to await status and read output. Compared with built-in run_in_terminal(isBackground:true), pro: reliably detect running vs finished state (and why), read unambiguous/filtered streamed/full output, smaller context window footprint when only success/failure is needed; con: not interactive.",
+        "modelDescription": "Run a shell command asynchronously in workspace root (or home if no workspace). Returns a command id to await status and read output. Optimal for long-running detached jobs plus explicit polling. Compared with built-in run_in_terminal(isBackground:true), pro: reliably detect running vs finished state (and why), read unambiguous/filtered streamed/full output, smaller context window footprint when only success/failure is needed; con: not interactive, no persisted shell state.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",

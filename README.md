@@ -9,7 +9,7 @@ It focuses on two practical jobs:
 
 ## Why use it
 
-- Keep review context in one place while you chat and fix code.
+- Keep review context in one place while you prompt and fix code.
 - Run shell commands through extension-owned tools with consistent IDs and status tracking.
 - Use async and sync flows depending on whether you need background execution or immediate completion.
 
@@ -17,47 +17,31 @@ It focuses on two practical jobs:
 
 ### Bring review comments to chat
 
-- Command: `agent-helper-kit.reviewCommentToChat`
+![Copy to Chat](./docs/screens/copy-to-chat.png)
+
+Select code comments, e.g. from Copilot Code Review or CodeRabbit. When all are selected, run the command or call up the chat participant to include them in the chat context, formatted and with source location context.
+
+- Command: `Copy to Chat` (`agent-helper-kit.reviewCommentToChat`)
 - Chat participant: `@bringCommentsToChat` (`agent-helper-kit.bringCommentsToChat`)
-- Result: selected review comments are formatted for chat with source location context.
 
 ### Agent-friendly shell tools
 
-Contributed tools:
+![sync command](./docs/screens/sync-command.png)
 
-- `run_in_sync_shell`
-- `run_in_async_shell`
-- `await_shell`
-- `get_shell_output`
-- `kill_shell`
-- `get_shell_command`
-- `get_last_shell_command`
+Compared with built-in terminal tools, these extension tools are optimized for agent workflows.
 
-`run_in_sync_shell` returns completion metadata and can optionally include output (`full_output`, `last_lines`, or `regex`).
+Benefits:
 
-`run_in_async_shell` returns an `id` so you can await completion and retrieve output separately.
+- Deterministic command lifecycle with stable IDs you can await, poll, and kill.
+- Structured metadata (`exitCode`, `terminationSignal`, `timedOut`, `shell`) that is easier to automate against.
+- Output controls (`full_output`, `last_lines`, `regex`) to reduce context noise in chat.
+- `run_in_sync_shell` is optimal for single- or multi-step deterministic commands.
+- `run_in_async_shell` is optimal for long-running detached jobs plus explicit polling.
 
-## Requirements
+Tradeoffs:
 
-- VS Code `^1.109.0`
-- Node.js 22+
-- Yarn 4+
-
-## Install
-
-### Install from `.vsix`
-
-```bash
-code --install-extension agent-helper-kit-<version>.vsix
-```
-
-### Build and install locally
-
-```bash
-yarn install
-yarn package:build
-yarn package:install
-```
+- No interactive terminal session (these are command-execution APIs, not full terminal UIs).
+- No state/environment persistence between command runs, each command runs in a fresh shell instance.
 
 ## Configuration
 
@@ -66,22 +50,10 @@ yarn package:install
 - `agent-helper-kit.shellOutput.memoryToFileSpillMinutes`: minutes to keep output in memory before spilling to file.
 - `agent-helper-kit.shellOutput.startupPurgeMaxAgeHours`: startup cleanup threshold for old persisted output.
 
-## Development
-
-```bash
-yarn build
-yarn watch
-yarn lint:check
-yarn test
-```
-
-For shell-tool integration checks after install, see `docs/integration-checks.md`.
-
 ## Contributing
 
 - Open a ticket for bug reports, questions, and feature suggestions.
 - Pull requests are welcome for fixes and improvements.
-- Use Node.js 22+ and Yarn 4+, then run `yarn install`.
 - Before opening a PR, run `yarn lint:check` and `yarn test`.
 
 ## License
