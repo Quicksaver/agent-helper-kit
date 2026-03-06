@@ -147,7 +147,7 @@ describe('Extension', () => {
     );
   });
 
-  it('should register custom terminal tools on activation', () => {
+  it('should register custom shell tools on activation', () => {
     const context = createMockContext();
 
     activate(context);
@@ -208,15 +208,15 @@ describe('Extension', () => {
     );
   });
 
-  it('unregisters terminal tools when setting changes to disabled', () => {
+  it('unregisters shell tools when setting changes to disabled', () => {
     const context = createMockContext();
     const getConfigurationMock = vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>;
-    let terminalEnabled = true;
+    let shellToolsEnabled = true;
 
     getConfigurationMock.mockReturnValue({
       get: vi.fn((key: string, defaultValue: boolean) => {
         if (key === 'shellTools.enabled') {
-          return terminalEnabled;
+          return shellToolsEnabled;
         }
 
         return defaultValue;
@@ -255,7 +255,7 @@ describe('Extension', () => {
     );
 
     const handlers = vscode.changeHandlers as ((event: ConfigurationChangeEventLike) => void)[];
-    terminalEnabled = false;
+    shellToolsEnabled = false;
     handlers[0]?.({
       affectsConfiguration: (section: string) => section === 'agent-helper-kit.shellTools.enabled',
     });

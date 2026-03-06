@@ -4,9 +4,9 @@ import * as vscode from 'vscode';
 import ansiRegex from 'ansi-regex';
 
 import {
-  type TerminalCommandDetails,
-  type TerminalCommandListItem,
-  type TerminalRuntime,
+  type ShellCommandDetails,
+  type ShellCommandListItem,
+  type ShellRuntime,
 } from '@/shellRuntime';
 
 const SHELL_COMMANDS_VIEW_ID = 'agent-helper-kit.shellCommandsView';
@@ -107,7 +107,7 @@ function getShellLabel(shellPath: string): string {
   return shellName && shellName.length > 0 ? shellName : normalizedPath;
 }
 
-function getCommandStatusClass(command: TerminalCommandListItem): string {
+function getCommandStatusClass(command: ShellCommandListItem): string {
   if (command.isRunning) {
     return 'running';
   }
@@ -123,7 +123,7 @@ function getCommandStatusClass(command: TerminalCommandListItem): string {
   return 'error';
 }
 
-function getCommandStatusIcon(command: TerminalCommandListItem): string {
+function getCommandStatusIcon(command: ShellCommandListItem): string {
   const statusClass = getCommandStatusClass(command);
 
   if (statusClass === 'running') {
@@ -137,7 +137,7 @@ function getCommandStatusIcon(command: TerminalCommandListItem): string {
   return '<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M8 1C4.14 1 1 4.14 1 8C1 11.86 4.14 15 8 15C11.86 15 15 11.86 15 8C15 4.14 11.86 1 8 1ZM8 14C4.691 14 2 11.309 2 8C2 4.691 4.691 2 8 2C11.309 2 14 4.691 14 8C14 11.309 11.309 14 8 14ZM10.854 5.854L8.708 8L10.854 10.146C11.049 10.341 11.049 10.658 10.854 10.853C10.756 10.951 10.628 10.999 10.5 10.999C10.372 10.999 10.244 10.95 10.146 10.853L8 8.707L5.854 10.853C5.756 10.951 5.628 10.999 5.5 10.999C5.372 10.999 5.244 10.95 5.146 10.853C4.951 10.658 4.951 10.341 5.146 10.146L7.292 8L5.146 5.854C4.951 5.659 4.951 5.342 5.146 5.147C5.341 4.952 5.658 4.952 5.853 5.147L7.999 7.293L10.145 5.147C10.34 4.952 10.657 4.952 10.852 5.147C11.047 5.342 11.047 5.659 10.852 5.854H10.854Z"/></svg>';
 }
 
-function buildCommandTooltip(command: TerminalCommandListItem): string {
+function buildCommandTooltip(command: ShellCommandListItem): string {
   const lines = [
     `Id: ${command.id}`,
     `Shell: ${command.shell}`,
@@ -521,7 +521,7 @@ function resolveCommandId(target: unknown): string | undefined {
   return undefined;
 }
 
-function buildDetailsMarkup(details: TerminalCommandDetails | undefined): string {
+function buildDetailsMarkup(details: ShellCommandDetails | undefined): string {
   if (!details) {
     return '<div class="details-empty"></div><div id="output-block" class="output-block"></div>';
   }
@@ -545,9 +545,9 @@ function buildDetailsMarkup(details: TerminalCommandDetails | undefined): string
 
 function getWebviewHtml(
   webview: vscode.Webview,
-  commands: TerminalCommandListItem[],
+  commands: ShellCommandListItem[],
   selectedCommandId: string | undefined,
-  selectedDetails: TerminalCommandDetails | undefined,
+  selectedDetails: ShellCommandDetails | undefined,
 ): string {
   const scriptNonce = randomBytes(16).toString('hex');
   const styleNonce = randomBytes(16).toString('hex');
@@ -1027,7 +1027,7 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
   private selectedCommandId: string | undefined;
   private view: undefined | vscode.WebviewView;
 
-  constructor(private readonly runtime: TerminalRuntime) {
+  constructor(private readonly runtime: ShellRuntime) {
     this.disposeRuntimeListener = this.runtime.onDidChangeCommands(() => {
       void this.refresh();
     });
@@ -1057,7 +1057,7 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
       this.selectedCommandId = commands[0]?.id;
     }
 
-    let selectedDetails: TerminalCommandDetails | undefined;
+    let selectedDetails: ShellCommandDetails | undefined;
 
     if (this.selectedCommandId) {
       try {
@@ -1172,7 +1172,7 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     this.runningPoller = undefined;
   }
 
-  private async tryGetCommandDetails(commandId: string): Promise<TerminalCommandDetails | undefined> {
+  private async tryGetCommandDetails(commandId: string): Promise<ShellCommandDetails | undefined> {
     try {
       return await this.runtime.getCommandDetails(commandId);
     }
@@ -1181,7 +1181,7 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     }
   }
 
-  private updatePolling(details: TerminalCommandDetails | undefined): void {
+  private updatePolling(details: ShellCommandDetails | undefined): void {
     if (!this.selectedCommandId || !details?.isRunning) {
       this.stopPolling();
       return;
@@ -1197,7 +1197,7 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
   }
 }
 
-export function registerShellCommandsPanel(getRuntime: () => TerminalRuntime): vscode.Disposable {
+export function registerShellCommandsPanel(getRuntime: () => ShellRuntime): vscode.Disposable {
   const runtime = getRuntime();
   const provider = new ShellCommandsPanelProvider(runtime);
   const webviewViewRegistration = vscode.window.registerWebviewViewProvider(

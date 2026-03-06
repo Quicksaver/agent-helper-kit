@@ -8,34 +8,34 @@ import {
 } from 'vitest';
 
 import {
-  createTerminalOutputFile,
-  getTerminalOutputDirectoryPath,
-  getTerminalOutputFilePath,
-  initializeTerminalOutputStore,
+  createShellOutputFile,
+  getShellOutputDirectoryPath,
+  getShellOutputFilePath,
+  initializeShellOutputStore,
 } from '@/shellOutputStore';
 
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 const SEVEN_HOURS_MS = 7 * 60 * 60 * 1000;
 
-describe('terminal output store startup purge', () => {
+describe('shell output store startup purge', () => {
   afterEach(() => {
-    fs.rmSync(getTerminalOutputDirectoryPath(), { force: true, recursive: true });
+    fs.rmSync(getShellOutputDirectoryPath(), { force: true, recursive: true });
   });
 
-  it('purges persisted terminal output files older than configured max age', () => {
-    const oldTerminalId = 'old-terminal';
-    const freshTerminalId = 'fresh-terminal';
+  it('purges persisted shell output files older than configured max age', () => {
+    const oldShellId = 'old-shell';
+    const freshShellId = 'fresh-shell';
 
-    createTerminalOutputFile(oldTerminalId);
-    createTerminalOutputFile(freshTerminalId);
+    createShellOutputFile(oldShellId);
+    createShellOutputFile(freshShellId);
 
-    const oldFilePath = getTerminalOutputFilePath(oldTerminalId);
-    const freshFilePath = getTerminalOutputFilePath(freshTerminalId);
+    const oldFilePath = getShellOutputFilePath(oldShellId);
+    const freshFilePath = getShellOutputFilePath(freshShellId);
     const oldDate = new Date(Date.now() - SEVEN_HOURS_MS);
 
     fs.utimesSync(oldFilePath, oldDate, oldDate);
 
-    initializeTerminalOutputStore(SIX_HOURS_MS);
+    initializeShellOutputStore(SIX_HOURS_MS);
 
     expect(fs.existsSync(oldFilePath)).toBe(false);
     expect(fs.existsSync(freshFilePath)).toBe(true);

@@ -1,10 +1,10 @@
-export interface TerminalOutputFilterInput {
+export interface ShellOutputFilterInput {
   last_lines?: number;
   regex?: string;
   regex_flags?: string;
 }
 
-export function stripTerminalControlSequences(output: string): string {
+export function stripShellControlSequences(output: string): string {
   let sanitized = '';
 
   for (let index = 0; index < output.length; index += 1) {
@@ -56,16 +56,16 @@ export function stripTerminalControlSequences(output: string): string {
   }
 
   return sanitized
-    // Normalize standalone carriage returns (used by some terminals to redraw a line)
+    // Normalize standalone carriage returns (used by some shells to redraw a line)
     // into newlines, while preserving CRLF pairs by excluding '\r' followed by '\n'.
     .replace(/\r(?!\n)/g, '\n');
 }
 
-export function getFilteredOutput(input: TerminalOutputFilterInput, output: string): string {
+export function getFilteredOutput(input: ShellOutputFilterInput, output: string): string {
   const hasLastLines = typeof input.last_lines === 'number';
   const hasRegex = typeof input.regex === 'string';
   const hasRegexFlags = typeof input.regex_flags === 'string';
-  const sanitizedOutput = stripTerminalControlSequences(output);
+  const sanitizedOutput = stripShellControlSequences(output);
 
   if (hasLastLines && hasRegex) {
     throw new Error('last_lines and regex are mutually exclusive');

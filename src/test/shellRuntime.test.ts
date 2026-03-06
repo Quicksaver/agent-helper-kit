@@ -6,17 +6,17 @@ import {
   vi,
 } from 'vitest';
 
-import { TerminalRuntime } from '@/shellRuntime';
+import { ShellRuntime } from '@/shellRuntime';
 
-const TERMINAL_ID_REGEX = /^custom-shell-[a-f0-9]{8}$/;
+const SHELL_ID_REGEX = /^custom-shell-[a-f0-9]{8}$/;
 
-describe('TerminalRuntime terminal id generation', () => {
+describe('ShellRuntime shell id generation', () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   it('creates non-sequential 8-char hexadecimal ids', () => {
-    const runtime = new TerminalRuntime({});
+    const runtime = new ShellRuntime({});
 
     const firstId = runtime.createCompletedCommandRecord('echo one', {
       exitCode: 0,
@@ -34,13 +34,13 @@ describe('TerminalRuntime terminal id generation', () => {
       timedOut: false,
     });
 
-    expect(firstId).toMatch(TERMINAL_ID_REGEX);
-    expect(secondId).toMatch(TERMINAL_ID_REGEX);
+    expect(firstId).toMatch(SHELL_ID_REGEX);
+    expect(secondId).toMatch(SHELL_ID_REGEX);
     expect(firstId).not.toBe(secondId);
   });
 
   it('retries when random id candidate collides', () => {
-    const runtime = new TerminalRuntime({});
+    const runtime = new ShellRuntime({});
 
     const randomUuidSpy = vi.spyOn(globalThis.crypto, 'randomUUID');
 
@@ -75,14 +75,14 @@ describe('TerminalRuntime terminal id generation', () => {
       timedOut: false,
     });
 
-    expect(secondId).toMatch(TERMINAL_ID_REGEX);
+    expect(secondId).toMatch(SHELL_ID_REGEX);
     expect(secondId).not.toBe(firstId);
     expect(hasSpy).toHaveBeenCalledTimes(2);
     expect(randomUuidSpy).not.toHaveBeenCalled();
   });
 
   it('falls back to UUID-based id after exhausting collision retries', () => {
-    const runtime = new TerminalRuntime({});
+    const runtime = new ShellRuntime({});
 
     runtime.createCompletedCommandRecord('echo one', {
       exitCode: 0,

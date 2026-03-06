@@ -75,7 +75,7 @@ yarn lint:check
 yarn test
 ```
 
-For terminal-tool integration checks after install, see `docs/integration-checks.md`.
+For shell-tool integration checks after install, see `docs/integration-checks.md`.
 
 ## Contributing
 

@@ -4,10 +4,10 @@ import * as vscode from 'vscode';
 import { registerShellCommandsPanel } from '@/shellCommandsPanel';
 import {
   getFilteredOutput,
-  stripTerminalControlSequences,
+  stripShellControlSequences,
 } from '@/shellOutputFilter';
 import {
-  TerminalRuntime,
+  ShellRuntime,
   toPublicCommandId,
 } from '@/shellRuntime';
 import {
@@ -35,7 +35,7 @@ function getNumericSettingOrDefault(value: number | undefined, fallback: number)
   return value;
 }
 
-function getTerminalOutputSettings(): {
+function getShellOutputSettings(): {
   memoryToFileDelayMs: number;
   startupPurgeMaxAgeMs: number;
 } {
@@ -104,7 +104,7 @@ function buildSplitOutputToolResult(payload: Record<string, unknown> & {
     output,
     ...metadata
   } = payload;
-  const sanitizedOutput = stripTerminalControlSequences(output);
+  const sanitizedOutput = stripShellControlSequences(output);
 
   return new vscode.LanguageModelToolResult([
     new vscode.LanguageModelTextPart(toYaml(metadata)),
@@ -134,22 +134,22 @@ function addOptionalCompletionMetadata(
   return nextPayload;
 }
 
-let terminalRuntime: TerminalRuntime | undefined;
+let shellRuntime: ShellRuntime | undefined;
 
-function getTerminalRuntime(): TerminalRuntime {
-  if (!terminalRuntime) {
+function getShellRuntime(): ShellRuntime {
+  if (!shellRuntime) {
     const {
       memoryToFileDelayMs,
       startupPurgeMaxAgeMs,
-    } = getTerminalOutputSettings();
+    } = getShellOutputSettings();
 
-    terminalRuntime = new TerminalRuntime({
+    shellRuntime = new ShellRuntime({
       memoryToFileDelayMs,
       startupPurgeMaxAgeMs,
     });
   }
 
-  return terminalRuntime;
+  return shellRuntime;
 }
 
 function hasRunOutputOverrides(input: {
@@ -183,7 +183,7 @@ const customRunInAsyncShellTool: vscode.LanguageModelTool<RunInAsyncShellInput> 
     options: vscode.LanguageModelToolInvocationOptions<RunInAsyncShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
     const input = validateRunInAsyncShellInput(options.input);
-    const id = getTerminalRuntime().startBackgroundCommand(
+    const id = getShellRuntime().startBackgroundCommand(
       input.command,
       getRequestedOrDefaultShell(input.shell),
       getWorkspaceCwd(),
@@ -212,22 +212,22 @@ const customRunInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = 
   ): Promise<vscode.LanguageModelToolResult> {
     const input = validateRunInSyncShellInput(options.input);
     const shouldReturnOutput = hasRunOutputOverrides(input);
-    const terminalRuntimeInstance = getTerminalRuntime();
+    const shellRuntimeInstance = getShellRuntime();
     const resolvedShell = getRequestedOrDefaultShell(input.shell);
 
-    const id = terminalRuntimeInstance.startBackgroundCommand(
+    const id = shellRuntimeInstance.startBackgroundCommand(
       input.command,
       resolvedShell,
       getWorkspaceCwd(),
     );
-    let result = await terminalRuntimeInstance.awaitBackgroundCommand({
+    let result = await shellRuntimeInstance.awaitBackgroundCommand({
       id,
       timeout: input.timeout,
     });
 
     if (result.timedOut) {
-      terminalRuntimeInstance.killBackgroundCommand(id);
-      const completedResult = await terminalRuntimeInstance.awaitBackgroundCommand({
+      shellRuntimeInstance.killBackgroundCommand(id);
+      const completedResult = await shellRuntimeInstance.awaitBackgroundCommand({
         id,
         timeout: 0,
       });
@@ -293,7 +293,7 @@ const customAwaitShellTool: vscode.LanguageModelTool<AwaitShellInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<AwaitShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
-    const result = await getTerminalRuntime().awaitBackgroundCommand(options.input);
+    const result = await getShellRuntime().awaitBackgroundCommand(options.input);
 
     return buildYamlToolResult(addOptionalCompletionMetadata({
       exitCode: result.exitCode,
@@ -316,7 +316,7 @@ const customGetShellOutputTool: vscode.LanguageModelTool<GetShellOutputInput> = 
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<GetShellOutputInput>,
   ): Promise<vscode.LanguageModelToolResult> {
-    const result = await getTerminalRuntime().readBackgroundOutput(options.input);
+    const result = await getShellRuntime().readBackgroundOutput(options.input);
     const exitCodeState = typeof result.exitCode === 'number'
       ? {
         exitCode: result.exitCode,
@@ -352,7 +352,7 @@ const customKillShellTool: vscode.LanguageModelTool<KillShellInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<KillShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
-    const killed = getTerminalRuntime().killBackgroundCommand(options.input.id);
+    const killed = getShellRuntime().killBackgroundCommand(options.input.id);
 
     return buildYamlToolResult({
       killed,
@@ -375,7 +375,7 @@ const customGetShellCommandTool: vscode.LanguageModelTool<GetShellCommandInput> 
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<GetShellCommandInput>,
   ): Promise<vscode.LanguageModelToolResult> {
-    const command = getTerminalRuntime().getLastCommand(options.input.id);
+    const command = getShellRuntime().getLastCommand(options.input.id);
 
     return buildYamlToolResult({
       command: command ?? null,
@@ -395,7 +395,7 @@ const customGetLastShellCommandTool: vscode.LanguageModelTool<GetLastShellComman
     options: vscode.LanguageModelToolInvocationOptions<GetLastShellCommandInput>,
   ): Promise<vscode.LanguageModelToolResult> {
     void options;
-    const command = getTerminalRuntime().getLastCommand();
+    const command = getShellRuntime().getLastCommand();
 
     return buildYamlToolResult({
       command: command ?? null,
@@ -420,7 +420,7 @@ export function registerShellTools(): vscode.Disposable {
     vscode.lm.registerTool(SHELL_TOOL_NAMES.getShellCommand, customGetShellCommandTool),
     vscode.lm.registerTool(SHELL_TOOL_NAMES.getLastShellCommand, customGetLastShellCommandTool),
     vscode.lm.registerTool(SHELL_TOOL_NAMES.killShell, customKillShellTool),
-    registerShellCommandsPanel(getTerminalRuntime),
+    registerShellCommandsPanel(getShellRuntime),
   ];
 
   return vscode.Disposable.from(...registrations);

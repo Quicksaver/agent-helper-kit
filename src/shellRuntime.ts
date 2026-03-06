@@ -5,26 +5,26 @@ import * as path from 'node:path';
 
 import {
   getFilteredOutput,
-  type TerminalOutputFilterInput,
+  type ShellOutputFilterInput,
 } from '@/shellOutputFilter';
 import {
-  appendTerminalOutput,
-  initializeTerminalOutputStore,
-  listTerminalOutputIds,
-  overwriteTerminalOutput,
-  readTerminalCommandMetadata,
-  readTerminalOutput,
-  removeTerminalCommandMetadata,
-  removeTerminalOutputFile,
-  writeTerminalCommandMetadata,
+  appendShellOutput,
+  initializeShellOutputStore,
+  listShellOutputIds,
+  overwriteShellOutput,
+  readShellCommandMetadata,
+  readShellOutput,
+  removeShellCommandMetadata,
+  removeShellOutputFile,
+  writeShellCommandMetadata,
 } from '@/shellOutputStore';
 
 const DEFAULT_OUTPUT_LIMIT = 60 * 1024;
 const DEFAULT_MEMORY_TO_FILE_DELAY_MS = 2 * 60 * 1000;
 const READS_SINCE_COMPLETION_FOR_SYNC_RECORD = 1;
 export const SHELL_COMMAND_ID_PREFIX = 'custom-shell-';
-const TERMINAL_ID_HEX_LENGTH = 8;
-const TERMINAL_ID_GENERATION_MAX_ATTEMPTS = 8;
+const SHELL_ID_HEX_LENGTH = 8;
+const SHELL_ID_GENERATION_MAX_ATTEMPTS = 8;
 
 export function toPublicCommandId(id: string): string {
   if (id.startsWith(SHELL_COMMAND_ID_PREFIX)) {
@@ -53,7 +53,7 @@ interface BackgroundProcessState {
   startedAt: string;
 }
 
-export interface TerminalCommandListItem {
+export interface ShellCommandListItem {
   command: string;
   completedAt: null | string;
   exitCode: null | number;
@@ -65,7 +65,7 @@ export interface TerminalCommandListItem {
   startedAt: string;
 }
 
-export interface TerminalCommandDetails extends TerminalCommandListItem {
+export interface ShellCommandDetails extends ShellCommandListItem {
   output: string;
 }
 
@@ -88,25 +88,25 @@ export interface AwaitBackgroundInput {
   timeout: number;
 }
 
-export interface ReadBackgroundOutputInput extends TerminalOutputFilterInput {
+export interface ReadBackgroundOutputInput extends ShellOutputFilterInput {
   full_output?: boolean;
   id: string;
 }
 
-interface TerminalRuntimeOptions {
+interface ShellRuntimeOptions {
   memoryToFileDelayMs?: number;
   outputLimit?: number;
   shellEnv?: NodeJS.ProcessEnv;
   startupPurgeMaxAgeMs?: number;
 }
 
-export class TerminalRuntime {
+export class ShellRuntime {
   private readonly backgroundProcesses = new Map<string, BackgroundProcessState>();
   private readonly commandChangeListeners = new Set<() => void>();
   private lastCommand: string | undefined;
 
-  constructor(private readonly options: TerminalRuntimeOptions) {
-    initializeTerminalOutputStore(this.options.startupPurgeMaxAgeMs);
+  constructor(private readonly options: ShellRuntimeOptions) {
+    initializeShellOutputStore(this.options.startupPurgeMaxAgeMs);
     this.hydrateFromPersistedOutput();
   }
 
@@ -162,7 +162,7 @@ export class TerminalRuntime {
   }
 
   createCompletedCommandRecord(command: string, result: RunCommandResult, shell?: string): string {
-    const id = this.createUniqueTerminalId();
+    const id = this.createUniqueShellId();
     const startedAt = new Date().toISOString();
     const completedAt = new Date().toISOString();
 
@@ -205,7 +205,7 @@ export class TerminalRuntime {
     return true;
   }
 
-  async getCommandDetails(id: string): Promise<TerminalCommandDetails> {
+  async getCommandDetails(id: string): Promise<ShellCommandDetails> {
     const {
       resolvedId,
       state,
@@ -243,7 +243,7 @@ export class TerminalRuntime {
     return false;
   }
 
-  listCommands(): TerminalCommandListItem[] {
+  listCommands(): ShellCommandListItem[] {
     return [ ...this.backgroundProcesses.entries() ]
       .map(([ id, state ]) => this.toCommandListItem(id, state))
       .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
@@ -299,7 +299,7 @@ export class TerminalRuntime {
     this.lastCommand = command;
 
     const shellInvocation = this.createShellInvocation(command, shell);
-    const id = this.createUniqueTerminalId();
+    const id = this.createUniqueShellId();
     const commandCwd = typeof cwd === 'string' && cwd.trim().length > 0
       ? cwd
       : os.homedir();
@@ -377,7 +377,7 @@ export class TerminalRuntime {
 
   private appendBackgroundOutput(id: string, state: BackgroundProcessState, chunk: string): void {
     if (state.outputInFile) {
-      appendTerminalOutput(id, chunk);
+      appendShellOutput(id, chunk);
       return;
     }
 
@@ -437,9 +437,9 @@ export class TerminalRuntime {
     return this.createPosixShellInvocation(command, shell);
   }
 
-  private createUniqueTerminalId(): string {
-    for (let attempt = 0; attempt < TERMINAL_ID_GENERATION_MAX_ATTEMPTS; attempt += 1) {
-      const candidate = `${SHELL_COMMAND_ID_PREFIX}${randomBytes(TERMINAL_ID_HEX_LENGTH / 2).toString('hex')}`;
+  private createUniqueShellId(): string {
+    for (let attempt = 0; attempt < SHELL_ID_GENERATION_MAX_ATTEMPTS; attempt += 1) {
+      const candidate = `${SHELL_COMMAND_ID_PREFIX}${randomBytes(SHELL_ID_HEX_LENGTH / 2).toString('hex')}`;
 
       if (!this.backgroundProcesses.has(candidate)) {
         return candidate;
@@ -448,7 +448,7 @@ export class TerminalRuntime {
 
     // Extremely rare collision scenario: if repeated clashes exhaust all attempts,
     // fall back to UUID entropy to keep ID generation practically collision-free.
-    return `${SHELL_COMMAND_ID_PREFIX}${globalThis.crypto.randomUUID().replaceAll('-', '').slice(0, TERMINAL_ID_HEX_LENGTH)}`;
+    return `${SHELL_COMMAND_ID_PREFIX}${globalThis.crypto.randomUUID().replaceAll('-', '').slice(0, SHELL_ID_HEX_LENGTH)}`;
   }
 
   private emitCommandChange(): void {
@@ -459,7 +459,7 @@ export class TerminalRuntime {
 
   private async getBackgroundOutput(id: string, state: BackgroundProcessState): Promise<string> {
     if (state.outputInFile) {
-      return readTerminalOutput(id);
+      return readShellOutput(id);
     }
 
     return state.output;
@@ -503,14 +503,14 @@ export class TerminalRuntime {
   }
 
   private hydrateFromPersistedOutput(): void {
-    const outputIds = listTerminalOutputIds();
+    const outputIds = listShellOutputIds();
 
     for (const id of outputIds) {
       if (this.backgroundProcesses.has(id)) {
         continue;
       }
 
-      const metadata = readTerminalCommandMetadata(id);
+      const metadata = readShellCommandMetadata(id);
       const hydratedShell = typeof metadata?.shell === 'string' && metadata.shell.length > 0
         ? metadata.shell
         : this.resolveShellExecutable();
@@ -538,7 +538,7 @@ export class TerminalRuntime {
   }
 
   private persistCommandMetadata(id: string, state: BackgroundProcessState): void {
-    writeTerminalCommandMetadata({
+    writeShellCommandMetadata({
       command: state.command,
       completedAt: state.completedAt,
       exitCode: state.exitCode,
@@ -553,7 +553,7 @@ export class TerminalRuntime {
   private purgeBackgroundOutput(id: string, state: BackgroundProcessState): void {
     state.output = '';
     state.outputInFile = false;
-    removeTerminalOutputFile(id);
+    removeShellOutputFile(id);
 
     if (state.memoryToFileTimer) {
       clearTimeout(state.memoryToFileTimer);
@@ -563,10 +563,10 @@ export class TerminalRuntime {
 
   private purgeCommandArtifacts(id: string, state: BackgroundProcessState): void {
     if (state.outputInFile) {
-      removeTerminalOutputFile(id);
+      removeShellOutputFile(id);
     }
 
-    removeTerminalCommandMetadata(id);
+    removeShellCommandMetadata(id);
 
     if (state.memoryToFileTimer) {
       clearTimeout(state.memoryToFileTimer);
@@ -592,14 +592,14 @@ export class TerminalRuntime {
     state.memoryToFileTimer = setTimeout(() => {
       state.memoryToFileTimer = undefined;
 
-      overwriteTerminalOutput(id, state.output);
+      overwriteShellOutput(id, state.output);
       state.output = '';
       state.outputInFile = true;
       this.emitCommandChange();
     }, delay);
   }
 
-  private toCommandListItem(id: string, state: BackgroundProcessState): TerminalCommandListItem {
+  private toCommandListItem(id: string, state: BackgroundProcessState): ShellCommandListItem {
     return {
       command: state.command,
       completedAt: state.completedAt,

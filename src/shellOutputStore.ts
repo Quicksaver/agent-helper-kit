@@ -2,14 +2,14 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-const OUTPUT_DIR_NAME = 'agent-helper-kit-terminal-output';
-const OUTPUT_FILE_PREFIX = 'terminal-';
+const OUTPUT_DIR_NAME = 'agent-helper-kit-shell-output';
+const OUTPUT_FILE_PREFIX = 'shell-';
 const OUTPUT_FILE_SUFFIX = '.log';
 const METADATA_FILE_PREFIX = 'metadata-';
 const METADATA_FILE_SUFFIX = '.json';
 const DEFAULT_STARTUP_PURGE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
-export interface TerminalCommandMetadata {
+export interface ShellCommandMetadata {
   command: string;
   completedAt: null | string;
   exitCode: null | number;
@@ -24,7 +24,7 @@ function getOutputDirectoryPath(): string {
   return path.join(os.tmpdir(), OUTPUT_DIR_NAME);
 }
 
-export function getTerminalOutputDirectoryPath(): string {
+export function getShellOutputDirectoryPath(): string {
   return getOutputDirectoryPath();
 }
 
@@ -36,16 +36,16 @@ function ensureOutputDirectory(): string {
   return directoryPath;
 }
 
-function sanitizeTerminalId(terminalId: string): string {
-  return terminalId.replaceAll(/[^a-zA-Z0-9_-]/g, '_');
+function sanitizeShellId(shellId: string): string {
+  return shellId.replaceAll(/[^a-zA-Z0-9_-]/g, '_');
 }
 
-export function getTerminalOutputFilePath(terminalId: string): string {
-  const safeId = sanitizeTerminalId(terminalId);
+export function getShellOutputFilePath(shellId: string): string {
+  const safeId = sanitizeShellId(shellId);
   return path.join(ensureOutputDirectory(), `${OUTPUT_FILE_PREFIX}${safeId}${OUTPUT_FILE_SUFFIX}`);
 }
 
-function getTerminalIdFromFileName(fileName: string): string | undefined {
+function getShellIdFromOutputFileName(fileName: string): string | undefined {
   if (!fileName.startsWith(OUTPUT_FILE_PREFIX) || !fileName.endsWith(OUTPUT_FILE_SUFFIX)) {
     return undefined;
   }
@@ -53,7 +53,7 @@ function getTerminalIdFromFileName(fileName: string): string | undefined {
   return fileName.slice(OUTPUT_FILE_PREFIX.length, -OUTPUT_FILE_SUFFIX.length);
 }
 
-function getTerminalIdFromMetadataFileName(fileName: string): string | undefined {
+function getShellIdFromMetadataFileName(fileName: string): string | undefined {
   if (!fileName.startsWith(METADATA_FILE_PREFIX) || !fileName.endsWith(METADATA_FILE_SUFFIX)) {
     return undefined;
   }
@@ -61,12 +61,12 @@ function getTerminalIdFromMetadataFileName(fileName: string): string | undefined
   return fileName.slice(METADATA_FILE_PREFIX.length, -METADATA_FILE_SUFFIX.length);
 }
 
-function getTerminalMetadataFilePath(terminalId: string): string {
-  const safeId = sanitizeTerminalId(terminalId);
+function getShellMetadataFilePath(shellId: string): string {
+  const safeId = sanitizeShellId(shellId);
   return path.join(ensureOutputDirectory(), `${METADATA_FILE_PREFIX}${safeId}${METADATA_FILE_SUFFIX}`);
 }
 
-export function initializeTerminalOutputStore(startupPurgeMaxAgeMs = DEFAULT_STARTUP_PURGE_MAX_AGE_MS): void {
+export function initializeShellOutputStore(startupPurgeMaxAgeMs = DEFAULT_STARTUP_PURGE_MAX_AGE_MS): void {
   const directoryPath = ensureOutputDirectory();
   const nowMs = Date.now();
   let fileNames: string[];
@@ -76,14 +76,14 @@ export function initializeTerminalOutputStore(startupPurgeMaxAgeMs = DEFAULT_STA
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    globalThis.process.stderr.write(`[agent-helper-kit] Failed to read terminal output directory ${directoryPath}: ${message}\n`);
+    globalThis.process.stderr.write(`[agent-helper-kit] Failed to read shell output directory ${directoryPath}: ${message}\n`);
     return;
   }
 
   for (const fileName of fileNames) {
-    const terminalId = getTerminalIdFromFileName(fileName);
+    const shellId = getShellIdFromOutputFileName(fileName);
 
-    if (!terminalId) {
+    if (!shellId) {
       continue;
     }
 
@@ -95,7 +95,7 @@ export function initializeTerminalOutputStore(startupPurgeMaxAgeMs = DEFAULT_STA
     }
     catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      globalThis.process.stderr.write(`[agent-helper-kit] Failed to stat terminal output file ${filePath}: ${message}\n`);
+      globalThis.process.stderr.write(`[agent-helper-kit] Failed to stat shell output file ${filePath}: ${message}\n`);
       continue;
     }
 
@@ -104,17 +104,17 @@ export function initializeTerminalOutputStore(startupPurgeMaxAgeMs = DEFAULT_STA
     if (ageMs > startupPurgeMaxAgeMs) {
       try {
         fs.rmSync(filePath, { force: true });
-        fs.rmSync(getTerminalMetadataFilePath(terminalId), { force: true });
+        fs.rmSync(getShellMetadataFilePath(shellId), { force: true });
       }
       catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        globalThis.process.stderr.write(`[agent-helper-kit] Failed to purge stale terminal output artifacts for ${terminalId}: ${message}\n`);
+        globalThis.process.stderr.write(`[agent-helper-kit] Failed to purge stale shell output artifacts for ${shellId}: ${message}\n`);
       }
     }
   }
 }
 
-export function listTerminalOutputIds(): string[] {
+export function listShellOutputIds(): string[] {
   const directoryPath = ensureOutputDirectory();
   let fileNames: string[];
 
@@ -126,37 +126,37 @@ export function listTerminalOutputIds(): string[] {
   }
 
   return fileNames
-    .map(getTerminalIdFromFileName)
-    .filter((terminalId): terminalId is string => typeof terminalId === 'string')
+    .map(getShellIdFromOutputFileName)
+    .filter((shellId): shellId is string => typeof shellId === 'string')
     .sort();
 }
 
-export function createTerminalOutputFile(terminalId: string): void {
-  fs.writeFileSync(getTerminalOutputFilePath(terminalId), '', { encoding: 'utf8' });
+export function createShellOutputFile(shellId: string): void {
+  fs.writeFileSync(getShellOutputFilePath(shellId), '', { encoding: 'utf8' });
 }
 
-export function overwriteTerminalOutput(terminalId: string, output: string): void {
+export function overwriteShellOutput(shellId: string, output: string): void {
   try {
-    fs.writeFileSync(getTerminalOutputFilePath(terminalId), output, { encoding: 'utf8' });
+    fs.writeFileSync(getShellOutputFilePath(shellId), output, { encoding: 'utf8' });
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    globalThis.process.stderr.write(`[agent-helper-kit] Failed to overwrite terminal output for ${terminalId}: ${message}\n`);
+    globalThis.process.stderr.write(`[agent-helper-kit] Failed to overwrite shell output for ${shellId}: ${message}\n`);
   }
 }
 
-export function appendTerminalOutput(terminalId: string, chunk: string): void {
+export function appendShellOutput(shellId: string, chunk: string): void {
   try {
-    fs.appendFileSync(getTerminalOutputFilePath(terminalId), chunk, { encoding: 'utf8' });
+    fs.appendFileSync(getShellOutputFilePath(shellId), chunk, { encoding: 'utf8' });
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    globalThis.process.stderr.write(`[agent-helper-kit] Failed to append terminal output for ${terminalId}: ${message}\n`);
+    globalThis.process.stderr.write(`[agent-helper-kit] Failed to append shell output for ${shellId}: ${message}\n`);
   }
 }
 
-export async function readTerminalOutput(terminalId: string): Promise<string> {
-  const filePath = getTerminalOutputFilePath(terminalId);
+export async function readShellOutput(shellId: string): Promise<string> {
+  const filePath = getShellOutputFilePath(shellId);
 
   try {
     return await fs.promises.readFile(filePath, { encoding: 'utf8' });
@@ -175,20 +175,20 @@ export async function readTerminalOutput(terminalId: string): Promise<string> {
   }
 }
 
-export function removeTerminalOutputFile(terminalId: string): void {
-  fs.rmSync(getTerminalOutputFilePath(terminalId), { force: true });
+export function removeShellOutputFile(shellId: string): void {
+  fs.rmSync(getShellOutputFilePath(shellId), { force: true });
 }
 
-export function readTerminalCommandMetadata(terminalId: string): TerminalCommandMetadata | undefined {
+export function readShellCommandMetadata(shellId: string): ShellCommandMetadata | undefined {
   try {
-    const raw = fs.readFileSync(getTerminalMetadataFilePath(terminalId), { encoding: 'utf8' });
+    const raw = fs.readFileSync(getShellMetadataFilePath(shellId), { encoding: 'utf8' });
     const parsed = JSON.parse(raw) as unknown;
 
     if (typeof parsed !== 'object' || parsed === null) {
       return undefined;
     }
 
-    const candidate = parsed as Partial<TerminalCommandMetadata>;
+    const candidate = parsed as Partial<ShellCommandMetadata>;
 
     if (
       typeof candidate.id !== 'string'
@@ -218,25 +218,25 @@ export function readTerminalCommandMetadata(terminalId: string): TerminalCommand
   }
 }
 
-export function removeTerminalCommandMetadata(terminalId: string): void {
-  fs.rmSync(getTerminalMetadataFilePath(terminalId), { force: true });
+export function removeShellCommandMetadata(shellId: string): void {
+  fs.rmSync(getShellMetadataFilePath(shellId), { force: true });
 }
 
-export function writeTerminalCommandMetadata(metadata: TerminalCommandMetadata): void {
+export function writeShellCommandMetadata(metadata: ShellCommandMetadata): void {
   try {
     fs.writeFileSync(
-      getTerminalMetadataFilePath(metadata.id),
+      getShellMetadataFilePath(metadata.id),
       JSON.stringify(metadata),
       { encoding: 'utf8' },
     );
   }
   catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    globalThis.process.stderr.write(`[agent-helper-kit] Failed to write terminal metadata for ${metadata.id}: ${message}\n`);
+    globalThis.process.stderr.write(`[agent-helper-kit] Failed to write shell metadata for ${metadata.id}: ${message}\n`);
   }
 }
 
-export function listTerminalMetadataIds(): string[] {
+export function listShellMetadataIds(): string[] {
   const directoryPath = ensureOutputDirectory();
   let fileNames: string[];
 
@@ -248,7 +248,7 @@ export function listTerminalMetadataIds(): string[] {
   }
 
   return fileNames
-    .map(getTerminalIdFromMetadataFileName)
-    .filter((terminalId): terminalId is string => typeof terminalId === 'string')
+    .map(getShellIdFromMetadataFileName)
+    .filter((shellId): shellId is string => typeof shellId === 'string')
     .sort();
 }

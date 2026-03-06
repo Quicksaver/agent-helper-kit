@@ -7,13 +7,13 @@ import {
 } from 'vitest';
 
 import {
-  getTerminalOutputDirectoryPath,
-  getTerminalOutputFilePath,
+  getShellOutputDirectoryPath,
+  getShellOutputFilePath,
 } from '@/shellOutputStore';
 import { SHELL_COMMAND_ID_PREFIX } from '@/shellRuntime';
 import { registerShellTools } from '@/shellTools';
 
-const TERMINAL_ID_REGEX = /^[a-f0-9]{8}$/;
+const SHELL_ID_REGEX = /^[a-f0-9]{8}$/;
 
 function expectedShellArgs(shell: string): string[] {
   const normalizedShellName = shell
@@ -241,16 +241,16 @@ function getResultPayload(result: { content: { value: string }[] }): Record<stri
   };
 }
 
-describe('terminal tools', () => {
+describe('shell tools', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    fs.rmSync(getTerminalOutputDirectoryPath(), { force: true, recursive: true });
+    fs.rmSync(getShellOutputDirectoryPath(), { force: true, recursive: true });
   });
 
-  it('registers all custom terminal tools', () => {
+  it('registers all custom shell tools', () => {
     const registration = registerShellTools();
 
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_sync_shell', expect.any(Object));
@@ -294,13 +294,13 @@ describe('terminal tools', () => {
     }, {});
 
     const runPayload = getResultPayload(runResult);
-    const terminalId = runPayload.id as string;
-    expect(terminalId).toMatch(TERMINAL_ID_REGEX);
+    const shellId = runPayload.id as string;
+    expect(shellId).toMatch(SHELL_ID_REGEX);
 
     fakeProcess.stdout.emit('data', 'hello\n');
 
     const outputResult = await getOutputTool.invoke({
-      input: { id: terminalId },
+      input: { id: shellId },
       toolInvocationToken: undefined,
     }, {});
 
@@ -312,7 +312,7 @@ describe('terminal tools', () => {
     expect(outputPayload).not.toHaveProperty('terminationSignal');
 
     const noNewOutputResult = await getOutputTool.invoke({
-      input: { id: terminalId },
+      input: { id: shellId },
       toolInvocationToken: undefined,
     }, {});
 
@@ -326,7 +326,7 @@ describe('terminal tools', () => {
 
     const lastLinesResult = await getOutputTool.invoke({
       input: {
-        id: terminalId,
+        id: shellId,
         last_lines: 2,
       },
       toolInvocationToken: undefined,
@@ -339,7 +339,7 @@ describe('terminal tools', () => {
 
     const regexResult = await getOutputTool.invoke({
       input: {
-        id: terminalId,
+        id: shellId,
         regex: '^only-match$',
       },
       toolInvocationToken: undefined,
@@ -352,7 +352,7 @@ describe('terminal tools', () => {
 
     const regexFlagsResult = await getOutputTool.invoke({
       input: {
-        id: terminalId,
+        id: shellId,
         regex: '^casesensitive$',
         regex_flags: 'i',
       },
@@ -365,7 +365,7 @@ describe('terminal tools', () => {
     const fullOutputResult = await getOutputTool.invoke({
       input: {
         full_output: true,
-        id: terminalId,
+        id: shellId,
       },
       toolInvocationToken: undefined,
     }, {});
@@ -375,7 +375,7 @@ describe('terminal tools', () => {
 
     await expect(getOutputTool.invoke({
       input: {
-        id: terminalId,
+        id: shellId,
         last_lines: 1,
         regex: 'hello',
       },
@@ -384,7 +384,7 @@ describe('terminal tools', () => {
 
     await expect(getOutputTool.invoke({
       input: {
-        id: terminalId,
+        id: shellId,
         regex_flags: 'i',
       },
       toolInvocationToken: undefined,
@@ -392,7 +392,7 @@ describe('terminal tools', () => {
 
     const timedAwaitResult = await awaitTool.invoke({
       input: {
-        id: terminalId,
+        id: shellId,
         timeout: 5,
       },
       toolInvocationToken: undefined,
@@ -403,13 +403,13 @@ describe('terminal tools', () => {
     expect(timedAwaitPayload.timedOut).toBe(true);
 
     await killTool.invoke({
-      input: { id: terminalId },
+      input: { id: shellId },
       toolInvocationToken: undefined,
     }, {});
 
     const completedAwaitResult = await awaitTool.invoke({
       input: {
-        id: terminalId,
+        id: shellId,
         timeout: 0,
       },
       toolInvocationToken: undefined,
@@ -421,7 +421,7 @@ describe('terminal tools', () => {
     expect(fakeProcess.kill).toHaveBeenCalledWith('SIGTERM');
 
     const firstCompletedRead = await getOutputTool.invoke({
-      input: { id: terminalId },
+      input: { id: shellId },
       toolInvocationToken: undefined,
     }, {});
 
@@ -433,7 +433,7 @@ describe('terminal tools', () => {
     expect(firstCompletedReadPayload.terminationSignal).toBe('SIGTERM');
 
     const secondCompletedRead = await getOutputTool.invoke({
-      input: { id: terminalId },
+      input: { id: shellId },
       toolInvocationToken: undefined,
     }, {});
 
@@ -451,13 +451,13 @@ describe('terminal tools', () => {
     const lastPayload = getResultPayload(lastResult);
     expect(lastPayload.command).toBe('echo hello');
 
-    const perTerminalLastResult = await getShellCommandTool.invoke({
-      input: { id: terminalId },
+    const perShellLastResult = await getShellCommandTool.invoke({
+      input: { id: shellId },
       toolInvocationToken: undefined,
     }, {});
 
-    const perTerminalPayload = getResultPayload(perTerminalLastResult);
-    expect(perTerminalPayload.command).toBe('echo hello');
+    const perShellPayload = getResultPayload(perShellLastResult);
+    expect(perShellPayload.command).toBe('echo hello');
   });
 
   it('keeps output when process closes with SIGINT', async () => {
@@ -480,14 +480,14 @@ describe('terminal tools', () => {
     }, {});
 
     const runPayload = getResultPayload(runResult);
-    const terminalId = runPayload.id as string;
+    const shellId = runPayload.id as string;
 
     fakeProcess.stdout.emit('data', 'before-int\n');
     fakeProcess.emit('close', null, 'SIGINT');
 
     const awaitResult = await awaitTool.invoke({
       input: {
-        id: terminalId,
+        id: shellId,
         timeout: 0,
       },
       toolInvocationToken: undefined,
@@ -500,7 +500,7 @@ describe('terminal tools', () => {
     const outputResult = await getOutputTool.invoke({
       input: {
         full_output: true,
-        id: terminalId,
+        id: shellId,
       },
       toolInvocationToken: undefined,
     }, {});
@@ -532,18 +532,18 @@ describe('terminal tools', () => {
 
     const runResult = await runPromise;
     const runPayload = getResultPayload(runResult);
-    const terminalId = runPayload.id as string;
+    const shellId = runPayload.id as string;
 
-    expect(terminalId).toMatch(TERMINAL_ID_REGEX);
+    expect(shellId).toMatch(SHELL_ID_REGEX);
     expect(runPayload).toEqual({
       exitCode: 0,
-      id: terminalId,
+      id: shellId,
       shell: '/bin/zsh',
     });
     expect(runPayload).not.toHaveProperty('output');
 
     const outputResult = await getOutputTool.invoke({
-      input: { id: terminalId },
+      input: { id: shellId },
       toolInvocationToken: undefined,
     }, {});
 
@@ -579,7 +579,7 @@ describe('terminal tools', () => {
 
     const fullOutputResult = await fullOutputPromise;
     const fullOutputPayload = getResultPayload(fullOutputResult);
-    expect(fullOutputPayload.id).toMatch(TERMINAL_ID_REGEX);
+    expect(fullOutputPayload.id).toMatch(SHELL_ID_REGEX);
     expect(fullOutputPayload.output).toBe('a\nb\nc\n');
 
     const lastLinesProcess = createFakeProcess();
@@ -601,7 +601,7 @@ describe('terminal tools', () => {
 
     const lastLinesResult = await lastLinesPromise;
     const lastLinesPayload = getResultPayload(lastLinesResult);
-    expect(lastLinesPayload.id).toMatch(TERMINAL_ID_REGEX);
+    expect(lastLinesPayload.id).toMatch(SHELL_ID_REGEX);
     expect(lastLinesPayload.output).toBe('b\nc\n');
 
     const regexProcess = createFakeProcess();
@@ -623,7 +623,7 @@ describe('terminal tools', () => {
 
     const regexResult = await regexPromise;
     const regexPayload = getResultPayload(regexResult);
-    expect(regexPayload.id).toMatch(TERMINAL_ID_REGEX);
+    expect(regexPayload.id).toMatch(SHELL_ID_REGEX);
     expect(regexPayload.output).toBe('b\nc\n');
 
     const regexFlagsProcess = createFakeProcess();
@@ -646,7 +646,7 @@ describe('terminal tools', () => {
 
     const regexFlagsResult = await regexFlagsPromise;
     const regexFlagsPayload = getResultPayload(regexFlagsResult);
-    expect(regexFlagsPayload.id).toMatch(TERMINAL_ID_REGEX);
+    expect(regexFlagsPayload.id).toMatch(SHELL_ID_REGEX);
     expect(regexFlagsPayload.output).toBe('B\n');
 
     await expect(runTool.invoke({
@@ -717,7 +717,7 @@ describe('terminal tools', () => {
     }, {});
 
     const runPayload = getResultPayload(runResult);
-    expect(runPayload.id).toMatch(TERMINAL_ID_REGEX);
+    expect(runPayload.id).toMatch(SHELL_ID_REGEX);
     expect(spawn).toHaveBeenCalledWith(
       selectedShell,
       [ ...expectedShellArgs(selectedShell), 'echo with shell' ],
@@ -759,7 +759,7 @@ describe('terminal tools', () => {
     await runPromise;
   });
 
-  it('strips ANSI escape sequences from terminal output payloads', async () => {
+  it('strips ANSI escape sequences from shell output payloads', async () => {
     registerShellTools();
 
     const runSyncTool = getRegisteredTool('run_in_sync_shell');
@@ -789,11 +789,11 @@ describe('terminal tools', () => {
     const runSyncPayload = getResultPayload(runSyncResult);
     expect(runSyncPayload.output).toBe(' RUN  v4.0.18\n');
 
-    const syncTerminalId = runSyncPayload.id as string;
+    const syncShellId = runSyncPayload.id as string;
     const getOutputResult = await getOutputTool.invoke({
       input: {
         full_output: true,
-        id: syncTerminalId,
+        id: syncShellId,
       },
       toolInvocationToken: undefined,
     }, {});
@@ -814,14 +814,14 @@ describe('terminal tools', () => {
     }, {});
 
     const runAsyncPayload = getResultPayload(runAsyncResult);
-    const asyncTerminalId = runAsyncPayload.id as string;
+    const asyncShellId = runAsyncPayload.id as string;
 
     asyncProcess.stdout.emit('data', ansiDecoratedOutput);
     asyncProcess.emit('close', 0, null);
 
     const awaitResult = await awaitTool.invoke({
       input: {
-        id: asyncTerminalId,
+        id: asyncShellId,
         timeout: 0,
       },
       toolInvocationToken: undefined,
@@ -833,7 +833,7 @@ describe('terminal tools', () => {
     const asyncOutputResult = await getOutputTool.invoke({
       input: {
         full_output: true,
-        id: asyncTerminalId,
+        id: asyncShellId,
       },
       toolInvocationToken: undefined,
     }, {});
@@ -864,13 +864,13 @@ describe('terminal tools', () => {
       }, {});
 
       const runPayload = getResultPayload(runResult);
-      const terminalId = runPayload.id as string;
+      const shellId = runPayload.id as string;
 
       fakeProcess.stdout.emit('data', 'spill-me\n');
 
       await vi.advanceTimersByTimeAsync(2 * 60 * 1000 + 10);
 
-      const outputFilePath = getTerminalOutputFilePath(`${SHELL_COMMAND_ID_PREFIX}${terminalId}`);
+      const outputFilePath = getShellOutputFilePath(`${SHELL_COMMAND_ID_PREFIX}${shellId}`);
       expect(fs.existsSync(outputFilePath)).toBe(true);
 
       fakeProcess.emit('close', null, 'SIGTERM');
@@ -879,7 +879,7 @@ describe('terminal tools', () => {
 
       const awaitResult = await awaitTool.invoke({
         input: {
-          id: terminalId,
+          id: shellId,
           timeout: 0,
         },
         toolInvocationToken: undefined,
@@ -892,7 +892,7 @@ describe('terminal tools', () => {
       const outputResult = await getOutputTool.invoke({
         input: {
           full_output: true,
-          id: terminalId,
+          id: shellId,
         },
         toolInvocationToken: undefined,
       }, {});
