@@ -22,6 +22,12 @@ describe('shell output store startup purge', () => {
     fs.rmSync(getShellOutputDirectoryPath(), { force: true, recursive: true });
   });
 
+  it('stores output files without duplicating the shell id prefix', () => {
+    const outputFilePath = getShellOutputFilePath('shell-abc12345');
+
+    expect(outputFilePath.endsWith('/output-shell-abc12345.log')).toBe(true);
+  });
+
   it('purges persisted shell output files older than configured max age', () => {
     const oldShellId = 'old-shell';
     const freshShellId = 'fresh-shell';

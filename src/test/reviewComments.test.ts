@@ -116,6 +116,46 @@ describe('reviewCommentToChat', () => {
     );
   });
 
+  it('does not open chat again for duplicate comments in immediate-send mode', () => {
+    const thread = {
+      comments: [ { body: 'Duplicate me' } ],
+      label: 'Lint | warning',
+      range: { start: { line: 2 } },
+      uri: mockUri('/workspace/src/dup-immediate.ts'),
+    };
+
+    reviewCommentToChat(thread);
+
+    expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(1);
+
+    reviewCommentToChat(thread);
+
+    expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(1);
+    expect(vscode.window.withProgress).not.toHaveBeenCalled();
+    expect(getQueuedPendingComments()).toHaveLength(1);
+  });
+
+  it('keeps immediate-send chat opens single-flight while comments are still pending', () => {
+    const firstThread = {
+      comments: [ { body: 'First comment' } ],
+      label: 'First',
+      range: { start: { line: 0 } },
+      uri: mockUri('/workspace/src/first.ts'),
+    };
+    const secondThread = {
+      comments: [ { body: 'Second comment' } ],
+      label: 'Second',
+      range: { start: { line: 1 } },
+      uri: mockUri('/workspace/src/second.ts'),
+    };
+
+    reviewCommentToChat(firstThread);
+    reviewCommentToChat(secondThread);
+
+    expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(1);
+    expect(getQueuedPendingComments()).toHaveLength(2);
+  });
+
   it('should prefill the participant and wait for send in queue-before-send mode', () => {
     vscode.queueModeState.enabled = true;
 

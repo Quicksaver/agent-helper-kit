@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 const OUTPUT_DIR_NAME = 'agent-helper-kit-shell-output';
-const OUTPUT_FILE_PREFIX = 'shell-';
+const OUTPUT_FILE_PREFIX = 'output-';
 const OUTPUT_FILE_SUFFIX = '.log';
 const METADATA_FILE_PREFIX = 'metadata-';
 const METADATA_FILE_SUFFIX = '.json';

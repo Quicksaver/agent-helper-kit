@@ -1,6 +1,7 @@
 import * as os from 'node:os';
 import * as vscode from 'vscode';
 
+import { EXTENSION_CONFIG_SECTION } from '@/reviewCommentConfig';
 import { registerShellCommandsPanel } from '@/shellCommandsPanel';
 import {
   getFilteredOutput,
@@ -39,7 +40,7 @@ function getShellOutputSettings(): {
   memoryToFileDelayMs: number;
   startupPurgeMaxAgeMs: number;
 } {
-  const configuration = vscode.workspace.getConfiguration('agent-helper-kit');
+  const configuration = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
   const memoryToFileSpillMinutes = getNumericSettingOrDefault(
     configuration.get<number>('shellOutput.memoryToFileSpillMinutes'),
     DEFAULT_MEMORY_TO_FILE_SPILL_MINUTES,

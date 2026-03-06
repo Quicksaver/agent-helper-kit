@@ -19,6 +19,8 @@ const queuedPendingComments: {
   title: string;
 }[] = [];
 
+let immediateSendInFlight = false;
+
 const AUTHOR_NAME_REWRITES: Record<string, string> = {
   'Code Review': 'Copilot Code Review',
 };
@@ -45,11 +47,13 @@ export function dismissQueueToast(): void {
 /** Clears all queued pending comments and dismisses the active toast. Exposed for testing. */
 export function clearQueuedPendingComments(): void {
   queuedPendingComments.splice(0);
+  immediateSendInFlight = false;
   dismissQueueToast();
 }
 
 function shouldQueueBeforeSend(): boolean {
-  return vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get<boolean>(QUEUE_BEFORE_SEND_SETTING, false);
+  const configuration = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
+  return configuration.get<boolean>(QUEUE_BEFORE_SEND_SETTING, false);
 }
 
 /** Checks whether a comment with the same body, file, and line is already queued. */
@@ -263,9 +267,20 @@ function showQueueToast(): void {
 }
 
 function sendQueuedCommentsToChat(): void {
+  if (queuedPendingComments.length === 0 || immediateSendInFlight) {
+    return;
+  }
+
+  immediateSendInFlight = true;
   void vscode.commands.executeCommand('workbench.action.chat.open', {
     query: '@bringCommentsToChat',
   });
+}
+
+function handleDuplicateQueuedComment(): void {
+  if (shouldQueueBeforeSend()) {
+    showQueueToast();
+  }
 }
 
 function handleQueuedCommentsUpdated(): void {
@@ -340,7 +355,7 @@ export function reviewCommentToChat(arg: unknown): void {
     const title = parseTitle(thread);
 
     if (isAlreadyQueued(body, relativePath, line)) {
-      handleQueuedCommentsUpdated();
+      handleDuplicateQueuedComment();
       return;
     }
 
@@ -368,7 +383,7 @@ export function reviewCommentToChat(arg: unknown): void {
     };
 
     if (isAlreadyQueued(body, STANDALONE_FILE, STANDALONE_LINE)) {
-      handleQueuedCommentsUpdated();
+      handleDuplicateQueuedComment();
       return;
     }
 
@@ -394,6 +409,7 @@ async function handleCopyCommentToChatRequest(
   stream: vscode.ChatResponseStream,
 ): Promise<void> {
   if (queuedPendingComments.length === 0) {
+    immediateSendInFlight = false;
     stream.markdown('No review comment pending.');
     return;
   }
@@ -403,36 +419,45 @@ async function handleCopyCommentToChatRequest(
   const comments = queuedPendingComments.splice(0);
   const byFile = new Map<string, FileComments>();
 
-  for (const entry of comments) {
-    const { file } = entry;
+  try {
+    for (const entry of comments) {
+      const { file } = entry;
 
-    if (!byFile.has(file.target)) {
-      byFile.set(file.target, {
-        ...file,
-        comments: [],
-      });
+      if (!byFile.has(file.target)) {
+        byFile.set(file.target, {
+          ...file,
+          comments: [],
+        });
+      }
+
+      byFile.get(file.target)?.comments.push(entry.comment);
     }
 
-    byFile.get(file.target)?.comments.push(entry.comment);
-  }
+    for (const entry of byFile.entries()) {
+      const [ target, fileComments ] = entry;
 
-  for (const entry of byFile.entries()) {
-    const [ target, fileComments ] = entry;
-
-    const firstComment = fileComments.comments[0];
-    const { fileUri } = firstComment;
-    // eslint-disable-next-line no-await-in-loop
-    const uri = fileUri ? vscode.Uri.parse(fileUri) : await toUri(target);
-    stream.anchor(uri);
-    stream.markdown('\n\n');
-
-    for (const comment of fileComments.comments) {
-      // eslint-disable-next-line no-await-in-loop -- sequential writes to stream to preserve ordering
-      stream.markdown(await buildComment(fileComments, comment));
+      const firstComment = fileComments.comments[0];
+      const { fileUri } = firstComment;
+      // eslint-disable-next-line no-await-in-loop
+      const uri = fileUri ? vscode.Uri.parse(fileUri) : await toUri(target);
+      stream.anchor(uri);
       stream.markdown('\n\n');
-    }
 
-    stream.markdown('\n --- \n');
+      for (const comment of fileComments.comments) {
+        // eslint-disable-next-line no-await-in-loop -- sequential writes to stream to preserve ordering
+        stream.markdown(await buildComment(fileComments, comment));
+        stream.markdown('\n\n');
+      }
+
+      stream.markdown('\n --- \n');
+    }
+  }
+  finally {
+    immediateSendInFlight = false;
+
+    if (!shouldQueueBeforeSend()) {
+      sendQueuedCommentsToChat();
+    }
   }
 }
 
