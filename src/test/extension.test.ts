@@ -147,7 +147,7 @@ describe('Extension', () => {
     );
   });
 
-  it('should register custom shell tools on activation', () => {
+  it('should register shell tools on activation', () => {
     const context = createMockContext();
 
     activate(context);

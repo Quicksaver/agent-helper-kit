@@ -250,7 +250,7 @@ describe('shell tools', () => {
     fs.rmSync(getShellOutputDirectoryPath(), { force: true, recursive: true });
   });
 
-  it('registers all custom shell tools', () => {
+  it('registers all shell tools', () => {
     const registration = registerShellTools();
 
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_sync_shell', expect.any(Object));

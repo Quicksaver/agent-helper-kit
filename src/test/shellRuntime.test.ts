@@ -8,7 +8,7 @@ import {
 
 import { ShellRuntime } from '@/shellRuntime';
 
-const SHELL_ID_REGEX = /^custom-shell-[a-f0-9]{8}$/;
+const SHELL_ID_REGEX = /^shell-[a-f0-9]{8}$/;
 
 describe('ShellRuntime shell id generation', () => {
   afterEach(() => {
@@ -107,7 +107,7 @@ describe('ShellRuntime shell id generation', () => {
       timedOut: false,
     });
 
-    expect(secondId).toBe('custom-shell-12345678');
+    expect(secondId).toBe('shell-12345678');
     expect(randomUuidSpy).toHaveBeenCalledOnce();
   });
 });

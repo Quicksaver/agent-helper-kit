@@ -178,7 +178,7 @@ function getRequestedOrDefaultShell(inputShell?: string): string | undefined {
   return undefined;
 }
 
-const customRunInAsyncShellTool: vscode.LanguageModelTool<RunInAsyncShellInput> = {
+const runInAsyncShellTool: vscode.LanguageModelTool<RunInAsyncShellInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<RunInAsyncShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
@@ -206,7 +206,7 @@ const customRunInAsyncShellTool: vscode.LanguageModelTool<RunInAsyncShellInput> 
   },
 };
 
-const customRunInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = {
+const runInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<RunInSyncShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
@@ -289,7 +289,7 @@ const customRunInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = 
   },
 };
 
-const customAwaitShellTool: vscode.LanguageModelTool<AwaitShellInput> = {
+const awaitShellTool: vscode.LanguageModelTool<AwaitShellInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<AwaitShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
@@ -312,7 +312,7 @@ const customAwaitShellTool: vscode.LanguageModelTool<AwaitShellInput> = {
   },
 };
 
-const customGetShellOutputTool: vscode.LanguageModelTool<GetShellOutputInput> = {
+const getShellOutputTool: vscode.LanguageModelTool<GetShellOutputInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<GetShellOutputInput>,
   ): Promise<vscode.LanguageModelToolResult> {
@@ -348,7 +348,7 @@ const customGetShellOutputTool: vscode.LanguageModelTool<GetShellOutputInput> = 
   },
 };
 
-const customKillShellTool: vscode.LanguageModelTool<KillShellInput> = {
+const killShellTool: vscode.LanguageModelTool<KillShellInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<KillShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
@@ -371,7 +371,7 @@ const customKillShellTool: vscode.LanguageModelTool<KillShellInput> = {
   },
 };
 
-const customGetShellCommandTool: vscode.LanguageModelTool<GetShellCommandInput> = {
+const getShellCommandTool: vscode.LanguageModelTool<GetShellCommandInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<GetShellCommandInput>,
   ): Promise<vscode.LanguageModelToolResult> {
@@ -390,7 +390,7 @@ const customGetShellCommandTool: vscode.LanguageModelTool<GetShellCommandInput> 
   },
 };
 
-const customGetLastShellCommandTool: vscode.LanguageModelTool<GetLastShellCommandInput> = {
+const getLastShellCommandTool: vscode.LanguageModelTool<GetLastShellCommandInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<GetLastShellCommandInput>,
   ): Promise<vscode.LanguageModelToolResult> {
@@ -413,13 +413,13 @@ const customGetLastShellCommandTool: vscode.LanguageModelTool<GetLastShellComman
 
 export function registerShellTools(): vscode.Disposable {
   const registrations = [
-    vscode.lm.registerTool(SHELL_TOOL_NAMES.runInSyncShell, customRunInSyncShellTool),
-    vscode.lm.registerTool(SHELL_TOOL_NAMES.runInAsyncShell, customRunInAsyncShellTool),
-    vscode.lm.registerTool(SHELL_TOOL_NAMES.awaitShell, customAwaitShellTool),
-    vscode.lm.registerTool(SHELL_TOOL_NAMES.getShellOutput, customGetShellOutputTool),
-    vscode.lm.registerTool(SHELL_TOOL_NAMES.getShellCommand, customGetShellCommandTool),
-    vscode.lm.registerTool(SHELL_TOOL_NAMES.getLastShellCommand, customGetLastShellCommandTool),
-    vscode.lm.registerTool(SHELL_TOOL_NAMES.killShell, customKillShellTool),
+    vscode.lm.registerTool(SHELL_TOOL_NAMES.runInSyncShell, runInSyncShellTool),
+    vscode.lm.registerTool(SHELL_TOOL_NAMES.runInAsyncShell, runInAsyncShellTool),
+    vscode.lm.registerTool(SHELL_TOOL_NAMES.awaitShell, awaitShellTool),
+    vscode.lm.registerTool(SHELL_TOOL_NAMES.getShellOutput, getShellOutputTool),
+    vscode.lm.registerTool(SHELL_TOOL_NAMES.getShellCommand, getShellCommandTool),
+    vscode.lm.registerTool(SHELL_TOOL_NAMES.getLastShellCommand, getLastShellCommandTool),
+    vscode.lm.registerTool(SHELL_TOOL_NAMES.killShell, killShellTool),
     registerShellCommandsPanel(getShellRuntime),
   ];
 
