@@ -18,19 +18,17 @@
   "evenBetterToml.formatter.trailingNewline": true,
   "evenBetterToml.schema.enabled": true,
   "files.insertFinalNewline": true,
-  "javascript.format.enable": false,
-  "javascript.validate.enable": true,
   "json.format.enable": true,
   "json.validate.enable": true,
   "markdown.extension.toc.omittedFromToc": {
     "README.md": [],
   },
+  "js/ts.format.enabled": true,
+  "js/ts.tsdk.path": "node_modules/typescript/lib",
+  "js/ts.validate.enabled": true,
   "prettier.configPath": "prettier.config.mjs",
   "prettier.enable": true,
   "prettier.ignorePath": ".prettierignore",
-  "typescript.format.enable": false,
-  "typescript.tsdk": "node_modules/typescript/lib",
-  "typescript.validate.enable": true,
   "yaml.format.printWidth": 120,
   "yaml.format.singleQuote": true
 }
