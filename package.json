@@ -21,7 +21,8 @@
     "onLanguageModelTool:await_shell",
     "onLanguageModelTool:get_shell_output",
     "onLanguageModelTool:kill_shell",
-    "onLanguageModelTool:shell_last_command"
+    "onLanguageModelTool:get_shell_command",
+    "onLanguageModelTool:get_last_shell_command"
   ],
   "contributes": {
     "commands": [
@@ -389,21 +390,37 @@
         }
       },
       {
-        "name": "shell_last_command",
-        "toolReferenceName": "shellLastCommand",
-        "displayName": "Last Shell Command",
+        "name": "get_shell_command",
+        "toolReferenceName": "getShellCommand",
+        "displayName": "Get Shell Command",
         "when": "config.custom-vscode.shellTools.enabled",
         "icon": "$(history)",
-        "modelDescription": "Get the last shell command executed via run_in_sync_shell or run_in_async_shell.",
+        "modelDescription": "Get the command that was run for a specific shell command id.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
+          "required": [
+            "id"
+          ],
           "properties": {
             "id": {
               "type": "string",
-              "description": "Optional command id from run_in_sync_shell or run_in_async_shell to scope the lookup."
+              "description": "Command id from run_in_sync_shell or run_in_async_shell."
             }
           }
+        }
+      },
+      {
+        "name": "get_last_shell_command",
+        "toolReferenceName": "getLastShellCommand",
+        "displayName": "Get Last Shell Command",
+        "when": "config.custom-vscode.shellTools.enabled",
+        "icon": "$(history)",
+        "modelDescription": "Get the most recent command executed via run_in_sync_shell or run_in_async_shell.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
         }
       }
     ]

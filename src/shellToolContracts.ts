@@ -5,11 +5,12 @@ import { z } from 'zod';
 
 export const SHELL_TOOL_NAMES = {
   awaitShell: 'await_shell',
+  getLastShellCommand: 'get_last_shell_command',
+  getShellCommand: 'get_shell_command',
   getShellOutput: 'get_shell_output',
   killShell: 'kill_shell',
   runInAsyncShell: 'run_in_async_shell',
   runInSyncShell: 'run_in_sync_shell',
-  shellLastCommand: 'shell_last_command',
 } as const;
 
 interface ContributedLanguageModelTool {
@@ -138,6 +139,14 @@ export const SHELL_TOOL_METADATA = {
     ...getToolMetadata(SHELL_TOOL_NAMES.awaitShell),
     invocationMessage: (id: string) => `Waiting for shell command ${id}`,
   },
+  getLastShellCommand: {
+    invocationMessage: 'Reading most recent shell command',
+    ...getToolMetadata(SHELL_TOOL_NAMES.getLastShellCommand),
+  },
+  getShellCommand: {
+    invocationMessage: (id: string) => `Reading shell command ${id}`,
+    ...getToolMetadata(SHELL_TOOL_NAMES.getShellCommand),
+  },
   getShellOutput: {
     ...getToolMetadata(SHELL_TOOL_NAMES.getShellOutput),
     invocationMessage: (id: string) => `Reading output for shell command ${id}`,
@@ -159,10 +168,6 @@ export const SHELL_TOOL_METADATA = {
     confirmationTitle: 'Run sync shell command?',
     ...getToolMetadata(SHELL_TOOL_NAMES.runInSyncShell),
     invocationMessage: (commandPreview: string) => `Running sync shell command: ${commandPreview}`,
-  },
-  shellLastCommand: {
-    invocationMessage: 'Reading last shell command',
-    ...getToolMetadata(SHELL_TOOL_NAMES.shellLastCommand),
   },
 } as const;
 
@@ -202,9 +207,11 @@ export interface KillShellInput {
   id: string;
 }
 
-export interface ShellLastCommandInput {
-  id?: string;
+export interface GetShellCommandInput {
+  id: string;
 }
+
+export type GetLastShellCommandInput = Record<string, never>;
 
 export const runInAsyncShellInputSchema = {
   command: z.string(),
@@ -272,8 +279,11 @@ export const killShellInputSchema = {
   id: z.string(),
 } satisfies z.ZodRawShape;
 
-export const shellLastCommandInputSchema = {
-  id: z.string().optional(),
+export const getShellCommandInputSchema = {
+  id: z.string(),
+} satisfies z.ZodRawShape;
+
+export const getLastShellCommandInputSchema = {
 } satisfies z.ZodRawShape;
 
 export function validateGetShellOutputInput(input: GetShellOutputInput): GetShellOutputInput {

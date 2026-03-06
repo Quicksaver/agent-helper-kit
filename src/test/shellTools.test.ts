@@ -257,8 +257,9 @@ describe('terminal tools', () => {
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_async_shell', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('await_shell', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('get_shell_output', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('get_shell_command', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('get_last_shell_command', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('kill_shell', expect.any(Object));
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith('shell_last_command', expect.any(Object));
     expect(vscode.Disposable.from).toHaveBeenCalledTimes(2);
     expect(registration).toBeDefined();
   });
@@ -273,13 +274,15 @@ describe('terminal tools', () => {
     const getOutputTool = getRegisteredTool('get_shell_output');
     const awaitTool = getRegisteredTool('await_shell');
     const killTool = getRegisteredTool('kill_shell');
-    const lastCommandTool = getRegisteredTool('shell_last_command');
+    const getShellCommandTool = getRegisteredTool('get_shell_command');
+    const getLastShellCommandTool = getRegisteredTool('get_last_shell_command');
 
     expect(runTool).toBeDefined();
     expect(getOutputTool).toBeDefined();
     expect(awaitTool).toBeDefined();
     expect(killTool).toBeDefined();
-    expect(lastCommandTool).toBeDefined();
+    expect(getShellCommandTool).toBeDefined();
+    expect(getLastShellCommandTool).toBeDefined();
 
     const runResult = await runTool.invoke({
       input: {
@@ -440,7 +443,7 @@ describe('terminal tools', () => {
     expect(secondCompletedReadPayload.shell).toBe('/bin/zsh');
     expect(secondCompletedReadPayload.terminationSignal).toBe('SIGTERM');
 
-    const lastResult = await lastCommandTool.invoke({
+    const lastResult = await getLastShellCommandTool.invoke({
       input: {},
       toolInvocationToken: undefined,
     }, {});
@@ -448,7 +451,7 @@ describe('terminal tools', () => {
     const lastPayload = getResultPayload(lastResult);
     expect(lastPayload.command).toBe('echo hello');
 
-    const perTerminalLastResult = await lastCommandTool.invoke({
+    const perTerminalLastResult = await getShellCommandTool.invoke({
       input: { id: terminalId },
       toolInvocationToken: undefined,
     }, {});

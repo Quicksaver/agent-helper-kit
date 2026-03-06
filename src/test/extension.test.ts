@@ -173,7 +173,11 @@ describe('Extension', () => {
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      SHELL_TOOL_NAMES.shellLastCommand,
+      SHELL_TOOL_NAMES.getShellCommand,
+      expect.any(Object),
+    );
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
+      SHELL_TOOL_NAMES.getLastShellCommand,
       expect.any(Object),
     );
   });
@@ -242,7 +246,11 @@ describe('Extension', () => {
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      SHELL_TOOL_NAMES.shellLastCommand,
+      SHELL_TOOL_NAMES.getShellCommand,
+      expect.any(Object),
+    );
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
+      SHELL_TOOL_NAMES.getLastShellCommand,
       expect.any(Object),
     );
 
