@@ -501,7 +501,7 @@ export class ShellRuntime {
   private getOutputLimitBytes(): number {
     const outputLimit = this.options.outputLimitBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES;
 
-    if (!Number.isFinite(outputLimit) || outputLimit <= 0) {
+    if (!Number.isFinite(outputLimit) || outputLimit < 0) {
       return 0;
     }
 

@@ -829,6 +829,7 @@ function getWebviewHtml(
       const resizer = document.getElementById('resizer');
       const filterInput = document.getElementById('command-filter');
       const outputBlock = document.getElementById('output-block');
+      const outputEndThreshold = 4;
       const previousState = vscodeApi.getState() || {};
       let currentState = { ...previousState };
 
@@ -842,7 +843,7 @@ function getWebviewHtml(
 
       const getSidebarWidth = () => Number.parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width'), 10);
 
-      const isNearOutputEnd = element => (element.scrollTop + element.clientHeight) >= (element.scrollHeight - 4);
+      const isNearOutputEnd = element => (element.scrollTop + element.clientHeight) >= (element.scrollHeight - outputEndThreshold);
 
       const syncOutputScrollState = () => {
         if (!(outputBlock instanceof HTMLElement)) {
