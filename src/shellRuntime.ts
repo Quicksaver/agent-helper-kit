@@ -45,6 +45,7 @@ interface BackgroundProcessState {
   lastReadCursor: number;
   memoryToFileTimer: NodeJS.Timeout | undefined;
   output: string;
+  outputBytes: number;
   outputInFile: boolean;
   readsSinceCompletion: number;
   resolveCompletion: () => void;
@@ -165,6 +166,7 @@ export class ShellRuntime {
     const id = this.createUniqueShellId();
     const startedAt = new Date().toISOString();
     const completedAt = new Date().toISOString();
+    const outputBytes = Buffer.byteLength(result.output, 'utf8');
 
     const state: BackgroundProcessState = {
       command,
@@ -176,6 +178,7 @@ export class ShellRuntime {
       lastReadCursor: 0,
       memoryToFileTimer: undefined,
       output: result.output,
+      outputBytes,
       outputInFile: false,
       readsSinceCompletion: READS_SINCE_COMPLETION_FOR_SYNC_RECORD,
       resolveCompletion: () => undefined,
@@ -184,7 +187,7 @@ export class ShellRuntime {
       startedAt,
     };
 
-    if (this.shouldSpillToFile(state.output)) {
+    if (this.shouldSpillToFile(outputBytes)) {
       this.spillOutputToFile(id, state, state.output);
     }
 
@@ -327,6 +330,7 @@ export class ShellRuntime {
       lastReadCursor: 0,
       memoryToFileTimer: undefined,
       output: '',
+      outputBytes: 0,
       outputInFile: false,
       readsSinceCompletion: 0,
       resolveCompletion: () => undefined,
@@ -386,13 +390,15 @@ export class ShellRuntime {
     }
 
     const nextOutput = `${state.output}${chunk}`;
+    const nextOutputBytes = state.outputBytes + Buffer.byteLength(chunk, 'utf8');
 
-    if (this.shouldSpillToFile(nextOutput)) {
+    if (this.shouldSpillToFile(nextOutputBytes)) {
       this.spillOutputToFile(id, state, nextOutput);
       return;
     }
 
     state.output = nextOutput;
+    state.outputBytes = nextOutputBytes;
   }
 
   private buildShellEnv(): NodeJS.ProcessEnv {
@@ -501,8 +507,12 @@ export class ShellRuntime {
   private getOutputLimitBytes(): number {
     const outputLimit = this.options.outputLimitBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES;
 
-    if (!Number.isFinite(outputLimit) || outputLimit < 0) {
+    if (outputLimit === 0) {
       return 0;
+    }
+
+    if (!Number.isFinite(outputLimit) || outputLimit < 0) {
+      return DEFAULT_OUTPUT_LIMIT_BYTES;
     }
 
     return Math.floor(outputLimit);
@@ -535,6 +545,7 @@ export class ShellRuntime {
         lastReadCursor: 0,
         memoryToFileTimer: undefined,
         output: '',
+        outputBytes: 0,
         outputInFile: true,
         readsSinceCompletion: READS_SINCE_COMPLETION_FOR_SYNC_RECORD,
         resolveCompletion: () => undefined,
@@ -562,6 +573,7 @@ export class ShellRuntime {
 
   private purgeBackgroundOutput(id: string, state: BackgroundProcessState): void {
     state.output = '';
+    state.outputBytes = 0;
     state.outputInFile = false;
     removeShellOutputFile(id);
 
@@ -605,14 +617,14 @@ export class ShellRuntime {
     }, delay);
   }
 
-  private shouldSpillToFile(output: string): boolean {
+  private shouldSpillToFile(outputBytes: number): boolean {
     const outputLimitBytes = this.getOutputLimitBytes();
 
     if (outputLimitBytes === 0) {
       return false;
     }
 
-    return Buffer.byteLength(output, 'utf8') >= outputLimitBytes;
+    return outputBytes >= outputLimitBytes;
   }
 
   private spillOutputToFile(id: string, state: BackgroundProcessState, output: string): void {
@@ -623,6 +635,7 @@ export class ShellRuntime {
 
     overwriteShellOutput(id, output);
     state.output = '';
+    state.outputBytes = 0;
     state.outputInFile = true;
   }
 

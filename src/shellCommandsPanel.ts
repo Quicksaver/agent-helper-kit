@@ -841,7 +841,11 @@ function getWebviewHtml(
         vscodeApi.setState(currentState);
       };
 
-      const getSidebarWidth = () => Number.parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width'), 10);
+      const getSidebarWidth = () => {
+        const width = Number.parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width'), 10);
+
+        return Number.isFinite(width) ? width : 340;
+      };
 
       const isNearOutputEnd = element => (element.scrollTop + element.clientHeight) >= (element.scrollHeight - outputEndThreshold);
 
@@ -970,7 +974,7 @@ function getWebviewHtml(
 
         isResizing = false;
 
-        const width = Number.parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width'), 10);
+        const width = getSidebarWidth();
 
         if (Number.isFinite(width)) {
           persistState({

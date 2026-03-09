@@ -1013,4 +1013,102 @@ describe('shell tools', () => {
     const outputPayload = getResultPayload(outputResult);
     expect(outputPayload.output).toBe('abc');
   });
+
+  it('falls back to the default size spill threshold when configuration is invalid', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    getConfiguration.mockReturnValue(createConfiguration((key: string): number | undefined => {
+      if (key === 'shellOutput.inMemoryOutputLimitKiB') {
+        return Number.NaN;
+      }
+
+      if (key === 'shellOutput.memoryToFileSpillMinutes') {
+        return 60;
+      }
+
+      return undefined;
+    }));
+
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_async_shell');
+    const getOutputTool = getRegisteredTool('get_shell_output');
+
+    const runResult = await runTool.invoke({
+      input: {
+        command: 'echo fallback-threshold',
+        explanation: 'invalid limit fallback',
+        goal: 'keep the default spill threshold active',
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const runPayload = getResultPayload(runResult);
+    const shellId = runPayload.id as string;
+
+    fakeProcess.stdout.emit('data', 'abc');
+    fakeProcess.emit('close', 0, null);
+
+    const outputFilePath = getShellOutputFilePath(`${SHELL_COMMAND_ID_PREFIX}${shellId}`);
+    expect(fs.existsSync(outputFilePath)).toBe(false);
+
+    const outputResult = await getOutputTool.invoke({
+      input: {
+        full_output: true,
+        id: shellId,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const outputPayload = getResultPayload(outputResult);
+    expect(outputPayload.output).toBe('abc');
+  });
+
+  it('preserves repeated multi-byte chunks across the size spill boundary', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    getConfiguration.mockReturnValue(createConfiguration((key: string): number | undefined => {
+      if (key === 'shellOutput.inMemoryOutputLimitKiB') {
+        return 4 / 1024;
+      }
+
+      return undefined;
+    }));
+
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_async_shell');
+    const getOutputTool = getRegisteredTool('get_shell_output');
+
+    const runResult = await runTool.invoke({
+      input: {
+        command: 'echo multibyte-spill',
+        explanation: 'spill by utf8 bytes',
+        goal: 'keep all multibyte output after spilling',
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const runPayload = getResultPayload(runResult);
+    const shellId = runPayload.id as string;
+
+    fakeProcess.stdout.emit('data', 'é');
+    fakeProcess.stdout.emit('data', 'é');
+    fakeProcess.stdout.emit('data', 'é');
+    fakeProcess.emit('close', 0, null);
+
+    const outputFilePath = getShellOutputFilePath(`${SHELL_COMMAND_ID_PREFIX}${shellId}`);
+    expect(fs.existsSync(outputFilePath)).toBe(true);
+
+    const outputResult = await getOutputTool.invoke({
+      input: {
+        full_output: true,
+        id: shellId,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const outputPayload = getResultPayload(outputResult);
+    expect(outputPayload.output).toBe('ééé');
+  });
 });
