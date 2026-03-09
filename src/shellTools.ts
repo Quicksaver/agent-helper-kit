@@ -25,6 +25,7 @@ import {
   validateRunInSyncShellInput,
 } from '@/shellToolContracts';
 
+const DEFAULT_MEMORY_OUTPUT_LIMIT_KIB = 512;
 const DEFAULT_MEMORY_TO_FILE_SPILL_MINUTES = 2;
 const DEFAULT_STARTUP_PURGE_MAX_AGE_HOURS = 6;
 
@@ -37,10 +38,15 @@ function getNumericSettingOrDefault(value: number | undefined, fallback: number)
 }
 
 function getShellOutputSettings(): {
+  memoryOutputLimitBytes: number;
   memoryToFileDelayMs: number;
   startupPurgeMaxAgeMs: number;
 } {
   const configuration = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
+  const memoryOutputLimitKiB = getNumericSettingOrDefault(
+    configuration.get<number>('shellOutput.inMemoryOutputLimitKiB'),
+    DEFAULT_MEMORY_OUTPUT_LIMIT_KIB,
+  );
   const memoryToFileSpillMinutes = getNumericSettingOrDefault(
     configuration.get<number>('shellOutput.memoryToFileSpillMinutes'),
     DEFAULT_MEMORY_TO_FILE_SPILL_MINUTES,
@@ -51,6 +57,9 @@ function getShellOutputSettings(): {
   );
 
   return {
+    memoryOutputLimitBytes: memoryOutputLimitKiB === 0
+      ? 0
+      : Math.floor(memoryOutputLimitKiB * 1024),
     memoryToFileDelayMs: memoryToFileSpillMinutes * 60 * 1000,
     startupPurgeMaxAgeMs: startupPurgeMaxAgeHours * 60 * 60 * 1000,
   };
@@ -137,15 +146,21 @@ function addOptionalCompletionMetadata(
 
 let shellRuntime: ShellRuntime | undefined;
 
+export function resetShellRuntimeForTest(): void {
+  shellRuntime = undefined;
+}
+
 function getShellRuntime(): ShellRuntime {
   if (!shellRuntime) {
     const {
+      memoryOutputLimitBytes,
       memoryToFileDelayMs,
       startupPurgeMaxAgeMs,
     } = getShellOutputSettings();
 
     shellRuntime = new ShellRuntime({
       memoryToFileDelayMs,
+      outputLimitBytes: memoryOutputLimitBytes,
       startupPurgeMaxAgeMs,
     });
   }

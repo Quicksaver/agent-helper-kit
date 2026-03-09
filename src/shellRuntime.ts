@@ -19,7 +19,7 @@ import {
   writeShellCommandMetadata,
 } from '@/shellOutputStore';
 
-const DEFAULT_OUTPUT_LIMIT = 60 * 1024;
+const DEFAULT_OUTPUT_LIMIT_BYTES = 512 * 1024;
 const DEFAULT_MEMORY_TO_FILE_DELAY_MS = 2 * 60 * 1000;
 const READS_SINCE_COMPLETION_FOR_SYNC_RECORD = 1;
 export const SHELL_COMMAND_ID_PREFIX = 'shell-';
@@ -95,7 +95,7 @@ export interface ReadBackgroundOutputInput extends ShellOutputFilterInput {
 
 interface ShellRuntimeOptions {
   memoryToFileDelayMs?: number;
-  outputLimit?: number;
+  outputLimitBytes?: number;
   shellEnv?: NodeJS.ProcessEnv;
   startupPurgeMaxAgeMs?: number;
 }
@@ -183,6 +183,10 @@ export class ShellRuntime {
       signal: result.terminationSignal,
       startedAt,
     };
+
+    if (this.shouldSpillToFile(state.output)) {
+      this.spillOutputToFile(id, state, state.output);
+    }
 
     this.backgroundProcesses.set(id, state);
     this.persistCommandMetadata(id, state);
@@ -381,18 +385,14 @@ export class ShellRuntime {
       return;
     }
 
-    state.output = this.appendOutput(state.output, chunk);
-  }
+    const nextOutput = `${state.output}${chunk}`;
 
-  private appendOutput(current: string, chunk: string): string {
-    const next = `${current}${chunk}`;
-    const outputLimit = this.options.outputLimit ?? DEFAULT_OUTPUT_LIMIT;
-
-    if (next.length <= outputLimit) {
-      return next;
+    if (this.shouldSpillToFile(nextOutput)) {
+      this.spillOutputToFile(id, state, nextOutput);
+      return;
     }
 
-    return next.slice(-outputLimit);
+    state.output = nextOutput;
   }
 
   private buildShellEnv(): NodeJS.ProcessEnv {
@@ -498,6 +498,16 @@ export class ShellRuntime {
     throw new Error(`Unknown shell command id: ${id}`);
   }
 
+  private getOutputLimitBytes(): number {
+    const outputLimit = this.options.outputLimitBytes ?? DEFAULT_OUTPUT_LIMIT_BYTES;
+
+    if (!Number.isFinite(outputLimit) || outputLimit <= 0) {
+      return 0;
+    }
+
+    return Math.floor(outputLimit);
+  }
+
   private getShellCommandName(shell: string): string {
     return path.basename(shell).toLowerCase().replace(/\.(bat|cmd|exe)$/u, '');
   }
@@ -590,13 +600,30 @@ export class ShellRuntime {
     const delay = this.options.memoryToFileDelayMs ?? DEFAULT_MEMORY_TO_FILE_DELAY_MS;
 
     state.memoryToFileTimer = setTimeout(() => {
-      state.memoryToFileTimer = undefined;
-
-      overwriteShellOutput(id, state.output);
-      state.output = '';
-      state.outputInFile = true;
+      this.spillOutputToFile(id, state, state.output);
       this.emitCommandChange();
     }, delay);
+  }
+
+  private shouldSpillToFile(output: string): boolean {
+    const outputLimitBytes = this.getOutputLimitBytes();
+
+    if (outputLimitBytes === 0) {
+      return false;
+    }
+
+    return Buffer.byteLength(output, 'utf8') >= outputLimitBytes;
+  }
+
+  private spillOutputToFile(id: string, state: BackgroundProcessState, output: string): void {
+    if (state.memoryToFileTimer) {
+      clearTimeout(state.memoryToFileTimer);
+      state.memoryToFileTimer = undefined;
+    }
+
+    overwriteShellOutput(id, output);
+    state.output = '';
+    state.outputInFile = true;
   }
 
   private toCommandListItem(id: string, state: BackgroundProcessState): ShellCommandListItem {

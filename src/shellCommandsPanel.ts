@@ -539,7 +539,12 @@ function buildDetailsMarkup(details: ShellCommandDetails | undefined): string {
         >⧉</button>
       </div>
     </div>
-    <div id="output-block" class="output-block">${convertAnsiToHtml(details.output)}</div>
+    <div
+      id="output-block"
+      class="output-block"
+      data-command-id="${escapeHtml(details.id)}"
+      data-command-running="${details.isRunning ? 'true' : 'false'}"
+    >${convertAnsiToHtml(details.output)}</div>
   `;
 }
 
@@ -825,6 +830,56 @@ function getWebviewHtml(
       const filterInput = document.getElementById('command-filter');
       const outputBlock = document.getElementById('output-block');
       const previousState = vscodeApi.getState() || {};
+      let currentState = { ...previousState };
+
+      const persistState = updates => {
+        currentState = {
+          ...currentState,
+          ...updates,
+        };
+        vscodeApi.setState(currentState);
+      };
+
+      const getSidebarWidth = () => Number.parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width'), 10);
+
+      const isNearOutputEnd = element => (element.scrollTop + element.clientHeight) >= (element.scrollHeight - 4);
+
+      const syncOutputScrollState = () => {
+        if (!(outputBlock instanceof HTMLElement)) {
+          return;
+        }
+
+        persistState({
+          outputScrollState: {
+            atBottom: isNearOutputEnd(outputBlock),
+            commandId: outputBlock.dataset.commandId ?? '',
+            scrollTop: outputBlock.scrollTop,
+          },
+        });
+      };
+
+      const restoreOutputScroll = () => {
+        if (!(outputBlock instanceof HTMLElement)) {
+          return;
+        }
+
+        const savedOutputScrollState = currentState.outputScrollState;
+        const commandId = outputBlock.dataset.commandId ?? '';
+        const shouldScrollToEnd = !savedOutputScrollState
+          || typeof savedOutputScrollState !== 'object'
+          || savedOutputScrollState === null
+          || savedOutputScrollState.commandId !== commandId
+          || savedOutputScrollState.atBottom === true;
+
+        if (shouldScrollToEnd) {
+          outputBlock.scrollTop = outputBlock.scrollHeight;
+        }
+        else if (typeof savedOutputScrollState.scrollTop === 'number') {
+          outputBlock.scrollTop = savedOutputScrollState.scrollTop;
+        }
+
+        syncOutputScrollState();
+      };
 
       if (typeof previousState.sidebarWidth === 'number') {
         root.style.setProperty('--sidebar-width', String(previousState.sidebarWidth) + 'px');
@@ -864,10 +919,9 @@ function getWebviewHtml(
           const filterText = filterInput.value;
 
           applyFilter(filterText);
-          vscodeApi.setState({
-            ...previousState,
+          persistState({
             filterText,
-            sidebarWidth: Number.parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width'), 10),
+            sidebarWidth: getSidebarWidth(),
           });
         });
 
@@ -884,11 +938,20 @@ function getWebviewHtml(
 
           filterInput.value = '';
           applyFilter('');
-          vscodeApi.setState({
-            ...previousState,
+          persistState({
             filterText: '',
-            sidebarWidth: Number.parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width'), 10),
+            sidebarWidth: getSidebarWidth(),
           });
+        });
+      }
+
+      if (outputBlock instanceof HTMLElement) {
+        outputBlock.addEventListener('scroll', () => {
+          syncOutputScrollState();
+        });
+
+        requestAnimationFrame(() => {
+          restoreOutputScroll();
         });
       }
 
@@ -909,8 +972,7 @@ function getWebviewHtml(
         const width = Number.parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width'), 10);
 
         if (Number.isFinite(width)) {
-          vscodeApi.setState({
-            ...previousState,
+          persistState({
             filterText: filterInput instanceof HTMLInputElement ? filterInput.value : '',
             sidebarWidth: width,
           });

@@ -11,9 +11,18 @@ import {
   getShellOutputFilePath,
 } from '@/shellOutputStore';
 import { SHELL_COMMAND_ID_PREFIX } from '@/shellRuntime';
-import { registerShellTools } from '@/shellTools';
+import {
+  registerShellTools,
+  resetShellRuntimeForTest,
+} from '@/shellTools';
 
 const SHELL_ID_REGEX = /^[a-f0-9]{8}$/;
+
+function createConfiguration(getter: (key: string) => unknown = () => undefined): { get: ReturnType<typeof vi.fn> } {
+  return {
+    get: vi.fn((key: string) => getter(key)),
+  };
+}
 
 function expectedShellArgs(shell: string): string[] {
   const normalizedShellName = shell
@@ -59,6 +68,7 @@ function createFakeProcess(): FakeProcess {
 }
 
 const spawn = vi.hoisted(() => vi.fn());
+const getConfiguration = vi.hoisted(() => vi.fn());
 
 const vscode = vi.hoisted(() => {
   class TestEventEmitter<T> {
@@ -138,9 +148,7 @@ const vscode = vi.hoisted(() => {
       registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
     },
     workspace: {
-      getConfiguration: vi.fn(() => ({
-        get: vi.fn(() => undefined),
-      })),
+      getConfiguration,
       workspaceFolders: [
         {
           uri: {
@@ -244,6 +252,8 @@ function getResultPayload(result: { content: { value: string }[] }): Record<stri
 describe('shell tools', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetShellRuntimeForTest();
+    getConfiguration.mockReturnValue(createConfiguration());
   });
 
   afterEach(() => {
@@ -902,5 +912,105 @@ describe('shell tools', () => {
     finally {
       vi.useRealTimers();
     }
+  });
+
+  it('spills to file immediately when configured in-memory output limit is reached', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    getConfiguration.mockReturnValue(createConfiguration((key: string): number | undefined => {
+      if (key === 'shellOutput.inMemoryOutputLimitKiB') {
+        return 1 / 1024;
+      }
+
+      return undefined;
+    }));
+
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_async_shell');
+    const getOutputTool = getRegisteredTool('get_shell_output');
+
+    const runResult = await runTool.invoke({
+      input: {
+        command: 'echo spill-now',
+        explanation: 'spill by size threshold',
+        goal: 'preserve full output after file spill',
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const runPayload = getResultPayload(runResult);
+    const shellId = runPayload.id as string;
+
+    fakeProcess.stdout.emit('data', 'a');
+    fakeProcess.stdout.emit('data', 'b');
+    fakeProcess.stdout.emit('data', 'c');
+
+    const outputFilePath = getShellOutputFilePath(`${SHELL_COMMAND_ID_PREFIX}${shellId}`);
+    expect(fs.existsSync(outputFilePath)).toBe(true);
+
+    fakeProcess.stdout.emit('data', 'd');
+    fakeProcess.emit('close', 0, null);
+
+    const outputResult = await getOutputTool.invoke({
+      input: {
+        full_output: true,
+        id: shellId,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const outputPayload = getResultPayload(outputResult);
+    expect(outputPayload.output).toBe('abcd');
+  });
+
+  it('allows disabling the size-based spill threshold with 0', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    getConfiguration.mockReturnValue(createConfiguration((key: string): number | undefined => {
+      if (key === 'shellOutput.inMemoryOutputLimitKiB') {
+        return 0;
+      }
+
+      if (key === 'shellOutput.memoryToFileSpillMinutes') {
+        return 60;
+      }
+
+      return undefined;
+    }));
+
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_async_shell');
+    const getOutputTool = getRegisteredTool('get_shell_output');
+
+    const runResult = await runTool.invoke({
+      input: {
+        command: 'echo uncapped',
+        explanation: 'disable size spill threshold',
+        goal: 'keep output in memory until time-based spill',
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const runPayload = getResultPayload(runResult);
+    const shellId = runPayload.id as string;
+
+    fakeProcess.stdout.emit('data', 'abc');
+    fakeProcess.emit('close', 0, null);
+
+    const outputFilePath = getShellOutputFilePath(`${SHELL_COMMAND_ID_PREFIX}${shellId}`);
+    expect(fs.existsSync(outputFilePath)).toBe(false);
+
+    const outputResult = await getOutputTool.invoke({
+      input: {
+        full_output: true,
+        id: shellId,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const outputPayload = getResultPayload(outputResult);
+    expect(outputPayload.output).toBe('abc');
   });
 });

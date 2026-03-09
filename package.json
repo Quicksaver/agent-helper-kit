@@ -148,6 +148,12 @@
           "description": "Enable shell command language model tools.",
           "type": "boolean"
         },
+        "agent-helper-kit.shellOutput.inMemoryOutputLimitKiB": {
+          "default": 512,
+          "description": "KiB of shell output to retain in memory before immediately spilling to a temp file. Set to 0 to disable the size-based spill threshold.",
+          "minimum": 0,
+          "type": "number"
+        },
         "agent-helper-kit.shellOutput.memoryToFileSpillMinutes": {
           "default": 2,
           "description": "Minutes to keep shell command output in memory before spilling it to a temp file.",
