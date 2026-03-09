@@ -160,7 +160,7 @@ const afterUnreleased = changelog.slice(unreleasedEnd).replace(/^\n+/, "");
 
 const normalizedBody = unreleasedBody.replace(/^\n+|\n+$/g, "");
 const releaseBody = normalizedBody.length === 0 ? "Version bump only." : normalizedBody;
-const releaseHeading = `## [${nextVersion}] ${releaseDate}`;
+const releaseHeading = `## [${nextVersion}] - ${releaseDate}`;
 
 let updated = `${beforeUnreleased}${unreleasedHeading}\n\n${releaseHeading}\n\n${releaseBody}`;
 if (afterUnreleased.length > 0) {
