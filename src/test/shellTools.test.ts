@@ -518,6 +518,67 @@ describe('shell tools', () => {
     expect(outputPayload.output).toContain('before-int');
   });
 
+  it('treats process exit as completion even if close never arrives', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_async_shell');
+    const awaitTool = getRegisteredTool('await_shell');
+    const getOutputTool = getRegisteredTool('get_shell_output');
+    const killTool = getRegisteredTool('kill_shell');
+
+    const runResult = await runTool.invoke({
+      input: {
+        command: 'echo controlled-failure',
+        explanation: 'exit without close test',
+        goal: 'verify exit completes command tracking',
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const runPayload = getResultPayload(runResult);
+    const shellId = runPayload.id as string;
+
+    fakeProcess.stdout.emit('data', 'final visible line\n');
+    fakeProcess.emit('exit', 127, null);
+
+    const awaitResult = await awaitTool.invoke({
+      input: {
+        id: shellId,
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const awaitPayload = getResultPayload(awaitResult);
+    expect(awaitPayload.exitCode).toBe(127);
+    expect(awaitPayload.timedOut).toBeUndefined();
+
+    const outputResult = await getOutputTool.invoke({
+      input: {
+        full_output: true,
+        id: shellId,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const outputPayload = getResultPayload(outputResult);
+    expect(outputPayload.exitCode).toBe(127);
+    expect(outputPayload).not.toHaveProperty('isRunning');
+    expect(outputPayload.output).toBe('final visible line\n');
+
+    const killResult = await killTool.invoke({
+      input: { id: shellId },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const killPayload = getResultPayload(killResult);
+    expect(killPayload.killed).toBe(false);
+    expect(fakeProcess.kill).not.toHaveBeenCalled();
+  });
+
   it('returns only id by default for foreground runs and exposes output via get_shell_output', async () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);

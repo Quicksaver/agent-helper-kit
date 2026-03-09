@@ -240,10 +240,15 @@ export class ShellRuntime {
     } = this.getBackgroundState(id);
 
     if (!state.completed && state.childProc) {
+      const killed = state.childProc.kill('SIGTERM');
+
+      if (!killed) {
+        return false;
+      }
+
       state.killedByUser = true;
       this.persistCommandMetadata(resolvedId, state);
       this.emitCommandChange();
-      state.childProc.kill('SIGTERM');
       return true;
     }
 
@@ -358,26 +363,17 @@ export class ShellRuntime {
       this.appendBackgroundOutput(id, state, chunk);
     });
 
-    childProc.on('close', (code: null | number, signal: NodeJS.Signals | null) => {
-      state.completed = true;
-      state.completedAt = new Date().toISOString();
-      state.exitCode = code;
-      state.readsSinceCompletion = 0;
-      state.signal = signal;
+    childProc.on('exit', (code: null | number, signal: NodeJS.Signals | null) => {
+      this.completeBackgroundCommand(id, state, code, signal);
+    });
 
-      state.resolveCompletion();
-      this.persistCommandMetadata(id, state);
-      this.emitCommandChange();
+    childProc.on('close', (code: null | number, signal: NodeJS.Signals | null) => {
+      this.completeBackgroundCommand(id, state, code, signal);
     });
 
     childProc.on('error', (error: Error) => {
-      state.completed = true;
-      state.completedAt = new Date().toISOString();
       this.appendBackgroundOutput(id, state, `\n${String(error)}\n`);
-      state.readsSinceCompletion = 0;
-      state.resolveCompletion();
-      this.persistCommandMetadata(id, state);
-      this.emitCommandChange();
+      this.completeBackgroundCommand(id, state, null, null);
     });
 
     return id;
@@ -409,6 +405,28 @@ export class ShellRuntime {
       TERM: source.TERM ?? 'xterm-256color',
       ...source,
     };
+  }
+
+  private completeBackgroundCommand(
+    id: string,
+    state: BackgroundProcessState,
+    exitCode: null | number,
+    signal: NodeJS.Signals | null,
+  ): void {
+    if (state.completed) {
+      return;
+    }
+
+    state.childProc = undefined;
+    state.completed = true;
+    state.completedAt = new Date().toISOString();
+    state.exitCode = exitCode;
+    state.readsSinceCompletion = 0;
+    state.signal = signal;
+
+    state.resolveCompletion();
+    this.persistCommandMetadata(id, state);
+    this.emitCommandChange();
   }
 
   private createPosixShellInvocation(command: string, shell: string): ShellInvocation {
