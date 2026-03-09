@@ -444,6 +444,7 @@
   "packageManager": "yarn@4.12.0",
   "scripts": {
     "build": "node esbuild.mjs",
+    "bump": "./scripts/bump.sh",
     "git:merge": "./scripts/git/merge.sh",
     "git:stage": "./scripts/git/stage-all.sh",
     "lint:check": "yarn lint:tsc && yarn lint:eslint --max-warnings 0 && yarn lint:prettier",
