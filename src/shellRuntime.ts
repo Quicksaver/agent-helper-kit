@@ -21,10 +21,16 @@ import {
 
 const DEFAULT_OUTPUT_LIMIT_BYTES = 512 * 1024;
 const DEFAULT_MEMORY_TO_FILE_DELAY_MS = 2 * 60 * 1000;
+const EXIT_OUTPUT_DRAIN_GRACE_MS = 25;
 const READS_SINCE_COMPLETION_FOR_SYNC_RECORD = 1;
 export const SHELL_COMMAND_ID_PREFIX = 'shell-';
 const SHELL_ID_HEX_LENGTH = 8;
 const SHELL_ID_GENERATION_MAX_ATTEMPTS = 8;
+
+interface CompletionInfo {
+  exitCode: null | number;
+  signal: NodeJS.Signals | null;
+}
 
 export function toPublicCommandId(id: string): string {
   if (id.startsWith(SHELL_COMMAND_ID_PREFIX)) {
@@ -40,6 +46,7 @@ interface BackgroundProcessState {
   completed: boolean;
   completedAt: null | string;
   completion: Promise<void>;
+  completionTimer: NodeJS.Timeout | undefined;
   exitCode: null | number;
   killedByUser: boolean;
   lastReadCursor: number;
@@ -47,6 +54,7 @@ interface BackgroundProcessState {
   output: string;
   outputBytes: number;
   outputInFile: boolean;
+  pendingExit: CompletionInfo | undefined;
   readsSinceCompletion: number;
   resolveCompletion: () => void;
   shell: string;
@@ -173,6 +181,7 @@ export class ShellRuntime {
       completed: true,
       completedAt,
       completion: Promise.resolve(),
+      completionTimer: undefined,
       exitCode: result.exitCode,
       killedByUser: false,
       lastReadCursor: 0,
@@ -180,6 +189,7 @@ export class ShellRuntime {
       output: result.output,
       outputBytes,
       outputInFile: false,
+      pendingExit: undefined,
       readsSinceCompletion: READS_SINCE_COMPLETION_FOR_SYNC_RECORD,
       resolveCompletion: () => undefined,
       shell: this.resolveShellExecutable(shell ?? result.shell),
@@ -243,6 +253,13 @@ export class ShellRuntime {
       const killed = state.childProc.kill('SIGTERM');
 
       if (!killed) {
+        const childExitCode = state.childProc.exitCode;
+        const childSignal = state.childProc.signalCode;
+
+        if (childExitCode !== null || childSignal !== null) {
+          this.recordExit(id, state, childExitCode, childSignal);
+        }
+
         return false;
       }
 
@@ -330,6 +347,7 @@ export class ShellRuntime {
       completed: false,
       completedAt: null,
       completion: Promise.resolve(),
+      completionTimer: undefined,
       exitCode: null,
       killedByUser: false,
       lastReadCursor: 0,
@@ -337,6 +355,7 @@ export class ShellRuntime {
       output: '',
       outputBytes: 0,
       outputInFile: false,
+      pendingExit: undefined,
       readsSinceCompletion: 0,
       resolveCompletion: () => undefined,
       shell: shellInvocation.shell,
@@ -364,11 +383,11 @@ export class ShellRuntime {
     });
 
     childProc.on('exit', (code: null | number, signal: NodeJS.Signals | null) => {
-      this.completeBackgroundCommand(id, state, code, signal);
+      this.recordExit(id, state, code, signal);
     });
 
     childProc.on('close', (code: null | number, signal: NodeJS.Signals | null) => {
-      this.completeBackgroundCommand(id, state, code, signal);
+      this.completeFromClose(id, state, code, signal);
     });
 
     childProc.on('error', (error: Error) => {
@@ -380,6 +399,8 @@ export class ShellRuntime {
   }
 
   private appendBackgroundOutput(id: string, state: BackgroundProcessState, chunk: string): void {
+    this.bumpPendingCompletion(id, state);
+
     if (state.outputInFile) {
       appendShellOutput(id, chunk);
       return;
@@ -407,6 +428,14 @@ export class ShellRuntime {
     };
   }
 
+  private bumpPendingCompletion(id: string, state: BackgroundProcessState): void {
+    if (state.completed || !state.pendingExit) {
+      return;
+    }
+
+    this.schedulePendingExitCompletion(id, state);
+  }
+
   private completeBackgroundCommand(
     id: string,
     state: BackgroundProcessState,
@@ -417,16 +446,45 @@ export class ShellRuntime {
       return;
     }
 
+    if (state.completionTimer) {
+      clearTimeout(state.completionTimer);
+      state.completionTimer = undefined;
+    }
+
     state.childProc = undefined;
     state.completed = true;
     state.completedAt = new Date().toISOString();
     state.exitCode = exitCode;
+    state.pendingExit = undefined;
     state.readsSinceCompletion = 0;
     state.signal = signal;
 
     state.resolveCompletion();
     this.persistCommandMetadata(id, state);
     this.emitCommandChange();
+  }
+
+  private completeFromClose(
+    id: string,
+    state: BackgroundProcessState,
+    exitCode: null | number,
+    signal: NodeJS.Signals | null,
+  ): void {
+    if (state.completed) {
+      return;
+    }
+
+    const completion = state.pendingExit ?? {
+      exitCode,
+      signal,
+    };
+
+    if (state.completionTimer) {
+      clearTimeout(state.completionTimer);
+      state.completionTimer = undefined;
+    }
+
+    this.completeBackgroundCommand(id, state, completion.exitCode, completion.signal);
   }
 
   private createPosixShellInvocation(command: string, shell: string): ShellInvocation {
@@ -558,6 +616,7 @@ export class ShellRuntime {
         completed: true,
         completedAt: metadata?.completedAt ?? new Date().toISOString(),
         completion: Promise.resolve(),
+        completionTimer: undefined,
         exitCode: metadata?.exitCode ?? null,
         killedByUser: metadata?.killedByUser ?? false,
         lastReadCursor: 0,
@@ -565,6 +624,7 @@ export class ShellRuntime {
         output: '',
         outputBytes: 0,
         outputInFile: true,
+        pendingExit: undefined,
         readsSinceCompletion: READS_SINCE_COMPLETION_FOR_SYNC_RECORD,
         resolveCompletion: () => undefined,
         shell: hydratedShell,
@@ -614,6 +674,23 @@ export class ShellRuntime {
     }
   }
 
+  private recordExit(
+    id: string,
+    state: BackgroundProcessState,
+    exitCode: null | number,
+    signal: NodeJS.Signals | null,
+  ): void {
+    if (state.completed) {
+      return;
+    }
+
+    state.pendingExit = {
+      exitCode,
+      signal,
+    };
+    this.schedulePendingExitCompletion(id, state);
+  }
+
   private resolveShellExecutable(preferredShell?: string): string {
     if (typeof preferredShell === 'string' && preferredShell.trim().length > 0) {
       return preferredShell.trim();
@@ -633,6 +710,26 @@ export class ShellRuntime {
       this.spillOutputToFile(id, state, state.output);
       this.emitCommandChange();
     }, delay);
+  }
+
+  private schedulePendingExitCompletion(id: string, state: BackgroundProcessState): void {
+    if (state.completed || !state.pendingExit) {
+      return;
+    }
+
+    if (state.completionTimer) {
+      clearTimeout(state.completionTimer);
+    }
+
+    state.completionTimer = setTimeout(() => {
+      state.completionTimer = undefined;
+
+      if (state.completed || !state.pendingExit) {
+        return;
+      }
+
+      this.completeBackgroundCommand(id, state, state.pendingExit.exitCode, state.pendingExit.signal);
+    }, EXIT_OUTPUT_DRAIN_GRACE_MS);
   }
 
   private shouldSpillToFile(outputBytes: number): boolean {

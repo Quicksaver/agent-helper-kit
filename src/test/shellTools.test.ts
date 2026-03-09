@@ -45,7 +45,9 @@ function expectedShellArgs(shell: string): string[] {
 type FakeReadable = EventEmitter;
 
 interface FakeProcess extends EventEmitter {
+  exitCode: null | number;
   kill: ReturnType<typeof vi.fn>;
+  signalCode: NodeJS.Signals | null;
   stderr: FakeReadable;
   stdout: FakeReadable;
 }
@@ -54,17 +56,21 @@ function createFakeProcess(): FakeProcess {
   const processEmitter = new EventEmitter();
   const stdout = new EventEmitter();
   const stderr = new EventEmitter();
-
-  const kill = vi.fn((signal?: NodeJS.Signals) => {
-    processEmitter.emit('close', null, signal ?? 'SIGTERM');
-    return true;
-  });
-
-  return Object.assign(processEmitter, {
-    kill,
+  const fakeProcess = Object.assign(processEmitter, {
+    exitCode: null,
+    kill: vi.fn(),
+    signalCode: null,
     stderr,
     stdout,
   }) as FakeProcess;
+
+  fakeProcess.kill.mockImplementation((signal?: NodeJS.Signals) => {
+    fakeProcess.signalCode = signal ?? 'SIGTERM';
+    fakeProcess.emit('close', null, signal ?? 'SIGTERM');
+    return true;
+  });
+
+  return fakeProcess;
 }
 
 const spawn = vi.hoisted(() => vi.fn());
@@ -246,6 +252,27 @@ function getResultPayload(result: { content: { value: string }[] }): Record<stri
   return {
     ...metadata,
     output: result.content[1].value,
+  };
+}
+
+function setupShellTools(fakeProcess: FakeProcess = createFakeProcess()): {
+  awaitTool: ReturnType<typeof getRegisteredTool>;
+  fakeProcess: FakeProcess;
+  getOutputTool: ReturnType<typeof getRegisteredTool>;
+  killTool: ReturnType<typeof getRegisteredTool>;
+  runAsyncTool: ReturnType<typeof getRegisteredTool>;
+  runSyncTool: ReturnType<typeof getRegisteredTool>;
+} {
+  spawn.mockReturnValue(fakeProcess);
+  registerShellTools();
+
+  return {
+    awaitTool: getRegisteredTool('await_shell'),
+    fakeProcess,
+    getOutputTool: getRegisteredTool('get_shell_output'),
+    killTool: getRegisteredTool('kill_shell'),
+    runAsyncTool: getRegisteredTool('run_in_async_shell'),
+    runSyncTool: getRegisteredTool('run_in_sync_shell'),
   };
 }
 
@@ -471,16 +498,14 @@ describe('shell tools', () => {
   });
 
   it('keeps output when process closes with SIGINT', async () => {
-    const fakeProcess = createFakeProcess();
-    spawn.mockReturnValue(fakeProcess);
+    const {
+      awaitTool,
+      fakeProcess,
+      getOutputTool,
+      runAsyncTool,
+    } = setupShellTools();
 
-    registerShellTools();
-
-    const runTool = getRegisteredTool('run_in_async_shell');
-    const awaitTool = getRegisteredTool('await_shell');
-    const getOutputTool = getRegisteredTool('get_shell_output');
-
-    const runResult = await runTool.invoke({
+    const runResult = await runAsyncTool.invoke({
       input: {
         command: 'echo keep',
         explanation: 'sigint behavior test',
@@ -519,17 +544,15 @@ describe('shell tools', () => {
   });
 
   it('treats process exit as completion even if close never arrives', async () => {
-    const fakeProcess = createFakeProcess();
-    spawn.mockReturnValue(fakeProcess);
+    const {
+      awaitTool,
+      fakeProcess,
+      getOutputTool,
+      killTool,
+      runAsyncTool,
+    } = setupShellTools();
 
-    registerShellTools();
-
-    const runTool = getRegisteredTool('run_in_async_shell');
-    const awaitTool = getRegisteredTool('await_shell');
-    const getOutputTool = getRegisteredTool('get_shell_output');
-    const killTool = getRegisteredTool('kill_shell');
-
-    const runResult = await runTool.invoke({
+    const runResult = await runAsyncTool.invoke({
       input: {
         command: 'echo controlled-failure',
         explanation: 'exit without close test',
@@ -579,22 +602,19 @@ describe('shell tools', () => {
     expect(fakeProcess.kill).not.toHaveBeenCalled();
   });
 
-  it('ignores close after exit already completed the command', async () => {
-    const fakeProcess = createFakeProcess();
-    spawn.mockReturnValue(fakeProcess);
+  it('keeps draining output after exit until close completes the command', async () => {
+    const {
+      awaitTool,
+      fakeProcess,
+      getOutputTool,
+      runAsyncTool,
+    } = setupShellTools();
 
-    registerShellTools();
-
-    const runTool = getRegisteredTool('run_in_async_shell');
-    const awaitTool = getRegisteredTool('await_shell');
-    const getOutputTool = getRegisteredTool('get_shell_output');
-    const killTool = getRegisteredTool('kill_shell');
-
-    const runResult = await runTool.invoke({
+    const runResult = await runAsyncTool.invoke({
       input: {
-        command: 'echo exit-then-close',
-        explanation: 'exit-close idempotency test',
-        goal: 'verify duplicate completion events are ignored',
+        command: 'echo exit-drain',
+        explanation: 'exit drain test',
+        goal: 'verify post-exit output is preserved until close',
       },
       toolInvocationToken: undefined,
     }, {});
@@ -602,17 +622,20 @@ describe('shell tools', () => {
     const runPayload = getResultPayload(runResult);
     const shellId = runPayload.id as string;
 
-    fakeProcess.stdout.emit('data', 'first and only output\n');
-    fakeProcess.emit('exit', 127, null);
-    fakeProcess.emit('close', 0, 'SIGTERM');
-
-    const awaitResult = await awaitTool.invoke({
+    const awaitPromise = awaitTool.invoke({
       input: {
         id: shellId,
         timeout: 0,
       },
       toolInvocationToken: undefined,
     }, {});
+
+    fakeProcess.stdout.emit('data', 'before-exit\n');
+    fakeProcess.emit('exit', 127, null);
+    fakeProcess.stdout.emit('data', 'after-exit\n');
+    fakeProcess.emit('close', 0, 'SIGTERM');
+
+    const awaitResult = await awaitPromise;
 
     const awaitPayload = getResultPayload(awaitResult);
     expect(awaitPayload.exitCode).toBe(127);
@@ -630,7 +653,59 @@ describe('shell tools', () => {
     const outputPayload = getResultPayload(outputResult);
     expect(outputPayload.exitCode).toBe(127);
     expect(outputPayload).not.toHaveProperty('terminationSignal');
-    expect(outputPayload.output).toBe('first and only output\n');
+    expect(outputPayload.output).toBe('before-exit\nafter-exit\n');
+  });
+
+  it('uses close as a fallback when it arrives before exit', async () => {
+    const {
+      awaitTool,
+      fakeProcess,
+      getOutputTool,
+      killTool,
+      runAsyncTool,
+    } = setupShellTools();
+
+    const runResult = await runAsyncTool.invoke({
+      input: {
+        command: 'echo close-first',
+        explanation: 'close before exit test',
+        goal: 'verify close can finalize when exit is absent',
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const runPayload = getResultPayload(runResult);
+    const shellId = runPayload.id as string;
+
+    fakeProcess.stdout.emit('data', 'close-first output\n');
+    fakeProcess.emit('close', 0, 'SIGTERM');
+    fakeProcess.emit('exit', 127, null);
+
+    const awaitResult = await awaitTool.invoke({
+      input: {
+        id: shellId,
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const awaitPayload = getResultPayload(awaitResult);
+    expect(awaitPayload.exitCode).toBe(0);
+    expect(awaitPayload.terminationSignal).toBe('SIGTERM');
+    expect(awaitPayload.timedOut).toBeUndefined();
+
+    const outputResult = await getOutputTool.invoke({
+      input: {
+        full_output: true,
+        id: shellId,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const outputPayload = getResultPayload(outputResult);
+    expect(outputPayload.exitCode).toBe(0);
+    expect(outputPayload.terminationSignal).toBe('SIGTERM');
+    expect(outputPayload.output).toBe('close-first output\n');
 
     const killResult = await killTool.invoke({
       input: { id: shellId },
@@ -642,16 +717,60 @@ describe('shell tools', () => {
     expect(fakeProcess.kill).not.toHaveBeenCalled();
   });
 
-  it('returns only id by default for foreground runs and exposes output via get_shell_output', async () => {
+  it('stops treating a command as running when kill sees an already-exited process', async () => {
     const fakeProcess = createFakeProcess();
-    spawn.mockReturnValue(fakeProcess);
+    fakeProcess.kill.mockImplementation(() => {
+      fakeProcess.exitCode = 0;
+      return false;
+    });
 
-    registerShellTools();
+    const {
+      awaitTool,
+      killTool,
+      runAsyncTool,
+    } = setupShellTools(fakeProcess);
 
-    const runTool = getRegisteredTool('run_in_sync_shell');
-    const getOutputTool = getRegisteredTool('get_shell_output');
+    const runResult = await runAsyncTool.invoke({
+      input: {
+        command: 'echo almost-done',
+        explanation: 'kill false fallback test',
+        goal: 'verify completed state is recovered from child status',
+      },
+      toolInvocationToken: undefined,
+    }, {});
 
-    const runPromise = runTool.invoke({
+    const runPayload = getResultPayload(runResult);
+    const shellId = runPayload.id as string;
+
+    const killResult = await killTool.invoke({
+      input: { id: shellId },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const killPayload = getResultPayload(killResult);
+    expect(killPayload.killed).toBe(false);
+
+    const awaitResult = await awaitTool.invoke({
+      input: {
+        id: shellId,
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const awaitPayload = getResultPayload(awaitResult);
+    expect(awaitPayload.exitCode).toBe(0);
+    expect(awaitPayload.timedOut).toBeUndefined();
+  });
+
+  it('returns only id by default for foreground runs and exposes output via get_shell_output', async () => {
+    const {
+      fakeProcess,
+      getOutputTool,
+      runSyncTool,
+    } = setupShellTools();
+
+    const runPromise = runSyncTool.invoke({
       input: {
         command: 'echo foreground',
         explanation: 'foreground id-only behavior',
