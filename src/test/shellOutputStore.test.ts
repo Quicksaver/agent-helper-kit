@@ -18,6 +18,7 @@ import {
   initializeShellOutputStore,
   overwriteShellOutput,
   readShellCommandMetadata,
+  readShellOutputSync,
   writeShellCommandMetadata,
 } from '@/shellOutputStore';
 
@@ -55,6 +56,7 @@ describe('shell output store startup purge', () => {
 
   afterEach(() => {
     removeShellOutputDirectory();
+    vi.restoreAllMocks();
   });
 
   it('stores output files without duplicating the shell id prefix', () => {
@@ -72,6 +74,14 @@ describe('shell output store startup purge', () => {
     expect(overwriteShellOutput('shell-abc12345', 'saved output\n')).toBe(true);
     expect(fs.statSync(outputDirectoryPath).isDirectory()).toBe(true);
     expect(fs.readFileSync(getShellOutputFilePath('shell-abc12345'), 'utf8')).toBe('saved output\n');
+  });
+
+  it('returns undefined when reading output hits an unexpected filesystem error', () => {
+    const outputFilePath = getShellOutputFilePath('shell-abc12345');
+    fs.rmSync(outputFilePath, { force: true, recursive: true });
+    fs.mkdirSync(outputFilePath, { recursive: true });
+
+    expect(readShellOutputSync('shell-abc12345')).toBeUndefined();
   });
 
   it('purges persisted shell output files older than configured max age', () => {

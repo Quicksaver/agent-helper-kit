@@ -13,6 +13,19 @@ const DEFAULT_STARTUP_PURGE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 type NodeErrorWithCode = NodeJS.ErrnoException;
 
+function isNodeErrorWithCode(error: unknown, code?: string): error is NodeErrorWithCode & { code: string } {
+  if (
+    typeof error !== 'object'
+    || error === null
+    || !('code' in error)
+    || typeof error.code !== 'string'
+  ) {
+    return false;
+  }
+
+  return code === undefined || error.code === code;
+}
+
 export interface ShellCommandMetadata {
   command: string;
   completedAt: null | string;
@@ -51,29 +64,24 @@ function formatPathState(targetPath: string): string {
     return `${kind}, mode=${stats.mode.toString(8)}, size=${String(stats.size)}`;
   }
   catch (error) {
-    const nodeError = error as NodeErrorWithCode;
-
-    if (nodeError.code === 'ENOENT') {
+    if (isNodeErrorWithCode(error, 'ENOENT')) {
       return 'missing';
     }
 
-    return `unavailable (${nodeError.code ?? 'unknown'})`;
+    return `unavailable (${isNodeErrorWithCode(error) ? error.code : 'unknown'})`;
   }
 }
 
 function formatFileSystemError(error: unknown, targetPath: string): string {
-  const nodeError = error as NodeErrorWithCode;
   const message = error instanceof Error ? error.message : String(error);
   const parentPath = path.dirname(targetPath);
-  const errorCode = typeof nodeError.code === 'string' ? ` code=${nodeError.code}` : '';
+  const errorCode = isNodeErrorWithCode(error) ? ` code=${error.code}` : '';
 
   return `${message}; target=${targetPath}; targetState=${formatPathState(targetPath)}; parent=${parentPath}; parentState=${formatPathState(parentPath)}${errorCode}`;
 }
 
 function canRecoverOutputDirectory(error: unknown): boolean {
-  const nodeError = error as NodeErrorWithCode;
-
-  return nodeError.code === 'EEXIST' || nodeError.code === 'ENOTDIR';
+  return isNodeErrorWithCode(error, 'EEXIST') || isNodeErrorWithCode(error, 'ENOTDIR');
 }
 
 function ensureOutputDirectory(): string {
@@ -223,24 +231,30 @@ export function createShellOutputFile(shellId: string): void {
 }
 
 export function overwriteShellOutput(shellId: string, output: string): boolean {
+  let filePath = getOutputDirectoryPath();
+
   try {
-    fs.writeFileSync(getShellOutputFilePath(shellId), output, { encoding: 'utf8' });
+    filePath = getShellOutputFilePath(shellId);
+    fs.writeFileSync(filePath, output, { encoding: 'utf8' });
     return true;
   }
   catch (error) {
-    const details = formatFileSystemError(error, getShellOutputFilePath(shellId));
+    const details = formatFileSystemError(error, filePath);
     logError(`Failed to overwrite shell output for ${shellId}: ${details}; bytes=${String(Buffer.byteLength(output, 'utf8'))}`);
     return false;
   }
 }
 
 export function appendShellOutput(shellId: string, chunk: string): boolean {
+  let filePath = getOutputDirectoryPath();
+
   try {
-    fs.appendFileSync(getShellOutputFilePath(shellId), chunk, { encoding: 'utf8' });
+    filePath = getShellOutputFilePath(shellId);
+    fs.appendFileSync(filePath, chunk, { encoding: 'utf8' });
     return true;
   }
   catch (error) {
-    const details = formatFileSystemError(error, getShellOutputFilePath(shellId));
+    const details = formatFileSystemError(error, filePath);
     logError(`Failed to append shell output for ${shellId}: ${details}; bytes=${String(Buffer.byteLength(chunk, 'utf8'))}`);
     return false;
   }
@@ -253,12 +267,7 @@ export function readShellOutputSync(shellId: string): string | undefined {
     return fs.readFileSync(filePath, { encoding: 'utf8' });
   }
   catch (error) {
-    if (
-      typeof error === 'object'
-      && error !== null
-      && 'code' in error
-      && error.code === 'ENOENT'
-    ) {
+    if (isNodeErrorWithCode(error, 'ENOENT')) {
       return undefined;
     }
 
@@ -275,12 +284,7 @@ export async function readShellOutput(shellId: string): Promise<string> {
     return await fs.promises.readFile(filePath, { encoding: 'utf8' });
   }
   catch (error) {
-    if (
-      typeof error === 'object'
-      && error !== null
-      && 'code' in error
-      && error.code === 'ENOENT'
-    ) {
+    if (isNodeErrorWithCode(error, 'ENOENT')) {
       return '';
     }
 
@@ -338,15 +342,18 @@ export function removeShellCommandMetadata(shellId: string): void {
 }
 
 export function writeShellCommandMetadata(metadata: ShellCommandMetadata): void {
+  let filePath = getOutputDirectoryPath();
+
   try {
+    filePath = getShellMetadataFilePath(metadata.id);
     fs.writeFileSync(
-      getShellMetadataFilePath(metadata.id),
+      filePath,
       JSON.stringify(metadata),
       { encoding: 'utf8' },
     );
   }
   catch (error) {
-    const details = formatFileSystemError(error, getShellMetadataFilePath(metadata.id));
+    const details = formatFileSystemError(error, filePath);
     logError(`Failed to write shell metadata for ${metadata.id}: ${details}`);
   }
 }
