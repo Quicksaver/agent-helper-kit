@@ -130,6 +130,11 @@ function createWebviewView(): {
   };
 }
 
+async function flushWebviewMessageMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 describe('ShellCommandsPanelProvider polling', () => {
   beforeEach(() => {
     capturedProviders.length = 0;
@@ -232,12 +237,11 @@ describe('ShellCommandsPanelProvider polling', () => {
     expect(rawWebviewView.webview.html).toContain('>1234abcd<');
     expect(rawWebviewView.webview.html).toContain('data-copy-field="cwd"');
     expect(rawWebviewView.webview.html).toContain('data-copy-field="id"');
-    expect(rawWebviewView.webview.html).toContain('grid-template-columns: repeat(3, 1fr);');
-    expect(rawWebviewView.webview.html).toContain('align-items: center;');
-    expect(rawWebviewView.webview.html).toContain('padding: 4px 6px;');
-    expect(rawWebviewView.webview.html).toContain('background: var(--vscode-editor-background);');
-    expect(rawWebviewView.webview.html).toContain('.metadata-value-truncate-start');
-    expect(rawWebviewView.webview.html).toContain('.metadata-item-error .metadata-value');
+    expect(rawWebviewView.webview.html).toContain('data-metadata-field="shell"');
+    expect(rawWebviewView.webview.html).toContain('data-metadata-field="cwd"');
+    expect(rawWebviewView.webview.html).toContain('data-truncate-from-start="true"');
+    expect(rawWebviewView.webview.html).toContain('data-metadata-field="exit-code"');
+    expect(rawWebviewView.webview.html).toContain('data-metadata-status="error"');
     expect(rawWebviewView.webview.html).not.toContain('>Termination Signal<');
     expect(rawWebviewView.webview.html).not.toContain('title="Id:');
   });
@@ -266,7 +270,8 @@ describe('ShellCommandsPanelProvider polling', () => {
     expect(rawWebviewView.webview.html).toContain('>--<');
     expect(rawWebviewView.webview.html.match(/>--</g)?.length).toBe(2);
     expect(rawWebviewView.webview.html).not.toContain('>Running...<');
-    expect(rawWebviewView.webview.html).toContain('.metadata-item-running .metadata-value');
+    expect(rawWebviewView.webview.html).toContain('data-metadata-field="exit-code"');
+    expect(rawWebviewView.webview.html).toContain('data-metadata-status="running"');
   });
 
   it('copies the public id and cwd from metadata actions', async () => {
@@ -299,8 +304,7 @@ describe('ShellCommandsPanelProvider polling', () => {
       copyField: 'id',
       type: 'copy',
     });
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushWebviewMessageMicrotasks();
     expect(vscode.env.clipboard.writeText).toHaveBeenLastCalledWith('1234abcd');
 
     await messageHandler?.({
@@ -308,8 +312,7 @@ describe('ShellCommandsPanelProvider polling', () => {
       copyField: 'cwd',
       type: 'copy',
     });
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushWebviewMessageMicrotasks();
     expect(vscode.env.clipboard.writeText).toHaveBeenLastCalledWith('/workspace/project');
   });
 });

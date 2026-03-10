@@ -155,6 +155,7 @@ function buildMetadataFieldMarkup(
     commandId?: string;
     copyField?: CopyField;
     emphasized?: boolean;
+    fieldId?: string;
     statusClass?: string;
     truncateFromStart?: boolean;
   },
@@ -162,6 +163,11 @@ function buildMetadataFieldMarkup(
   const emphasizedClass = options?.emphasized === true ? ' metadata-item-emphasized' : '';
   const statusClass = options?.statusClass ? ` ${options.statusClass}` : '';
   const truncationClass = options?.truncateFromStart === true ? ' metadata-value-truncate-start' : '';
+  const fieldAttribute = options?.fieldId ? ` data-metadata-field="${escapeHtml(options.fieldId)}"` : '';
+  const statusAttribute = options?.statusClass
+    ? ` data-metadata-status="${escapeHtml(options.statusClass.replace('metadata-item-', ''))}"`
+    : '';
+  const truncateAttribute = options?.truncateFromStart === true ? ' data-truncate-from-start="true"' : '';
   const copyButtonMarkup = options?.copyField && options.commandId
     ? `
         <button
@@ -176,9 +182,9 @@ function buildMetadataFieldMarkup(
     : '';
 
   return `
-    <div class="metadata-item${emphasizedClass}${statusClass}">
+    <div class="metadata-item${emphasizedClass}${statusClass}"${fieldAttribute}${statusAttribute}>
       <span class="metadata-label">${escapeHtml(label)}</span>
-      <span class="metadata-value${truncationClass}">${escapeHtml(value)}</span>
+      <span class="metadata-value${truncationClass}"${truncateAttribute}>${escapeHtml(value)}</span>
       ${copyButtonMarkup}
     </div>
   `;
@@ -594,21 +600,29 @@ function buildDetailsMarkup(details: ShellCommandDetails | undefined): string {
   const metadataFields = [
     buildMetadataFieldMarkup('Exit Code', getExitCodeLabel(details), {
       emphasized: true,
+      fieldId: 'exit-code',
       statusClass: getMetadataStatusClass(details),
     }),
     buildMetadataFieldMarkup('Shell', details.shell, {
+      fieldId: 'shell',
       truncateFromStart: true,
     }),
     buildMetadataFieldMarkup('CWD', details.cwd, {
       commandId: details.id,
       copyField: 'cwd',
+      fieldId: 'cwd',
       truncateFromStart: true,
     }),
-    buildMetadataFieldMarkup('Started', formatTimestamp(details.startedAt)),
-    buildMetadataFieldMarkup('Completed', getCompletedLabel(details)),
+    buildMetadataFieldMarkup('Started', formatTimestamp(details.startedAt), {
+      fieldId: 'started',
+    }),
+    buildMetadataFieldMarkup('Completed', getCompletedLabel(details), {
+      fieldId: 'completed',
+    }),
     buildMetadataFieldMarkup('ID', publicCommandId, {
       commandId: details.id,
       copyField: 'id',
+      fieldId: 'id',
     }),
   ].join('');
 
@@ -865,7 +879,7 @@ function getWebviewHtml(
         min-width: 0;
         display: grid;
         grid-template-columns: auto minmax(0, 1fr) auto;
-        align-items: end;
+        align-items: baseline;
         gap: 6px;
         padding: 2px 0;
       }
