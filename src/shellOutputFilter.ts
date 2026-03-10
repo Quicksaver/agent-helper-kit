@@ -4,7 +4,7 @@ export interface ShellOutputFilterInput {
   regex_flags?: string;
 }
 
-export function stripShellControlSequences(output: string): string {
+function stripShellSequences(output: string, preserveSgr: boolean): string {
   let sanitized = '';
 
   for (let index = 0; index < output.length; index += 1) {
@@ -36,6 +36,7 @@ export function stripShellControlSequences(output: string): string {
       continue;
     }
 
+    const sequenceStart = index;
     let sequenceIndex = index + 1;
 
     if (codePoint === 0x1B && output[sequenceIndex] === '[') {
@@ -52,6 +53,12 @@ export function stripShellControlSequences(output: string): string {
       sequenceIndex += 1;
     }
 
+    const finalByte = output[sequenceIndex];
+
+    if (preserveSgr && finalByte === 'm') {
+      sanitized += output.slice(sequenceStart, sequenceIndex + 1);
+    }
+
     index = sequenceIndex;
   }
 
@@ -61,17 +68,25 @@ export function stripShellControlSequences(output: string): string {
     .replace(/\r(?!\n)/g, '\n');
 }
 
+export function stripShellControlSequences(output: string): string {
+  return stripShellSequences(output, false);
+}
+
+function stripNonDisplayShellSequences(output: string): string {
+  return stripShellSequences(output, true);
+}
+
 export function normalizeShellOutput(output: string): string {
-  const sanitizedOutput = stripShellControlSequences(output);
-  const normalizedLines = sanitizedOutput
+  const displayOutput = stripNonDisplayShellSequences(output);
+  const normalizedLines = displayOutput
     .split('\n')
-    .filter(line => line.trim().length > 0);
+    .filter(line => stripShellControlSequences(line).trim().length > 0);
 
   if (normalizedLines.length === 0) {
     return '';
   }
 
-  return sanitizedOutput.endsWith('\n')
+  return displayOutput.endsWith('\n')
     ? `${normalizedLines.join('\n')}\n`
     : normalizedLines.join('\n');
 }
@@ -140,7 +155,9 @@ export function getFilteredOutput(input: ShellOutputFilterInput, output: string)
     throw new Error('Invalid regex pattern or flags');
   }
 
-  const matched = lines.filter(line => expression.test(line)).join('\n');
+  const matched = lines
+    .filter(line => expression.test(stripShellControlSequences(line)))
+    .join('\n');
 
   if (!matched) {
     return '';

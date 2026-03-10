@@ -24,6 +24,14 @@ describe('shell output normalization', () => {
     expect(normalizeShellOutput('first\n\u001B[2K\r\nsecond\n')).toBe('first\nsecond\n');
   });
 
+  it('preserves ANSI color sequences on non-empty lines', () => {
+    expect(normalizeShellOutput('\u001B[31mfirst\u001B[0m\nsecond\n')).toBe('\u001B[31mfirst\u001B[0m\nsecond\n');
+  });
+
+  it('drops lines that only contain ANSI color sequences and whitespace', () => {
+    expect(normalizeShellOutput('\u001B[31m   \u001B[0m\nvalue\n')).toBe('value\n');
+  });
+
   it('preserves output without forcing a trailing newline', () => {
     expect(normalizeShellOutput('text')).toBe('text');
   });
@@ -34,5 +42,9 @@ describe('shell output normalization', () => {
 
   it('applies blank-line removal before regex filtering', () => {
     expect(getFilteredOutput({ regex: '^second$' }, 'first\n  \nsecond\n')).toBe('second\n');
+  });
+
+  it('matches regex against visible text while preserving ANSI color sequences', () => {
+    expect(getFilteredOutput({ regex: '^second$' }, '\u001B[31msecond\u001B[0m\nthird\n')).toBe('\u001B[31msecond\u001B[0m\n');
   });
 });

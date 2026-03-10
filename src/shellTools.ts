@@ -8,6 +8,7 @@ import { registerShellCommandsPanel } from '@/shellCommandsPanel';
 import {
   getFilteredOutput,
   normalizeShellOutput,
+  stripShellControlSequences,
 } from '@/shellOutputFilter';
 import {
   ShellRuntime,
@@ -155,10 +156,11 @@ function buildSplitOutputToolResult(payload: Record<string, unknown> & {
     ...metadata
   } = payload;
   const normalizedOutput = normalizeShellOutput(output);
+  const toolOutput = stripShellControlSequences(normalizedOutput);
 
   return new vscode.LanguageModelToolResult([
     new vscode.LanguageModelTextPart(toYaml(metadata)),
-    new vscode.LanguageModelTextPart(normalizedOutput),
+    new vscode.LanguageModelTextPart(toolOutput),
   ]);
 }
 

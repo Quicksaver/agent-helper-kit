@@ -397,7 +397,7 @@ describe('shell tools', () => {
     const shellId = runPayload.id as string;
     expect(shellId).toMatch(SHELL_ID_REGEX);
 
-    fakeProcess.stdout.emit('data', 'hello\n\n   \n');
+    fakeProcess.stdout.emit('data', '\u001B[31mhello\u001B[0m\n\n   \n');
 
     const outputResult = await getOutputTool.invoke({
       input: { id: shellId },
@@ -890,7 +890,7 @@ describe('shell tools', () => {
       toolInvocationToken: undefined,
     }, {});
 
-    fullOutputProcess.stdout.emit('data', 'a\n\n b\n\tc\n');
+    fullOutputProcess.stdout.emit('data', '\u001B[32ma\u001B[0m\n\n b\n\tc\n');
     fullOutputProcess.emit('close', 0, null);
 
     const fullOutputResult = await fullOutputPromise;
@@ -1239,7 +1239,7 @@ describe('shell tools', () => {
     expect(spawn).not.toHaveBeenCalled();
   });
 
-  it('strips ANSI escape sequences from shell output payloads', async () => {
+  it('strips ANSI escape sequences from tool output payloads while preserving captured output', async () => {
     registerShellTools();
 
     const runSyncTool = getRegisteredTool('run_in_sync_shell');
