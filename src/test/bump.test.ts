@@ -159,7 +159,7 @@ describe('bump.sh', () => {
     ].join('\n'));
   });
 
-  it('refuses to rewrite package.json or CHANGELOG.md when either file is dirty', () => {
+  it('refuses to rewrite package.json or CHANGELOG.md when CHANGELOG.md is dirty', () => {
     const repo = createTempRepo(
       '3.4.5',
       [
@@ -173,10 +173,35 @@ describe('bump.sh', () => {
         '',
       ].join('\n'),
     );
+    const originalChangelog = fs.readFileSync(repo.changelogPath, 'utf8');
 
     fs.appendFileSync(repo.changelogPath, '<!-- dirty -->\n');
 
     expect(() => runBump(repo.repoDir, repo.scriptPath)).toThrowError(/uncommitted changes/u);
     expect(readPackageVersion(repo.packageJsonPath)).toBe('3.4.5');
+    expect(fs.readFileSync(repo.changelogPath, 'utf8')).toBe(`${originalChangelog}<!-- dirty -->\n`);
+  });
+
+  it('refuses to rewrite package.json or CHANGELOG.md when package.json is dirty', () => {
+    const repo = createTempRepo(
+      '3.4.5',
+      [
+        '# Changelog',
+        '',
+        '## [Unreleased]',
+        '',
+        '### Fixed',
+        '',
+        '- Pending release note.',
+        '',
+      ].join('\n'),
+    );
+    const originalChangelog = fs.readFileSync(repo.changelogPath, 'utf8');
+
+    fs.appendFileSync(repo.packageJsonPath, ' ');
+
+    expect(() => runBump(repo.repoDir, repo.scriptPath)).toThrowError(/uncommitted changes/u);
+    expect(readPackageVersion(repo.packageJsonPath)).toBe('3.4.5');
+    expect(fs.readFileSync(repo.changelogPath, 'utf8')).toBe(originalChangelog);
   });
 });
