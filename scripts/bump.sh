@@ -50,6 +50,95 @@ run_step() {
     return 1
 }
 
+ensure_clean_release_files() {
+    if ! command -v git >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! git -C "$project_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if [[ -n "$(git -C "$project_root" status --porcelain -- package.json CHANGELOG.md)" ]]; then
+        die "package.json or CHANGELOG.md has uncommitted changes. Commit or stash them before bumping."
+    fi
+}
+
+read_package_version() {
+    node - "$package_json_path" <<'NODE'
+const fs = require("fs");
+
+const packageJsonPath = process.argv[2];
+const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+
+if (typeof packageJson.version !== "string") {
+  throw new Error("Missing string version in package.json");
+}
+
+process.stdout.write(packageJson.version);
+NODE
+}
+
+update_package_json_version() {
+    local next_version="$1"
+
+    node - "$package_json_path" "$next_version" <<'NODE'
+const fs = require("fs");
+const packageJsonPath = process.argv[2];
+const nextVersion = process.argv[3];
+const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+
+packageJson.version = nextVersion;
+fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+NODE
+}
+
+roll_unreleased_changelog_entries() {
+    local next_version="$1"
+    local release_date="$2"
+
+    node - "$changelog_path" "$next_version" "$release_date" <<'NODE'
+const fs = require("fs");
+
+const changelogPath = process.argv[2];
+const nextVersion = process.argv[3];
+const releaseDate = process.argv[4];
+const unreleasedHeadingPattern = /^## \[Unreleased\][ \t]*$/m;
+const releaseHeadingPattern = /^## \[(?!Unreleased\])[^\]]+\][^\n]*$/m;
+
+const changelog = fs.readFileSync(changelogPath, "utf8");
+const unreleasedMatch = unreleasedHeadingPattern.exec(changelog);
+
+if (unreleasedMatch === null || unreleasedMatch.index === undefined) {
+    throw new Error("Missing Unreleased heading");
+}
+
+const unreleasedStart = unreleasedMatch.index;
+const unreleasedLineEnd = changelog.indexOf("\n", unreleasedStart);
+const afterUnreleasedStart = unreleasedLineEnd === -1 ? changelog.length : unreleasedLineEnd + 1;
+const nextHeadingMatch = releaseHeadingPattern.exec(changelog.slice(afterUnreleasedStart));
+const unreleasedEnd = nextHeadingMatch === null
+    ? changelog.length
+    : afterUnreleasedStart + nextHeadingMatch.index;
+
+const beforeUnreleased = changelog.slice(0, unreleasedStart);
+const unreleasedBody = changelog.slice(afterUnreleasedStart, unreleasedEnd);
+const afterUnreleased = changelog.slice(unreleasedEnd).replace(/^\n+/, "");
+
+const normalizedBody = unreleasedBody.trim();
+const releaseBody = normalizedBody.length === 0 ? "Version bump only." : normalizedBody;
+const releaseHeading = `## [${nextVersion}] - ${releaseDate}`;
+
+let updated = `${beforeUnreleased}## [Unreleased]\n\n${releaseHeading}\n\n${releaseBody}`;
+if (afterUnreleased.length > 0) {
+    updated += `\n\n${afterUnreleased}`;
+}
+updated += "\n";
+
+fs.writeFileSync(changelogPath, updated);
+NODE
+}
+
 validate_bump_type() {
     local candidate="$1"
 
@@ -109,11 +198,13 @@ if [[ ! -f "$changelog_path" ]]; then
     die "Could not find CHANGELOG.md at $changelog_path."
 fi
 
+ensure_clean_release_files
+
 ui_set_live_task_state "running" "Resolve current version"
-current_version="$(node -p "require('$package_json_path').version" 2>/dev/null)" \
+current_version="$(read_package_version)" \
     || die "Failed to read version from package.json."
 next_version="$(compute_next_version "$current_version" "$bump_type")"
-release_date="$(date +%F)"
+release_date="$(date '+%Y-%m-%d')"
 ui_set_live_task_state "pass" "Resolve version bump: $current_version -> $next_version"
 ui_clear_live_state
 pass "Resolve version bump: $current_version -> $next_version"
@@ -121,54 +212,11 @@ pass "Resolve version bump: $current_version -> $next_version"
 run_step \
     "Update package.json version to $next_version" \
     "Failed to update package.json version." \
-    node -e '
-const fs = require("fs");
-const packageJsonPath = process.argv[1];
-const nextVersion = process.argv[2];
-const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-packageJson.version = nextVersion;
-fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
-' "$package_json_path" "$next_version" || exit 1
+    update_package_json_version "$next_version"
 
 run_step \
     "Roll Unreleased changelog entries into $next_version" \
     "Failed to update CHANGELOG.md. Ensure it contains an '## [Unreleased]' section." \
-    node -e '
-const fs = require("fs");
-
-const changelogPath = process.argv[1];
-const nextVersion = process.argv[2];
-const releaseDate = process.argv[3];
-const unreleasedHeading = "## [Unreleased]";
-
-const changelog = fs.readFileSync(changelogPath, "utf8");
-const unreleasedStart = changelog.indexOf(`${unreleasedHeading}\n`);
-
-if (unreleasedStart === -1) {
-  throw new Error("Missing Unreleased heading");
-}
-
-const afterUnreleasedStart = unreleasedStart + unreleasedHeading.length + 1;
-const nextHeadingMatch = /^## \[(?!Unreleased\]).+$/m.exec(changelog.slice(afterUnreleasedStart));
-const unreleasedEnd = nextHeadingMatch === null
-  ? changelog.length
-  : afterUnreleasedStart + nextHeadingMatch.index;
-
-const beforeUnreleased = changelog.slice(0, unreleasedStart);
-const unreleasedBody = changelog.slice(afterUnreleasedStart, unreleasedEnd);
-const afterUnreleased = changelog.slice(unreleasedEnd).replace(/^\n+/, "");
-
-const normalizedBody = unreleasedBody.replace(/^\n+|\n+$/g, "");
-const releaseBody = normalizedBody.length === 0 ? "Version bump only." : normalizedBody;
-const releaseHeading = `## [${nextVersion}] - ${releaseDate}`;
-
-let updated = `${beforeUnreleased}${unreleasedHeading}\n\n${releaseHeading}\n\n${releaseBody}`;
-if (afterUnreleased.length > 0) {
-  updated += `\n\n${afterUnreleased}`;
-}
-updated += "\n";
-
-fs.writeFileSync(changelogPath, updated);
-' "$changelog_path" "$next_version" "$release_date" || exit 1
+    roll_unreleased_changelog_entries "$next_version" "$release_date"
 
 pass "Bumped version to $next_version and rolled changelog entries into $release_date."
