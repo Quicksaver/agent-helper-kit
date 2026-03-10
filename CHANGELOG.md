@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Added optional `cwd` input support to `run_in_async_shell` and `run_in_sync_shell`, with validation that rejects missing, inaccessible, or non-directory paths before launch.
+- Reworked the Shell Runs details layout so selected-run metadata is shown inline in the panel instead of behind a hover tooltip, making command context easier to scan and copy.
 
 ### Fixed
 
