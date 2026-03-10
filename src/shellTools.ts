@@ -1,4 +1,6 @@
+import * as fs from 'node:fs';
 import * as os from 'node:os';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import { EXTENSION_CONFIG_SECTION } from '@/reviewCommentConfig';
@@ -73,6 +75,44 @@ function getWorkspaceCwd(): string {
   }
 
   return os.homedir();
+}
+
+function resolveCommandCwd(inputCwd?: string): string {
+  const defaultCwd = getWorkspaceCwd();
+
+  if (inputCwd === undefined) {
+    return defaultCwd;
+  }
+
+  const trimmedCwd = inputCwd.trim();
+
+  if (trimmedCwd.length === 0) {
+    throw new Error('cwd must not be empty');
+  }
+
+  const resolvedCwd = path.resolve(defaultCwd, trimmedCwd);
+
+  let stats: fs.Stats;
+
+  try {
+    stats = fs.statSync(resolvedCwd);
+  }
+  catch {
+    throw new Error(`cwd does not exist or is inaccessible: ${resolvedCwd}`);
+  }
+
+  if (!stats.isDirectory()) {
+    throw new Error(`cwd is not a directory: ${resolvedCwd}`);
+  }
+
+  try {
+    fs.accessSync(resolvedCwd, fs.constants.R_OK + fs.constants.X_OK);
+  }
+  catch {
+    throw new Error(`cwd does not exist or is inaccessible: ${resolvedCwd}`);
+  }
+
+  return resolvedCwd;
 }
 
 function toYamlScalar(value: unknown): string {
@@ -199,10 +239,11 @@ const runInAsyncShellTool: vscode.LanguageModelTool<RunInAsyncShellInput> = {
     options: vscode.LanguageModelToolInvocationOptions<RunInAsyncShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
     const input = validateRunInAsyncShellInput(options.input);
+    const resolvedCwd = resolveCommandCwd(input.cwd);
     const id = getShellRuntime().startBackgroundCommand(
       input.command,
       getRequestedOrDefaultShell(input.shell),
-      getWorkspaceCwd(),
+      resolvedCwd,
     );
 
     return buildYamlToolResult({ id: toPublicCommandId(id) });
@@ -229,12 +270,13 @@ const runInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = {
     const input = validateRunInSyncShellInput(options.input);
     const shouldReturnOutput = hasRunOutputOverrides(input);
     const shellRuntimeInstance = getShellRuntime();
+    const resolvedCwd = resolveCommandCwd(input.cwd);
     const resolvedShell = getRequestedOrDefaultShell(input.shell);
 
     const id = shellRuntimeInstance.startBackgroundCommand(
       input.command,
       resolvedShell,
-      getWorkspaceCwd(),
+      resolvedCwd,
     );
     let result = await shellRuntimeInstance.awaitBackgroundCommand({
       id,

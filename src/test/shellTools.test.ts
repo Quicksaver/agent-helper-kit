@@ -958,10 +958,12 @@ describe('shell tools', () => {
 
     const runTool = getRegisteredTool('run_in_async_shell');
     const selectedShell = os.platform() === 'win32' ? 'pwsh.exe' : '/bin/bash';
+    const customCwd = fs.mkdtempSync(`${os.tmpdir()}/agent-helper-kit-cwd-`);
 
     const runResult = await runTool.invoke({
       input: {
         command: 'echo with shell',
+        cwd: customCwd,
         explanation: 'verify selected shell is used',
         goal: 'shell selection',
         shell: selectedShell,
@@ -975,7 +977,7 @@ describe('shell tools', () => {
       selectedShell,
       [ ...expectedShellArgs(selectedShell), 'echo with shell' ],
       expect.objectContaining({
-        cwd: '/workspace',
+        cwd: customCwd,
       }),
     );
   });
@@ -1010,6 +1012,84 @@ describe('shell tools', () => {
 
     fakeProcess.emit('close', 0, null);
     await runPromise;
+  });
+
+  it('uses provided cwd for sync shell runs', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_sync_shell');
+    const customCwd = fs.mkdtempSync(`${os.tmpdir()}/agent-helper-kit-sync-cwd-`);
+
+    const runPromise = runTool.invoke({
+      input: {
+        command: 'echo custom cwd',
+        cwd: customCwd,
+        explanation: 'verify sync cwd override',
+        goal: 'sync cwd selection',
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    expect(spawn).toHaveBeenCalledWith(
+      '/bin/zsh',
+      [ ...expectedShellArgs('/bin/zsh'), 'echo custom cwd' ],
+      expect.objectContaining({
+        cwd: customCwd,
+      }),
+    );
+
+    fakeProcess.emit('close', 0, null);
+    await runPromise;
+  });
+
+  it('rejects missing cwd before spawning an async command', async () => {
+    const { runAsyncTool } = setupShellTools();
+    const missingCwd = `${os.tmpdir()}/agent-helper-kit-missing-cwd-${Date.now()}`;
+
+    await expect(runAsyncTool.invoke({
+      input: {
+        command: 'echo missing cwd',
+        cwd: missingCwd,
+        explanation: 'verify missing cwd validation',
+        goal: 'reject invalid cwd',
+      },
+      toolInvocationToken: undefined,
+    }, {})).rejects.toThrow('cwd does not exist or is inaccessible');
+
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('rejects inaccessible cwd before spawning a sync command', async () => {
+    const { runSyncTool } = setupShellTools();
+    const inaccessibleCwd = fs.mkdtempSync(`${os.tmpdir()}/agent-helper-kit-inaccessible-cwd-`);
+
+    if (os.platform() === 'win32') {
+      return;
+    }
+
+    fs.chmodSync(inaccessibleCwd, 0o000);
+
+    try {
+      await expect(runSyncTool.invoke({
+        input: {
+          command: 'echo inaccessible cwd',
+          cwd: inaccessibleCwd,
+          explanation: 'verify inaccessible cwd validation',
+          goal: 'reject inaccessible cwd',
+          timeout: 0,
+        },
+        toolInvocationToken: undefined,
+      }, {})).rejects.toThrow('cwd does not exist or is inaccessible');
+    }
+    finally {
+      fs.chmodSync(inaccessibleCwd, 0o700);
+    }
+
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   it('strips ANSI escape sequences from shell output payloads', async () => {

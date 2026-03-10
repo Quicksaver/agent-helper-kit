@@ -173,6 +173,7 @@ export const SHELL_TOOL_METADATA = {
 
 export interface RunInAsyncShellInput {
   command: string;
+  cwd?: string;
   explanation: string;
   goal: string;
   shell?: string;
@@ -180,6 +181,7 @@ export interface RunInAsyncShellInput {
 
 export interface RunInSyncShellInput {
   command: string;
+  cwd?: string;
   explanation: string;
   full_output?: boolean;
   goal: string;
@@ -215,6 +217,7 @@ export type GetLastShellCommandInput = Record<string, never>;
 
 export const runInAsyncShellInputSchema = {
   command: z.string(),
+  cwd: z.string().optional(),
   explanation: z.string(),
   goal: z.string(),
   shell: z.string().optional(),
@@ -222,6 +225,7 @@ export const runInAsyncShellInputSchema = {
 
 export const runInSyncShellInputSchema = {
   command: z.string(),
+  cwd: z.string().optional(),
   explanation: z.string(),
   full_output: z.boolean().optional(),
   goal: z.string(),
