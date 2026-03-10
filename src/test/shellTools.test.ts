@@ -17,6 +17,14 @@ import {
 } from '@/shellTools';
 
 const SHELL_ID_REGEX = /^[a-f0-9]{8}$/;
+const temporaryDirectories = new Set<string>();
+
+function createTemporaryDirectory(prefix: string): string {
+  const directoryPath = fs.mkdtempSync(`${os.tmpdir()}/${prefix}`);
+  temporaryDirectories.add(directoryPath);
+
+  return directoryPath;
+}
 
 function createConfiguration(getter: (key: string) => unknown = () => undefined): { get: ReturnType<typeof vi.fn> } {
   return {
@@ -285,6 +293,12 @@ describe('shell tools', () => {
 
   afterEach(() => {
     fs.rmSync(getShellOutputDirectoryPath(), { force: true, recursive: true });
+
+    for (const directoryPath of temporaryDirectories) {
+      fs.rmSync(directoryPath, { force: true, recursive: true });
+    }
+
+    temporaryDirectories.clear();
   });
 
   it('registers all shell tools', () => {
@@ -958,7 +972,7 @@ describe('shell tools', () => {
 
     const runTool = getRegisteredTool('run_in_async_shell');
     const selectedShell = os.platform() === 'win32' ? 'pwsh.exe' : '/bin/bash';
-    const customCwd = fs.mkdtempSync(`${os.tmpdir()}/agent-helper-kit-cwd-`);
+    const customCwd = createTemporaryDirectory('agent-helper-kit-cwd-');
 
     const runResult = await runTool.invoke({
       input: {
@@ -1021,7 +1035,7 @@ describe('shell tools', () => {
     registerShellTools();
 
     const runTool = getRegisteredTool('run_in_sync_shell');
-    const customCwd = fs.mkdtempSync(`${os.tmpdir()}/agent-helper-kit-sync-cwd-`);
+    const customCwd = createTemporaryDirectory('agent-helper-kit-sync-cwd-');
 
     const runPromise = runTool.invoke({
       input: {
@@ -1065,7 +1079,7 @@ describe('shell tools', () => {
 
   it('rejects inaccessible cwd before spawning a sync command', async () => {
     const { runSyncTool } = setupShellTools();
-    const inaccessibleCwd = fs.mkdtempSync(`${os.tmpdir()}/agent-helper-kit-inaccessible-cwd-`);
+    const inaccessibleCwd = createTemporaryDirectory('agent-helper-kit-inaccessible-cwd-');
 
     if (os.platform() === 'win32') {
       return;
