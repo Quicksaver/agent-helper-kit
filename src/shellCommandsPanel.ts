@@ -848,7 +848,7 @@ function getWebviewHtml(
       .command-header {
         display: flex;
         align-items: stretch;
-        max-height: 40%;
+        max-height: 25%;
         border-bottom: 1px solid var(--vscode-editorWidget-border);
         background: var(--vscode-editor-background);
       }
