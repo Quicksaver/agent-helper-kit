@@ -61,11 +61,26 @@ export function stripShellControlSequences(output: string): string {
     .replace(/\r(?!\n)/g, '\n');
 }
 
+export function normalizeShellOutput(output: string): string {
+  const sanitizedOutput = stripShellControlSequences(output);
+  const normalizedLines = sanitizedOutput
+    .split('\n')
+    .filter(line => line.trim().length > 0);
+
+  if (normalizedLines.length === 0) {
+    return '';
+  }
+
+  return sanitizedOutput.endsWith('\n')
+    ? `${normalizedLines.join('\n')}\n`
+    : normalizedLines.join('\n');
+}
+
 export function getFilteredOutput(input: ShellOutputFilterInput, output: string): string {
   const hasLastLines = typeof input.last_lines === 'number';
   const hasRegex = typeof input.regex === 'string';
   const hasRegexFlags = typeof input.regex_flags === 'string';
-  const sanitizedOutput = stripShellControlSequences(output);
+  const normalizedOutput = normalizeShellOutput(output);
 
   if (hasLastLines && hasRegex) {
     throw new Error('last_lines and regex are mutually exclusive');
@@ -76,12 +91,12 @@ export function getFilteredOutput(input: ShellOutputFilterInput, output: string)
   }
 
   if (!hasLastLines && !hasRegex) {
-    return sanitizedOutput;
+    return normalizedOutput;
   }
 
-  const lines = sanitizedOutput.endsWith('\n')
-    ? sanitizedOutput.slice(0, -1).split('\n')
-    : sanitizedOutput.split('\n');
+  const lines = normalizedOutput.endsWith('\n')
+    ? normalizedOutput.slice(0, -1).split('\n')
+    : normalizedOutput.split('\n');
 
   if (hasLastLines) {
     const count = Math.max(Math.floor(input.last_lines ?? 0), 0);

@@ -5,6 +5,7 @@ import * as path from 'node:path';
 
 import {
   getFilteredOutput,
+  normalizeShellOutput,
   type ShellOutputFilterInput,
 } from '@/shellOutputFilter';
 import {
@@ -566,10 +567,10 @@ export class ShellRuntime {
 
   private async getBackgroundOutput(id: string, state: BackgroundProcessState): Promise<string> {
     if (state.outputInFile) {
-      return readShellOutput(id);
+      return normalizeShellOutput(await readShellOutput(id));
     }
 
-    return state.output;
+    return normalizeShellOutput(state.output);
   }
 
   private getBackgroundState(id: string): {

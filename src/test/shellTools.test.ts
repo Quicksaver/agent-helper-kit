@@ -397,7 +397,7 @@ describe('shell tools', () => {
     const shellId = runPayload.id as string;
     expect(shellId).toMatch(SHELL_ID_REGEX);
 
-    fakeProcess.stdout.emit('data', 'hello\n');
+    fakeProcess.stdout.emit('data', 'hello\n\n   \n');
 
     const outputResult = await getOutputTool.invoke({
       input: { id: shellId },
@@ -422,7 +422,7 @@ describe('shell tools', () => {
     expect(noNewOutputPayload.shell).toBe('/bin/zsh');
     expect(noNewOutputPayload).not.toHaveProperty('terminationSignal');
 
-    fakeProcess.stdout.emit('data', 'world\nmatch-line\n');
+    fakeProcess.stdout.emit('data', 'world\n\t\nmatch-line\n');
 
     const lastLinesResult = await getOutputTool.invoke({
       input: {
@@ -843,7 +843,7 @@ describe('shell tools', () => {
       toolInvocationToken: undefined,
     }, {});
 
-    fakeProcess.stdout.emit('data', 'hello\nworld\n');
+    fakeProcess.stdout.emit('data', 'hello\n\nworld\n   \n');
     fakeProcess.emit('close', 0, null);
 
     const runResult = await runPromise;
@@ -890,13 +890,13 @@ describe('shell tools', () => {
       toolInvocationToken: undefined,
     }, {});
 
-    fullOutputProcess.stdout.emit('data', 'a\nb\nc\n');
+    fullOutputProcess.stdout.emit('data', 'a\n\n b\n\tc\n');
     fullOutputProcess.emit('close', 0, null);
 
     const fullOutputResult = await fullOutputPromise;
     const fullOutputPayload = getResultPayload(fullOutputResult);
     expect(fullOutputPayload.id).toMatch(SHELL_ID_REGEX);
-    expect(fullOutputPayload.output).toBe('a\nb\nc\n');
+    expect(fullOutputPayload.output).toBe('a\n b\n\tc\n');
 
     const lastLinesProcess = createFakeProcess();
     spawn.mockReturnValueOnce(lastLinesProcess);
