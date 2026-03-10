@@ -1,4 +1,7 @@
-import { execFileSync } from 'node:child_process';
+import {
+  execFileSync,
+  spawnSync,
+} from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -86,6 +89,18 @@ function runBump(repoDir: string, scriptPath: string, bumpType: 'major' | 'minor
   });
 }
 
+function runBumpProcess(repoDir: string, scriptPath: string, bumpType: 'major' | 'minor' | 'patch' = 'patch') {
+  return spawnSync('bash', [ scriptPath, bumpType ], {
+    cwd: repoDir,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      NO_COLOR: '1',
+      TERM: 'dumb',
+    },
+  });
+}
+
 describe('bump.sh', () => {
   it('rolls unreleased entries even when the heading has trailing spaces and the file lacks a final newline', () => {
     const releaseDate = getReleaseDate();
@@ -157,6 +172,27 @@ describe('bump.sh', () => {
       'Version bump only.',
       '',
     ].join('\n'));
+  });
+
+  it('does not warn about /dev/tty when run without a controlling terminal', () => {
+    const repo = createTempRepo(
+      '2.0.0',
+      [
+        '# Changelog',
+        '',
+        '## [Unreleased]',
+        '',
+        '### Fixed',
+        '',
+        '- Quiet non-interactive run.',
+        '',
+      ].join('\n'),
+    );
+
+    const result = runBumpProcess(repo.repoDir, repo.scriptPath);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
   });
 
   it('refuses to rewrite package.json or CHANGELOG.md when CHANGELOG.md is dirty', () => {

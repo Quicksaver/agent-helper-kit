@@ -97,7 +97,10 @@ ui_refresh_terminal_columns() {
 
     # Prefer querying the controlling terminal directly.
     if command -v stty >/dev/null 2>&1; then
-        columns="$(stty size < /dev/tty 2>/dev/null | awk '{print $2}' || true)"
+        if [[ -t 0 ]] || [[ -t 1 ]] || [[ -t 2 ]]; then
+            columns="$(stty size < /dev/tty 2>/dev/null | awk '{print $2}' || true)"
+        fi
+
         if ! [[ "$columns" =~ ^[0-9]+$ ]] || (( columns <= 0 )); then
             columns="$(stty size 2>/dev/null | awk '{print $2}' || true)"
         fi
