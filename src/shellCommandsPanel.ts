@@ -46,6 +46,13 @@ type WebviewMessage = {
   type: 'clear' | 'copy' | 'delete' | 'kill' | 'select';
 };
 
+type ExtensionWebviewMessage = {
+  commandId: string;
+  isRunning: boolean;
+  outputHtml: string;
+  type: 'replaceOutput';
+};
+
 interface AnsiRenderState {
   backgroundColor?: string;
   bold: boolean;
@@ -828,7 +835,7 @@ function getWebviewHtml(
       const layout = document.getElementById('layout');
       const resizer = document.getElementById('resizer');
       const filterInput = document.getElementById('command-filter');
-      const outputBlock = document.getElementById('output-block');
+      const getOutputBlock = () => document.getElementById('output-block');
       const outputEndThreshold = 4;
       const previousState = vscodeApi.getState() || {};
       let currentState = { ...previousState };
@@ -850,6 +857,8 @@ function getWebviewHtml(
       const isNearOutputEnd = element => (element.scrollTop + element.clientHeight) >= (element.scrollHeight - outputEndThreshold);
 
       const syncOutputScrollState = () => {
+        const outputBlock = getOutputBlock();
+
         if (!(outputBlock instanceof HTMLElement)) {
           return;
         }
@@ -864,6 +873,8 @@ function getWebviewHtml(
       };
 
       const restoreOutputScroll = () => {
+        const outputBlock = getOutputBlock();
+
         if (!(outputBlock instanceof HTMLElement)) {
           return;
         }
@@ -884,6 +895,23 @@ function getWebviewHtml(
         }
 
         syncOutputScrollState();
+      };
+
+      const replaceOutput = message => {
+        const outputBlock = getOutputBlock();
+
+        if (!(outputBlock instanceof HTMLElement)) {
+          return;
+        }
+
+        if ((outputBlock.dataset.commandId ?? '') !== message.commandId) {
+          return;
+        }
+
+        syncOutputScrollState();
+        outputBlock.innerHTML = message.outputHtml;
+        outputBlock.dataset.commandRunning = message.isRunning ? 'true' : 'false';
+        restoreOutputScroll();
       };
 
       if (typeof previousState.sidebarWidth === 'number') {
@@ -950,6 +978,8 @@ function getWebviewHtml(
         });
       }
 
+      const outputBlock = getOutputBlock();
+
       if (outputBlock instanceof HTMLElement) {
         outputBlock.addEventListener('scroll', () => {
           syncOutputScrollState();
@@ -959,6 +989,18 @@ function getWebviewHtml(
           restoreOutputScroll();
         });
       }
+
+      window.addEventListener('message', event => {
+        const message = event.data;
+
+        if (!message || typeof message !== 'object') {
+          return;
+        }
+
+        if (message.type === 'replaceOutput') {
+          replaceOutput(message);
+        }
+      });
 
       let isResizing = false;
 
@@ -1089,6 +1131,8 @@ function getWebviewHtml(
 
 class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewViewProvider {
   private readonly disposeRuntimeListener: () => void;
+  private renderedSelectedCommandId: string | undefined;
+  private renderedSelectedOutputLength = 0;
   private renderRequestId = 0;
   private runningPoller: NodeJS.Timeout | undefined;
   private selectedCommandId: string | undefined;
@@ -1145,6 +1189,9 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
       this.selectedCommandId,
       selectedDetails,
     );
+
+    this.renderedSelectedCommandId = selectedDetails?.id;
+    this.renderedSelectedOutputLength = selectedDetails?.output.length ?? 0;
 
     this.updatePolling(selectedDetails);
   }
@@ -1230,6 +1277,50 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     }
   }
 
+  private async refreshRunningCommandOutput(): Promise<void> {
+    const { view } = this;
+    const { selectedCommandId } = this;
+
+    if (!view || !selectedCommandId) {
+      this.stopPolling();
+      return;
+    }
+
+    const details = await this.tryGetCommandDetails(selectedCommandId);
+
+    if (!details) {
+      await this.refresh();
+      return;
+    }
+
+    if (selectedCommandId !== this.selectedCommandId || view !== this.view) {
+      return;
+    }
+
+    if (!details.isRunning) {
+      await this.refresh();
+      return;
+    }
+
+    if (
+      this.renderedSelectedCommandId !== details.id
+      || this.renderedSelectedOutputLength === details.output.length
+    ) {
+      return;
+    }
+
+    const message: ExtensionWebviewMessage = {
+      commandId: details.id,
+      isRunning: details.isRunning,
+      outputHtml: convertAnsiToHtml(details.output),
+      type: 'replaceOutput',
+    };
+
+    this.renderedSelectedCommandId = details.id;
+    this.renderedSelectedOutputLength = details.output.length;
+    await view.webview.postMessage(message);
+  }
+
   private stopPolling(): void {
     if (!this.runningPoller) {
       return;
@@ -1259,7 +1350,7 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     }
 
     this.runningPoller = setInterval(() => {
-      void this.refresh();
+      void this.refreshRunningCommandOutput();
     }, RUNNING_POLL_MS);
   }
 }
