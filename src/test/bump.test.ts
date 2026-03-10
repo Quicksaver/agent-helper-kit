@@ -174,6 +174,99 @@ describe('bump.sh', () => {
     ].join('\n'));
   });
 
+  it('keeps CHANGELOG.md terminated by exactly one newline when prior releases already end with one', () => {
+    const releaseDate = getReleaseDate();
+    const repo = createTempRepo(
+      '2.1.0',
+      [
+        '# Changelog',
+        '',
+        '## [Unreleased]',
+        '',
+        '### Fixed',
+        '',
+        '- Trim duplicate trailing blank lines.',
+        '',
+        '## [2.0.0] - 2026-03-09',
+        '',
+        '### Added',
+        '',
+        '- Existing release entry.',
+        '',
+      ].join('\n'),
+    );
+    const originalChangelog = fs.readFileSync(repo.changelogPath, 'utf8');
+
+    expect(originalChangelog.endsWith('\n')).toBe(true);
+    expect(originalChangelog.endsWith('\n\n')).toBe(false);
+
+    runBump(repo.repoDir, repo.scriptPath);
+
+    expect(fs.readFileSync(repo.changelogPath, 'utf8')).toBe([
+      '# Changelog',
+      '',
+      '## [Unreleased]',
+      '',
+      `## [2.1.1] - ${releaseDate}`,
+      '',
+      '### Fixed',
+      '',
+      '- Trim duplicate trailing blank lines.',
+      '',
+      '## [2.0.0] - 2026-03-09',
+      '',
+      '### Added',
+      '',
+      '- Existing release entry.',
+      '',
+    ].join('\n'));
+  });
+
+  it('normalizes CRLF changelog tails with extra trailing blank lines to one final newline', () => {
+    const releaseDate = getReleaseDate();
+    const repo = createTempRepo(
+      '2.1.0',
+      [
+        '# Changelog',
+        '',
+        '## [Unreleased]',
+        '',
+        '### Fixed',
+        '',
+        '- Trim CRLF changelog tails.',
+        '',
+        '## [2.0.0] - 2026-03-09',
+        '',
+        '### Added',
+        '',
+        '- Existing release entry.',
+        '',
+        '',
+      ].join('\r\n'),
+    );
+
+    runBump(repo.repoDir, repo.scriptPath);
+
+    expect(fs.readFileSync(repo.changelogPath, 'utf8')).toBe([
+      '# Changelog',
+      '',
+      '## [Unreleased]',
+      '',
+      `## [2.1.1] - ${releaseDate}`,
+      '',
+      '### Fixed',
+      '',
+      '- Trim CRLF changelog tails.',
+      '',
+      '## [2.0.0] - 2026-03-09',
+      '',
+      '### Added',
+      '',
+      '- Existing release entry.',
+      '',
+    ].join('\n'));
+  });
+
   it('does not warn about /dev/tty when run without a controlling terminal', () => {
     const repo = createTempRepo(
       '2.0.0',

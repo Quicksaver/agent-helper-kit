@@ -106,7 +106,11 @@ const releaseDate = process.argv[4];
 const unreleasedHeadingPattern = /^## \[Unreleased\][ \t]*$/m;
 const releaseHeadingPattern = /^## \[(?!Unreleased\])[^\]]+\][^\n]*$/m;
 
-const changelog = fs.readFileSync(changelogPath, "utf8");
+function trimSurroundingNewlineRuns(value) {
+    return value.replace(/^\n+|\n+$/g, "");
+}
+
+const changelog = fs.readFileSync(changelogPath, "utf8").replace(/\r\n?/g, "\n");
 const unreleasedMatch = unreleasedHeadingPattern.exec(changelog);
 
 if (unreleasedMatch === null || unreleasedMatch.index === undefined) {
@@ -123,7 +127,7 @@ const unreleasedEnd = nextHeadingMatch === null
 
 const beforeUnreleased = changelog.slice(0, unreleasedStart);
 const unreleasedBody = changelog.slice(afterUnreleasedStart, unreleasedEnd);
-const afterUnreleased = changelog.slice(unreleasedEnd).replace(/^\n+/, "");
+const afterUnreleased = trimSurroundingNewlineRuns(changelog.slice(unreleasedEnd));
 
 const normalizedBody = unreleasedBody.trim();
 const releaseBody = normalizedBody.length === 0 ? "Version bump only." : normalizedBody;
