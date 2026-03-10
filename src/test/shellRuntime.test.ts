@@ -1,3 +1,5 @@
+import * as fs from 'node:fs';
+
 import {
   afterEach,
   describe,
@@ -6,15 +8,40 @@ import {
   vi,
 } from 'vitest';
 
+import {
+  getShellOutputDirectoryPath,
+  readShellCommandMetadata,
+} from '@/shellOutputStore';
 import { ShellRuntime } from '@/shellRuntime';
 
 const SHELL_ID_REGEX = /^shell-[a-f0-9]{8}$/;
 
-describe('ShellRuntime shell id generation', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+afterEach(() => {
+  fs.rmSync(getShellOutputDirectoryPath(), { force: true, recursive: true });
+  vi.restoreAllMocks();
+});
 
+describe('ShellRuntime session command list', () => {
+  it('starts with an empty command list after a new runtime is created', () => {
+    const firstRuntime = new ShellRuntime({});
+
+    const persistedId = firstRuntime.createCompletedCommandRecord('echo persisted', {
+      exitCode: 0,
+      output: 'persisted\n',
+      shell: '/bin/bash',
+      terminationSignal: null,
+      timedOut: false,
+    });
+
+    expect(readShellCommandMetadata(persistedId)?.command).toBe('echo persisted');
+
+    const nextRuntime = new ShellRuntime({});
+
+    expect(nextRuntime.listCommands()).toEqual([]);
+  });
+});
+
+describe('ShellRuntime shell id generation', () => {
   it('creates non-sequential 8-char hexadecimal ids', () => {
     const runtime = new ShellRuntime({});
 

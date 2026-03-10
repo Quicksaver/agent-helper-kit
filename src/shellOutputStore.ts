@@ -69,6 +69,7 @@ function getShellMetadataFilePath(shellId: string): string {
 export function initializeShellOutputStore(startupPurgeMaxAgeMs = DEFAULT_STARTUP_PURGE_MAX_AGE_MS): void {
   const directoryPath = ensureOutputDirectory();
   const nowMs = Date.now();
+  const latestArtifactMtimeByShellId = new Map<string, number>();
   let fileNames: string[];
 
   try {
@@ -81,7 +82,7 @@ export function initializeShellOutputStore(startupPurgeMaxAgeMs = DEFAULT_STARTU
   }
 
   for (const fileName of fileNames) {
-    const shellId = getShellIdFromOutputFileName(fileName);
+    const shellId = getShellIdFromOutputFileName(fileName) ?? getShellIdFromMetadataFileName(fileName);
 
     if (!shellId) {
       continue;
@@ -101,15 +102,32 @@ export function initializeShellOutputStore(startupPurgeMaxAgeMs = DEFAULT_STARTU
 
     const ageMs = nowMs - fileStats.mtimeMs;
 
-    if (ageMs > startupPurgeMaxAgeMs) {
-      try {
-        fs.rmSync(filePath, { force: true });
-        fs.rmSync(getShellMetadataFilePath(shellId), { force: true });
-      }
-      catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        globalThis.process.stderr.write(`[agent-helper-kit] Failed to purge stale shell output artifacts for ${shellId}: ${message}\n`);
-      }
+    if (ageMs <= startupPurgeMaxAgeMs) {
+      const previousMtimeMs = latestArtifactMtimeByShellId.get(shellId) ?? 0;
+      latestArtifactMtimeByShellId.set(shellId, Math.max(previousMtimeMs, fileStats.mtimeMs));
+      continue;
+    }
+
+    if (!latestArtifactMtimeByShellId.has(shellId)) {
+      latestArtifactMtimeByShellId.set(shellId, fileStats.mtimeMs);
+    }
+  }
+
+  for (const [
+    shellId,
+    latestArtifactMtimeMs,
+  ] of latestArtifactMtimeByShellId.entries()) {
+    if ((nowMs - latestArtifactMtimeMs) <= startupPurgeMaxAgeMs) {
+      continue;
+    }
+
+    try {
+      fs.rmSync(getShellOutputFilePath(shellId), { force: true });
+      fs.rmSync(getShellMetadataFilePath(shellId), { force: true });
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      globalThis.process.stderr.write(`[agent-helper-kit] Failed to purge stale shell output artifacts for ${shellId}: ${message}\n`);
     }
   }
 }

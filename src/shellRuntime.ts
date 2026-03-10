@@ -11,9 +11,7 @@ import {
 import {
   appendShellOutput,
   initializeShellOutputStore,
-  listShellOutputIds,
   overwriteShellOutput,
-  readShellCommandMetadata,
   readShellOutput,
   removeShellCommandMetadata,
   removeShellOutputFile,
@@ -117,7 +115,6 @@ export class ShellRuntime {
 
   constructor(private readonly options: ShellRuntimeOptions) {
     initializeShellOutputStore(this.options.startupPurgeMaxAgeMs);
-    this.hydrateFromPersistedOutput();
   }
 
   async awaitBackgroundCommand(input: AwaitBackgroundInput): Promise<RunCommandResult> {
@@ -622,44 +619,6 @@ export class ShellRuntime {
 
   private getShellCommandName(shell: string): string {
     return path.basename(shell).toLowerCase().replace(/\.(bat|cmd|exe)$/u, '');
-  }
-
-  private hydrateFromPersistedOutput(): void {
-    const outputIds = listShellOutputIds();
-
-    for (const id of outputIds) {
-      if (this.backgroundProcesses.has(id)) {
-        continue;
-      }
-
-      const metadata = readShellCommandMetadata(id);
-      const hydratedShell = typeof metadata?.shell === 'string' && metadata.shell.length > 0
-        ? metadata.shell
-        : this.resolveShellExecutable();
-      const state: BackgroundProcessState = {
-        childProc: undefined,
-        command: metadata?.command ?? '(command not recorded)',
-        completed: true,
-        completedAt: metadata?.completedAt ?? new Date().toISOString(),
-        completion: Promise.resolve(),
-        completionTimer: undefined,
-        exitCode: metadata?.exitCode ?? null,
-        killedByUser: metadata?.killedByUser ?? false,
-        lastReadCursor: 0,
-        memoryToFileTimer: undefined,
-        output: '',
-        outputBytes: 0,
-        outputInFile: true,
-        pendingExit: undefined,
-        readsSinceCompletion: READS_SINCE_COMPLETION_FOR_SYNC_RECORD,
-        resolveCompletion: () => undefined,
-        shell: hydratedShell,
-        signal: metadata?.signal ?? null,
-        startedAt: metadata?.startedAt ?? new Date().toISOString(),
-      };
-
-      this.backgroundProcesses.set(id, state);
-    }
   }
 
   private persistCommandMetadata(id: string, state: BackgroundProcessState): void {

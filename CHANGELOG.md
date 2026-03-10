@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Tightened Shell Runs panel kill handling to report termination more accurately.
 - Fixed Shell Runs panel polling to update only the output block when new output arrives.
 - Fixed Shell Runs color capture for pipe-based commands by defaulting shell executions to color-capable environment variables while still respecting explicit `NO_COLOR` settings.
+- Fixed a Shell Runs reload issue where the panel could reopen with `(command not recorded)` entries or show stale runs from other workspaces; it now starts empty and only lists runs started in the current session.
 
 ## [1.1.0] - 2026-03-09
 
