@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 
 import ansiRegex from 'ansi-regex';
 
+import { logError } from '@/logging';
 import {
   type ShellCommandDetails,
   type ShellCommandListItem,
@@ -163,6 +164,7 @@ function buildMetadataFieldMarkup(
   const emphasizedClass = options?.emphasized === true ? ' metadata-item-emphasized' : '';
   const statusClass = options?.statusClass ? ` ${options.statusClass}` : '';
   const truncationClass = options?.truncateFromStart === true ? ' metadata-value-truncate-start' : '';
+  const escapedCopyField = options?.copyField ? escapeHtml(options.copyField) : undefined;
   const fieldAttribute = options?.fieldId ? ` data-metadata-field="${escapeHtml(options.fieldId)}"` : '';
   const statusAttribute = options?.statusClass
     ? ` data-metadata-status="${escapeHtml(options.statusClass.replace('metadata-item-', ''))}"`
@@ -173,7 +175,7 @@ function buildMetadataFieldMarkup(
         <button
           class="icon-action metadata-copy"
           data-action="copy"
-          data-copy-field="${options.copyField}"
+          data-copy-field="${escapedCopyField}"
           data-id="${escapeHtml(options.commandId)}"
           title="Copy ${escapeHtml(label.toLowerCase())}"
           aria-label="Copy ${escapeHtml(label.toLowerCase())}"
@@ -528,9 +530,12 @@ function convertAnsiToHtml(value: string): string {
 
     if (segment.length > 0) {
       const escapedSegment = escapeHtml(segment);
+      const attributeName = style.includes(':') ? 'style' : 'class';
+      const escapedStyle = escapeHtml(style);
+
       html += style.length === 0
         ? escapedSegment
-        : `<span class="${style}">${escapedSegment}</span>`;
+        : `<span ${attributeName}="${escapedStyle}">${escapedSegment}</span>`;
     }
 
     const sequence = match[0];
@@ -562,10 +567,12 @@ function convertAnsiToHtml(value: string): string {
     const segment = value.slice(cursor);
     const style = getAnsiStateStyle(state);
     const escapedSegment = escapeHtml(segment);
+    const attributeName = style.includes(':') ? 'style' : 'class';
+    const escapedStyle = escapeHtml(style);
 
     html += style.length === 0
       ? escapedSegment
-      : `<span class="${style}">${escapedSegment}</span>`;
+      : `<span ${attributeName}="${escapedStyle}">${escapedSegment}</span>`;
   }
 
   return html;
@@ -1303,7 +1310,9 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
 
   constructor(private readonly runtime: ShellRuntime) {
     this.disposeRuntimeListener = this.runtime.onDidChangeCommands(() => {
-      void this.refresh();
+      void this.refresh().catch((error: unknown) => {
+        logError(`Failed to refresh shell commands panel after runtime update: ${String(error)}`);
+      });
     });
   }
 
@@ -1371,7 +1380,9 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     });
 
     webviewView.webview.onDidReceiveMessage((message: WebviewMessage) => {
-      void this.handleMessage(message);
+      void this.handleMessage(message).catch((error: unknown) => {
+        logError(`Failed to handle shell commands panel message: ${String(error)}`);
+      });
     });
 
     await this.refresh();
@@ -1513,7 +1524,9 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     }
 
     this.runningPoller = setInterval(() => {
-      void this.refreshRunningCommandOutput();
+      void this.refreshRunningCommandOutput().catch((error: unknown) => {
+        logError(`Failed to refresh running shell command output: ${String(error)}`);
+      });
     }, RUNNING_POLL_MS);
   }
 }

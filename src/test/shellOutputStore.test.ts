@@ -10,7 +10,10 @@ import {
   vi,
 } from 'vitest';
 
-import { resetExtensionOutputChannelForTest } from '@/logging';
+import {
+  getExtensionOutputChannel,
+  resetExtensionOutputChannelForTest,
+} from '@/logging';
 import {
   createShellOutputFile,
   getShellOutputDirectoryPath,
@@ -39,6 +42,14 @@ vi.mock('vscode', () => vscode);
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 const SEVEN_HOURS_MS = 7 * 60 * 60 * 1000;
 
+type MockOutputChannel = {
+  append: ReturnType<typeof vi.fn>;
+  appendLine: ReturnType<typeof vi.fn>;
+  clear: ReturnType<typeof vi.fn>;
+  dispose: ReturnType<typeof vi.fn>;
+  show: ReturnType<typeof vi.fn>;
+};
+
 function removeShellOutputDirectory(): void {
   fs.rmSync(getShellOutputDirectoryPath(), {
     force: true,
@@ -63,6 +74,17 @@ describe('shell output store startup purge', () => {
     const outputFilePath = getShellOutputFilePath('shell-abc12345');
 
     expect(outputFilePath.endsWith('/output-shell-abc12345.log')).toBe(true);
+  });
+
+  it('disposes the cached extension output channel when resetting test state', () => {
+    getExtensionOutputChannel();
+
+    resetExtensionOutputChannelForTest();
+
+    const createdOutputChannel = vscode.window.createOutputChannel.mock.results[0]
+      ?.value as MockOutputChannel | undefined;
+
+    expect(createdOutputChannel?.dispose).toHaveBeenCalledOnce();
   });
 
   it('recreates the output directory when a file blocks the temp path', () => {

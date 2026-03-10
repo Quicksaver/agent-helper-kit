@@ -98,8 +98,14 @@ function resolveCommandCwd(inputCwd?: string): string {
   try {
     stats = fs.statSync(resolvedCwd);
   }
-  catch {
-    throw new Error(`cwd does not exist or is inaccessible: ${resolvedCwd}`);
+  catch (error) {
+    const errorCode = error instanceof Error && 'code' in error && typeof error.code === 'string'
+      ? ` (${error.code})`
+      : '';
+
+    throw new Error(`cwd does not exist or is inaccessible: ${resolvedCwd}${errorCode}`, {
+      cause: error,
+    });
   }
 
   if (!stats.isDirectory()) {
@@ -109,8 +115,14 @@ function resolveCommandCwd(inputCwd?: string): string {
   try {
     fs.accessSync(resolvedCwd, fs.constants.R_OK | fs.constants.X_OK);
   }
-  catch {
-    throw new Error(`cwd does not exist or is inaccessible: ${resolvedCwd}`);
+  catch (error) {
+    const errorCode = error instanceof Error && 'code' in error && typeof error.code === 'string'
+      ? ` (${error.code})`
+      : '';
+
+    throw new Error(`cwd does not exist or is inaccessible: ${resolvedCwd}${errorCode}`, {
+      cause: error,
+    });
   }
 
   return resolvedCwd;

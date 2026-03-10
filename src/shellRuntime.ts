@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
+import { logWarn } from '@/logging';
 import {
   getFilteredOutput,
   normalizeShellOutput,
@@ -26,6 +27,7 @@ const READS_SINCE_COMPLETION_FOR_SYNC_RECORD = 1;
 export const SHELL_COMMAND_ID_PREFIX = 'shell-';
 const SHELL_ID_HEX_LENGTH = 8;
 const SHELL_ID_GENERATION_MAX_ATTEMPTS = 8;
+const MAX_MEMORY_TO_FILE_RETRY_ATTEMPTS = 3;
 
 interface CompletionInfo {
   exitCode: null | number;
@@ -51,6 +53,7 @@ interface BackgroundProcessState {
   exitCode: null | number;
   killedByUser: boolean;
   lastReadCursor: number;
+  memoryToFileRetryCount: number;
   memoryToFileTimer: NodeJS.Timeout | undefined;
   output: string;
   outputBytes: number;
@@ -190,6 +193,7 @@ export class ShellRuntime {
       exitCode: result.exitCode,
       killedByUser: false,
       lastReadCursor: 0,
+      memoryToFileRetryCount: 0,
       memoryToFileTimer: undefined,
       output: result.output,
       outputBytes,
@@ -357,6 +361,7 @@ export class ShellRuntime {
       exitCode: null,
       killedByUser: false,
       lastReadCursor: 0,
+      memoryToFileRetryCount: 0,
       memoryToFileTimer: undefined,
       output: '',
       outputBytes: 0,
@@ -409,9 +414,13 @@ export class ShellRuntime {
 
     if (state.outputInFile) {
       if (!appendShellOutput(id, chunk)) {
-        const persistedOutput = readShellOutputSync(id) ?? '';
+        const persistedOutput = readShellOutputSync(id);
 
-        state.output = `${persistedOutput}${chunk}`;
+        if (persistedOutput === undefined) {
+          logWarn(`Failed to recover persisted shell output for ${id}; falling back to latest chunk only.`);
+        }
+
+        state.output = `${persistedOutput ?? ''}${chunk}`;
         state.outputBytes = Buffer.byteLength(state.output, 'utf8');
         state.outputInFile = false;
         this.scheduleMemoryToFileSpill(id, state);
@@ -706,6 +715,10 @@ export class ShellRuntime {
   }
 
   private scheduleMemoryToFileSpill(id: string, state: BackgroundProcessState): void {
+    if (state.memoryToFileTimer) {
+      clearTimeout(state.memoryToFileTimer);
+    }
+
     const delay = this.options.memoryToFileDelayMs ?? DEFAULT_MEMORY_TO_FILE_DELAY_MS;
 
     state.memoryToFileTimer = setTimeout(() => {
@@ -752,12 +765,20 @@ export class ShellRuntime {
 
     if (!overwriteShellOutput(id, output)) {
       if (!state.completed) {
+        state.memoryToFileRetryCount += 1;
+
+        if (state.memoryToFileRetryCount >= MAX_MEMORY_TO_FILE_RETRY_ATTEMPTS) {
+          logWarn(`Stopped retrying shell output spill for ${id} after repeated write failures.`);
+          return;
+        }
+
         this.scheduleMemoryToFileSpill(id, state);
       }
 
       return;
     }
 
+    state.memoryToFileRetryCount = 0;
     state.output = '';
     state.outputBytes = 0;
     state.outputInFile = true;

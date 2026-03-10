@@ -192,6 +192,8 @@ describe('ShellCommandsPanelProvider polling', () => {
     const initialHtml = rawWebviewView.webview.html;
     postMessage.mockClear();
 
+    expect(initialHtml).toContain('data-command-id="shell-1234abcd"');
+
     detailsRef.current = createDetails({ output: 'first line\nsecond line\n' });
 
     await vi.advanceTimersByTimeAsync(1000);
@@ -206,6 +208,39 @@ describe('ShellCommandsPanelProvider polling', () => {
       type: 'replaceOutput',
     }));
     expect(firstMessage?.outputHtml).toEqual(expect.stringContaining('second line'));
+  });
+
+  it('escapes shell output and uses inline styles for non-palette ANSI colors', async () => {
+    const detailsRef = {
+      current: createDetails(),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      postMessage,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+    postMessage.mockClear();
+
+    detailsRef.current = createDetails({ output: '\u001B[38;2;1;2;3m<script>\u001B[0m\n' });
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const firstMessage = postMessage.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    const outputHtml = firstMessage?.outputHtml;
+
+    expect(outputHtml).toBeTypeOf('string');
+    expect(outputHtml).toContain('style="color: rgb(1, 2, 3)"');
+    expect(outputHtml).toContain('&lt;script&gt;');
+    expect(outputHtml).not.toContain('<script>');
   });
 
   it('renders command metadata in the main pane without relying on list item tooltips', async () => {

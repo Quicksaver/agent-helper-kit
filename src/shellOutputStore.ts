@@ -48,7 +48,7 @@ export function getShellOutputDirectoryPath(): string {
 
 function formatPathState(targetPath: string): string {
   try {
-    const stats = fs.statSync(targetPath);
+    const stats = fs.lstatSync(targetPath);
     let kind = 'other';
 
     if (stats.isDirectory()) {
@@ -84,6 +84,13 @@ function canRecoverOutputDirectory(error: unknown): boolean {
   return isNodeErrorWithCode(error, 'EEXIST') || isNodeErrorWithCode(error, 'ENOTDIR');
 }
 
+function isExpectedOutputDirectoryPath(directoryPath: string): boolean {
+  const resolvedDirectoryPath = path.resolve(directoryPath);
+
+  return path.basename(resolvedDirectoryPath) === OUTPUT_DIR_NAME
+    && path.resolve(path.dirname(resolvedDirectoryPath)) === path.resolve(os.tmpdir());
+}
+
 function ensureOutputDirectory(): string {
   const directoryPath = getOutputDirectoryPath();
 
@@ -94,9 +101,13 @@ function ensureOutputDirectory(): string {
   catch (error) {
     if (canRecoverOutputDirectory(error)) {
       try {
-        const stats = fs.statSync(directoryPath);
+        const stats = fs.lstatSync(directoryPath);
 
-        if (!stats.isDirectory()) {
+        if (stats.isDirectory()) {
+          return directoryPath;
+        }
+
+        if (isExpectedOutputDirectoryPath(directoryPath)) {
           fs.rmSync(directoryPath, { force: true, recursive: true });
           fs.mkdirSync(directoryPath, { recursive: true });
           return directoryPath;
