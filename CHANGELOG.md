@@ -14,10 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Reworked the Shell Runs details layout so selected-run metadata is shown inline in the panel instead of behind a hover tooltip, making command context easier to scan and copy.
+- Removed blank and whitespace-only lines from captured shell output after control-sequence stripping so `get_shell_output`, `run_in_sync_shell`, and the Shell Runs panel no longer surface spacer-only lines.
 
 ### Fixed
 
-- Removed blank and whitespace-only lines from captured shell output after control-sequence stripping so `get_shell_output`, `run_in_sync_shell`, and the Shell Runs panel no longer surface spacer-only lines.
 - Fixed a Shell Runs panel bug where commands whose output had already spilled to disk could still show metadata but an empty output pane when selected.
 - Fixed shell runs that could remain stuck in a running state after their shell process had already exited, which prevented `run_in_async_shell` and `run_in_sync_shell` from returning final output and exit status for some commands.
 - Tightened Shell Runs panel kill handling to report termination more accurately.
