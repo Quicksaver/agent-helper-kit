@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Added optional `cwd` input support to `run_in_async_shell` and `run_in_sync_shell`, with validation that rejects missing, inaccessible, or non-directory paths before launch.
+
 ### Fixed
 
 - Fixed shell runs that could remain stuck in a running state after their shell process had already exited, which prevented `run_in_async_shell` and `run_in_sync_shell` from returning final output and exit status for some commands.
