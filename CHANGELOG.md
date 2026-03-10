@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-03-10
+
 ### Added
 
 - Added a dedicated `Agent Helper Kit` output channel so extension diagnostics no longer disappear into the generic Extension Host log.
