@@ -6,6 +6,7 @@ import {
 } from 'vitest';
 
 import { activate } from '@/extension';
+import { resetExtensionOutputChannelForTest } from '@/logging';
 import { reviewCommentToChat } from '@/reviewComments';
 import { SHELL_TOOL_NAMES } from '@/shellToolContracts';
 
@@ -123,6 +124,7 @@ function createMockContext() {
 describe('Extension', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetExtensionOutputChannelForTest();
   });
 
   it('should register the reviewCommentToChat command on activation', () => {
@@ -134,6 +136,7 @@ describe('Extension', () => {
       'agent-helper-kit.reviewCommentToChat',
       reviewCommentToChat,
     );
+    expect(vscode.window.createOutputChannel).toHaveBeenCalledWith('Agent Helper Kit');
   });
 
   it('should register the chat participant on activation', () => {

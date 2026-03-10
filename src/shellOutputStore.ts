@@ -2,12 +2,16 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
+import { logError } from './logging.js';
+
 const OUTPUT_DIR_NAME = 'agent-helper-kit-shell-output';
 const OUTPUT_FILE_PREFIX = 'output-';
 const OUTPUT_FILE_SUFFIX = '.log';
 const METADATA_FILE_PREFIX = 'metadata-';
 const METADATA_FILE_SUFFIX = '.json';
 const DEFAULT_STARTUP_PURGE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+type NodeErrorWithCode = NodeJS.ErrnoException;
 
 export interface ShellCommandMetadata {
   command: string;
@@ -29,12 +33,76 @@ export function getShellOutputDirectoryPath(): string {
   return getOutputDirectoryPath();
 }
 
+function formatPathState(targetPath: string): string {
+  try {
+    const stats = fs.statSync(targetPath);
+    let kind = 'other';
+
+    if (stats.isDirectory()) {
+      kind = 'directory';
+    }
+    else if (stats.isFile()) {
+      kind = 'file';
+    }
+    else if (stats.isSymbolicLink()) {
+      kind = 'symlink';
+    }
+
+    return `${kind}, mode=${stats.mode.toString(8)}, size=${String(stats.size)}`;
+  }
+  catch (error) {
+    const nodeError = error as NodeErrorWithCode;
+
+    if (nodeError.code === 'ENOENT') {
+      return 'missing';
+    }
+
+    return `unavailable (${nodeError.code ?? 'unknown'})`;
+  }
+}
+
+function formatFileSystemError(error: unknown, targetPath: string): string {
+  const nodeError = error as NodeErrorWithCode;
+  const message = error instanceof Error ? error.message : String(error);
+  const parentPath = path.dirname(targetPath);
+  const errorCode = typeof nodeError.code === 'string' ? ` code=${nodeError.code}` : '';
+
+  return `${message}; target=${targetPath}; targetState=${formatPathState(targetPath)}; parent=${parentPath}; parentState=${formatPathState(parentPath)}${errorCode}`;
+}
+
+function canRecoverOutputDirectory(error: unknown): boolean {
+  const nodeError = error as NodeErrorWithCode;
+
+  return nodeError.code === 'EEXIST' || nodeError.code === 'ENOTDIR';
+}
+
 function ensureOutputDirectory(): string {
   const directoryPath = getOutputDirectoryPath();
 
-  fs.mkdirSync(directoryPath, { recursive: true });
+  try {
+    fs.mkdirSync(directoryPath, { recursive: true });
+    return directoryPath;
+  }
+  catch (error) {
+    if (canRecoverOutputDirectory(error)) {
+      try {
+        const stats = fs.statSync(directoryPath);
 
-  return directoryPath;
+        if (!stats.isDirectory()) {
+          fs.rmSync(directoryPath, { force: true, recursive: true });
+          fs.mkdirSync(directoryPath, { recursive: true });
+          return directoryPath;
+        }
+      }
+      catch {
+        // Fall through to structured diagnostics below.
+      }
+    }
+
+    const details = formatFileSystemError(error, directoryPath);
+    logError(`Failed to ensure shell output directory: ${details}`);
+    throw error;
+  }
 }
 
 function sanitizeShellId(shellId: string): string {
@@ -77,8 +145,8 @@ export function initializeShellOutputStore(startupPurgeMaxAgeMs = DEFAULT_STARTU
     fileNames = fs.readdirSync(directoryPath);
   }
   catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    globalThis.process.stderr.write(`[agent-helper-kit] Failed to read shell output directory ${directoryPath}: ${message}\n`);
+    const details = formatFileSystemError(error, directoryPath);
+    logError(`Failed to read shell output directory: ${details}`);
     return;
   }
 
@@ -96,8 +164,8 @@ export function initializeShellOutputStore(startupPurgeMaxAgeMs = DEFAULT_STARTU
       fileStats = fs.statSync(filePath);
     }
     catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      globalThis.process.stderr.write(`[agent-helper-kit] Failed to stat shell output file ${filePath}: ${message}\n`);
+      const details = formatFileSystemError(error, filePath);
+      logError(`Failed to stat shell output file: ${details}`);
       continue;
     }
 
@@ -127,8 +195,8 @@ export function initializeShellOutputStore(startupPurgeMaxAgeMs = DEFAULT_STARTU
       fs.rmSync(getShellMetadataFilePath(shellId), { force: true });
     }
     catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      globalThis.process.stderr.write(`[agent-helper-kit] Failed to purge stale shell output artifacts for ${shellId}: ${message}\n`);
+      const details = formatFileSystemError(error, directoryPath);
+      logError(`Failed to purge stale shell output artifacts for ${shellId}: ${details}`);
     }
   }
 }
@@ -154,23 +222,49 @@ export function createShellOutputFile(shellId: string): void {
   fs.writeFileSync(getShellOutputFilePath(shellId), '', { encoding: 'utf8' });
 }
 
-export function overwriteShellOutput(shellId: string, output: string): void {
+export function overwriteShellOutput(shellId: string, output: string): boolean {
   try {
     fs.writeFileSync(getShellOutputFilePath(shellId), output, { encoding: 'utf8' });
+    return true;
   }
   catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    globalThis.process.stderr.write(`[agent-helper-kit] Failed to overwrite shell output for ${shellId}: ${message}\n`);
+    const details = formatFileSystemError(error, getShellOutputFilePath(shellId));
+    logError(`Failed to overwrite shell output for ${shellId}: ${details}; bytes=${String(Buffer.byteLength(output, 'utf8'))}`);
+    return false;
   }
 }
 
-export function appendShellOutput(shellId: string, chunk: string): void {
+export function appendShellOutput(shellId: string, chunk: string): boolean {
   try {
     fs.appendFileSync(getShellOutputFilePath(shellId), chunk, { encoding: 'utf8' });
+    return true;
   }
   catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    globalThis.process.stderr.write(`[agent-helper-kit] Failed to append shell output for ${shellId}: ${message}\n`);
+    const details = formatFileSystemError(error, getShellOutputFilePath(shellId));
+    logError(`Failed to append shell output for ${shellId}: ${details}; bytes=${String(Buffer.byteLength(chunk, 'utf8'))}`);
+    return false;
+  }
+}
+
+export function readShellOutputSync(shellId: string): string | undefined {
+  const filePath = getShellOutputFilePath(shellId);
+
+  try {
+    return fs.readFileSync(filePath, { encoding: 'utf8' });
+  }
+  catch (error) {
+    if (
+      typeof error === 'object'
+      && error !== null
+      && 'code' in error
+      && error.code === 'ENOENT'
+    ) {
+      return undefined;
+    }
+
+    const details = formatFileSystemError(error, filePath);
+    logError(`Failed to read shell output for ${shellId}: ${details}`);
+    return undefined;
   }
 }
 
@@ -252,8 +346,8 @@ export function writeShellCommandMetadata(metadata: ShellCommandMetadata): void 
     );
   }
   catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    globalThis.process.stderr.write(`[agent-helper-kit] Failed to write shell metadata for ${metadata.id}: ${message}\n`);
+    const details = formatFileSystemError(error, getShellMetadataFilePath(metadata.id));
+    logError(`Failed to write shell metadata for ${metadata.id}: ${details}`);
   }
 }
 

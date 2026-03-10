@@ -3,32 +3,75 @@ import * as path from 'node:path';
 
 import {
   afterEach,
+  beforeEach,
   describe,
   expect,
   it,
+  vi,
 } from 'vitest';
 
+import { resetExtensionOutputChannelForTest } from '@/logging';
 import {
   createShellOutputFile,
   getShellOutputDirectoryPath,
   getShellOutputFilePath,
   initializeShellOutputStore,
+  overwriteShellOutput,
   readShellCommandMetadata,
   writeShellCommandMetadata,
 } from '@/shellOutputStore';
 
+const vscode = vi.hoisted(() => ({
+  window: {
+    createOutputChannel: vi.fn(() => ({
+      append: vi.fn(),
+      appendLine: vi.fn(),
+      clear: vi.fn(),
+      dispose: vi.fn(),
+      show: vi.fn(),
+    })),
+  },
+}));
+
+vi.mock('vscode', () => vscode);
+
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 const SEVEN_HOURS_MS = 7 * 60 * 60 * 1000;
 
+function removeShellOutputDirectory(): void {
+  fs.rmSync(getShellOutputDirectoryPath(), {
+    force: true,
+    maxRetries: 3,
+    recursive: true,
+    retryDelay: 10,
+  });
+}
+
 describe('shell output store startup purge', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetExtensionOutputChannelForTest();
+  });
+
   afterEach(() => {
-    fs.rmSync(getShellOutputDirectoryPath(), { force: true, recursive: true });
+    removeShellOutputDirectory();
   });
 
   it('stores output files without duplicating the shell id prefix', () => {
     const outputFilePath = getShellOutputFilePath('shell-abc12345');
 
     expect(outputFilePath.endsWith('/output-shell-abc12345.log')).toBe(true);
+  });
+
+  it('recreates the output directory when a file blocks the temp path', () => {
+    const outputDirectoryPath = getShellOutputDirectoryPath();
+
+    removeShellOutputDirectory();
+    fs.writeFileSync(outputDirectoryPath, 'blocked', { encoding: 'utf8' });
+
+    expect(overwriteShellOutput('shell-abc12345', 'saved output\n')).toBe(true);
+    expect(fs.statSync(outputDirectoryPath).isDirectory()).toBe(true);
+    expect(fs.readFileSync(getShellOutputFilePath('shell-abc12345'), 'utf8')).toBe('saved output\n');
   });
 
   it('purges persisted shell output files older than configured max age', () => {

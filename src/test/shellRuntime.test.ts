@@ -2,23 +2,53 @@ import * as fs from 'node:fs';
 
 import {
   afterEach,
+  beforeEach,
   describe,
   expect,
   it,
   vi,
 } from 'vitest';
 
+import { resetExtensionOutputChannelForTest } from '@/logging';
 import {
   getShellOutputDirectoryPath,
   readShellCommandMetadata,
 } from '@/shellOutputStore';
 import { ShellRuntime } from '@/shellRuntime';
 
+const vscode = vi.hoisted(() => ({
+  window: {
+    createOutputChannel: vi.fn(() => ({
+      append: vi.fn(),
+      appendLine: vi.fn(),
+      clear: vi.fn(),
+      dispose: vi.fn(),
+      show: vi.fn(),
+    })),
+  },
+}));
+
+vi.mock('vscode', () => vscode);
+
 const SHELL_ID_REGEX = /^shell-[a-f0-9]{8}$/;
 
+function removeShellOutputDirectory(): void {
+  fs.rmSync(getShellOutputDirectoryPath(), {
+    force: true,
+    maxRetries: 3,
+    recursive: true,
+    retryDelay: 10,
+  });
+}
+
 afterEach(() => {
-  fs.rmSync(getShellOutputDirectoryPath(), { force: true, recursive: true });
+  removeShellOutputDirectory();
   vi.restoreAllMocks();
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  resetExtensionOutputChannelForTest();
 });
 
 describe('ShellRuntime session command list', () => {
@@ -136,5 +166,30 @@ describe('ShellRuntime shell id generation', () => {
 
     expect(secondId).toBe('shell-12345678');
     expect(randomUuidSpy).toHaveBeenCalledOnce();
+  });
+
+  it('keeps output readable when spilling to disk fails', async () => {
+    const runtime = new ShellRuntime({ outputLimitBytes: 1 });
+    const outputDirectoryPath = getShellOutputDirectoryPath();
+
+    fs.rmSync(outputDirectoryPath, { force: true, recursive: true });
+    fs.writeFileSync(outputDirectoryPath, 'blocked', { encoding: 'utf8' });
+
+    try {
+      const id = runtime.createCompletedCommandRecord('echo spill failure', {
+        exitCode: 0,
+        output: 'spill survives\n',
+        shell: '/bin/bash',
+        terminationSignal: null,
+        timedOut: false,
+      });
+
+      await expect(runtime.getCommandDetails(id)).resolves.toMatchObject({
+        output: 'spill survives\n',
+      });
+    }
+    finally {
+      fs.rmSync(outputDirectoryPath, { force: true, recursive: true });
+    }
   });
 });

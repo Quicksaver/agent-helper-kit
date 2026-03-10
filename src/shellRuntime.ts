@@ -13,6 +13,7 @@ import {
   initializeShellOutputStore,
   overwriteShellOutput,
   readShellOutput,
+  readShellOutputSync,
   removeShellCommandMetadata,
   removeShellOutputFile,
   writeShellCommandMetadata,
@@ -407,7 +408,15 @@ export class ShellRuntime {
     this.bumpPendingCompletion(id, state);
 
     if (state.outputInFile) {
-      appendShellOutput(id, chunk);
+      if (!appendShellOutput(id, chunk)) {
+        const persistedOutput = readShellOutputSync(id) ?? '';
+
+        state.output = `${persistedOutput}${chunk}`;
+        state.outputBytes = Buffer.byteLength(state.output, 'utf8');
+        state.outputInFile = false;
+        this.scheduleMemoryToFileSpill(id, state);
+      }
+
       return;
     }
 
@@ -741,7 +750,14 @@ export class ShellRuntime {
       state.memoryToFileTimer = undefined;
     }
 
-    overwriteShellOutput(id, output);
+    if (!overwriteShellOutput(id, output)) {
+      if (!state.completed) {
+        this.scheduleMemoryToFileSpill(id, state);
+      }
+
+      return;
+    }
+
     state.output = '';
     state.outputBytes = 0;
     state.outputInFile = true;

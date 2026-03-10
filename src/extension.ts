@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 
+import { getExtensionOutputChannel } from '@/logging';
 import { EXTENSION_CONFIG_SECTION } from '@/reviewCommentConfig';
 import { registerReviewParticipant, reviewCommentToChat } from '@/reviewComments';
 import { registerShellTools } from '@/shellTools';
@@ -26,6 +27,9 @@ function disposeAndRemoveSubscription(
 export function activate(context: vscode.ExtensionContext): void {
   let bringToChatRegistration: undefined | vscode.Disposable;
   let shellToolsRegistration: undefined | vscode.Disposable;
+  const outputChannel = getExtensionOutputChannel();
+
+  context.subscriptions.push(outputChannel);
 
   const applyFeatureConfiguration = (): void => {
     const isBringToChatEnabled = isFeatureEnabled(BRING_TO_CHAT_ENABLED_KEY);
