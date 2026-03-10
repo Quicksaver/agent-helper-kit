@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fixed shell runs that could remain stuck in a running state after their shell process had already exited, which prevented `run_in_async_shell` and `run_in_sync_shell` from returning final output and exit status for some commands.
 - Tightened Shell Runs panel kill handling to report termination more accurately.
 - Fixed Shell Runs panel polling to update only the output block when new output arrives.
+- Fixed Shell Runs color capture for pipe-based commands by defaulting shell executions to color-capable environment variables while still respecting explicit `NO_COLOR` settings.
 
 ## [1.1.0] - 2026-03-09
 

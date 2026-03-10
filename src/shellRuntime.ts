@@ -420,12 +420,37 @@ export class ShellRuntime {
 
   private buildShellEnv(): NodeJS.ProcessEnv {
     const source = this.options.shellEnv ?? globalThis.process.env;
-
-    return {
-      COLORTERM: source.COLORTERM ?? 'truecolor',
-      TERM: source.TERM ?? 'xterm-256color',
+    const environment: NodeJS.ProcessEnv = {
       ...source,
     };
+
+    if (typeof environment.TERM !== 'string' || environment.TERM.length === 0) {
+      environment.TERM = 'xterm-256color';
+    }
+
+    if (typeof environment.COLORTERM !== 'string' || environment.COLORTERM.length === 0) {
+      environment.COLORTERM = 'truecolor';
+    }
+
+    if (typeof environment.CLICOLOR !== 'string' || environment.CLICOLOR.length === 0) {
+      environment.CLICOLOR = '1';
+    }
+
+    if (typeof environment.NO_COLOR === 'string' && environment.NO_COLOR.length > 0) {
+      delete environment.CLICOLOR_FORCE;
+      delete environment.FORCE_COLOR;
+    }
+    else {
+      if (typeof environment.CLICOLOR_FORCE !== 'string' || environment.CLICOLOR_FORCE.length === 0) {
+        environment.CLICOLOR_FORCE = '1';
+      }
+
+      if (typeof environment.FORCE_COLOR !== 'string' || environment.FORCE_COLOR.length === 0) {
+        environment.FORCE_COLOR = '3';
+      }
+    }
+
+    return environment;
   }
 
   private bumpPendingCompletion(id: string, state: BackgroundProcessState): void {

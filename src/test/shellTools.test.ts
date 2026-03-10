@@ -284,6 +284,41 @@ function setupShellTools(fakeProcess: FakeProcess = createFakeProcess()): {
   };
 }
 
+function getLastSpawnInvocation(): {
+  args: string[];
+  command: string;
+  options: {
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+  };
+} {
+  const spawnCalls = spawn.mock.calls as unknown[][];
+  const invocation = spawnCalls.at(-1);
+
+  if (!invocation) {
+    throw new Error('spawn was not called');
+  }
+
+  const [
+    command,
+    args,
+    options,
+  ] = invocation as [
+    string,
+    string[],
+    {
+      cwd?: string;
+      env?: NodeJS.ProcessEnv;
+    },
+  ];
+
+  return {
+    args,
+    command,
+    options,
+  };
+}
+
 describe('shell tools', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1058,6 +1093,124 @@ describe('shell tools', () => {
 
     fakeProcess.emit('close', 0, null);
     await runPromise;
+  });
+
+  it('defaults spawned commands to color-capable shell env vars', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+
+    const previousForceColor = process.env.FORCE_COLOR;
+    const previousCliColorForce = process.env.CLICOLOR_FORCE;
+
+    delete process.env.FORCE_COLOR;
+    delete process.env.CLICOLOR_FORCE;
+
+    try {
+      registerShellTools();
+
+      const runTool = getRegisteredTool('run_in_sync_shell');
+
+      const runPromise = runTool.invoke({
+        input: {
+          command: 'printf hello',
+          explanation: 'verify default color env vars',
+          goal: 'color-capable shell environment',
+          timeout: 0,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      const invocation = getLastSpawnInvocation();
+      expect(invocation.command).toBe('/bin/zsh');
+      expect(invocation.args).toEqual([ ...expectedShellArgs('/bin/zsh'), 'printf hello' ]);
+      expect(invocation.options.env?.CLICOLOR).toBe('1');
+      expect(invocation.options.env?.CLICOLOR_FORCE).toBe('1');
+      expect(invocation.options.env?.COLORTERM).toBe('truecolor');
+      expect(invocation.options.env?.FORCE_COLOR).toBe('3');
+      expect(invocation.options.env?.TERM).toBe('xterm-256color');
+
+      fakeProcess.emit('close', 0, null);
+      await runPromise;
+    }
+    finally {
+      if (previousForceColor === undefined) {
+        delete process.env.FORCE_COLOR;
+      }
+      else {
+        process.env.FORCE_COLOR = previousForceColor;
+      }
+
+      if (previousCliColorForce === undefined) {
+        delete process.env.CLICOLOR_FORCE;
+      }
+      else {
+        process.env.CLICOLOR_FORCE = previousCliColorForce;
+      }
+    }
+  });
+
+  it('does not inject forced-color env vars when NO_COLOR is set', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    getConfiguration.mockReturnValue(createConfiguration());
+
+    const previousNoColor = process.env.NO_COLOR;
+    const previousForceColor = process.env.FORCE_COLOR;
+    const previousCliColorForce = process.env.CLICOLOR_FORCE;
+    process.env.NO_COLOR = '1';
+    delete process.env.FORCE_COLOR;
+    delete process.env.CLICOLOR_FORCE;
+
+    try {
+      registerShellTools();
+
+      const runTool = getRegisteredTool('run_in_sync_shell');
+
+      const runPromise = runTool.invoke({
+        input: {
+          command: 'printf hello',
+          explanation: 'verify NO_COLOR is respected',
+          goal: 'no forced color when disabled',
+          timeout: 0,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      const invocation = getLastSpawnInvocation();
+      expect(invocation.command).toBe('/bin/zsh');
+      expect(invocation.args).toEqual([ ...expectedShellArgs('/bin/zsh'), 'printf hello' ]);
+      expect(invocation.options.env?.CLICOLOR).toBe('1');
+      expect(invocation.options.env?.COLORTERM).toBe('truecolor');
+      expect(invocation.options.env?.NO_COLOR).toBe('1');
+      expect(invocation.options.env?.TERM).toBe('xterm-256color');
+      expect(invocation.options.env?.CLICOLOR_FORCE).toBeUndefined();
+      expect(invocation.options.env?.FORCE_COLOR).toBeUndefined();
+
+      fakeProcess.emit('close', 0, null);
+      await runPromise;
+    }
+    finally {
+      if (previousNoColor === undefined) {
+        delete process.env.NO_COLOR;
+      }
+      else {
+        process.env.NO_COLOR = previousNoColor;
+      }
+
+      if (previousForceColor === undefined) {
+        delete process.env.FORCE_COLOR;
+      }
+      else {
+        process.env.FORCE_COLOR = previousForceColor;
+      }
+
+      if (previousCliColorForce === undefined) {
+        delete process.env.CLICOLOR_FORCE;
+      }
+      else {
+        process.env.CLICOLOR_FORCE = previousCliColorForce;
+      }
+    }
   });
 
   it('rejects missing cwd before spawning an async command', async () => {
