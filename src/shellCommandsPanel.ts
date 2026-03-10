@@ -593,7 +593,7 @@ function resolveCommandId(target: unknown): string | undefined {
 
 function buildDetailsMarkup(details: ShellCommandDetails | undefined): string {
   if (!details) {
-    return '<div class="details-empty"></div><div id="metadata-block" class="metadata-block"></div><div id="output-block" class="output-block"></div>';
+    return '<div id="metadata-block" class="metadata-block"></div><div class="details-empty"></div><div id="output-block" class="output-block"></div>';
   }
 
   const publicCommandId = toPublicCommandId(details.id);
@@ -627,6 +627,7 @@ function buildDetailsMarkup(details: ShellCommandDetails | undefined): string {
   ].join('');
 
   return `
+    <div id="metadata-block" class="metadata-block">${metadataFields}</div>
     <div class="command-header">
       <pre class="command-block">${escapeHtml(details.command)}</pre>
       <div class="command-actions">
@@ -640,7 +641,6 @@ function buildDetailsMarkup(details: ShellCommandDetails | undefined): string {
         >⧉</button>
       </div>
     </div>
-    <div id="metadata-block" class="metadata-block">${metadataFields}</div>
     <div
       id="output-block"
       class="output-block"
@@ -850,6 +850,7 @@ function getWebviewHtml(
         align-items: stretch;
         max-height: 40%;
         border-bottom: 1px solid var(--vscode-editorWidget-border);
+        background: var(--vscode-editor-background);
       }
       .command-block {
         margin: 0;
@@ -861,7 +862,7 @@ function getWebviewHtml(
       }
       .command-actions {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         gap: 4px;
         padding: 6px;
         border-left: 1px solid var(--vscode-editorWidget-border);
@@ -873,7 +874,9 @@ function getWebviewHtml(
         gap: 0;
         padding: 4px 6px;
         border-bottom: 1px solid var(--vscode-editorWidget-border);
-        background: var(--vscode-editor-background);
+        background:
+          linear-gradient(rgba(127, 127, 127, 0.12), rgba(127, 127, 127, 0.12)),
+          var(--vscode-editor-background);
       }
       .metadata-item {
         min-width: 0;
