@@ -53,6 +53,7 @@ function createCommand(overrides: Partial<ShellCommandListItem> = {}): ShellComm
   return {
     command: 'printf test',
     completedAt: null,
+    cwd: '/workspace/project',
     exitCode: null,
     id: 'shell-1234abcd',
     isRunning: true,
@@ -93,6 +94,7 @@ function createRuntime(detailsRef: { current: ShellCommandDetails }): ShellRunti
 }
 
 function createWebviewView(): {
+  getMessageHandler: () => MessageHandler | undefined;
   onDidReceiveMessage: ReturnType<typeof vi.fn>;
   postMessage: ReturnType<typeof vi.fn>;
   webviewView: {
@@ -105,13 +107,15 @@ function createWebviewView(): {
     };
   };
 } {
+  let messageHandler: MessageHandler | undefined;
   const onDidReceiveMessage = vi.fn((listener: MessageHandler) => {
-    void listener;
+    messageHandler = listener;
     return { dispose: vi.fn() };
   });
   const postMessage = vi.fn(async () => true);
 
   return {
+    getMessageHandler: () => messageHandler,
     onDidReceiveMessage,
     postMessage,
     webviewView: {
@@ -197,5 +201,115 @@ describe('ShellCommandsPanelProvider polling', () => {
       type: 'replaceOutput',
     }));
     expect(firstMessage?.outputHtml).toEqual(expect.stringContaining('second line'));
+  });
+
+  it('renders command metadata in the main pane without relying on list item tooltips', async () => {
+    const detailsRef = {
+      current: createDetails({
+        completedAt: '2026-03-10T00:01:00.000Z',
+        cwd: '/workspace/project',
+        exitCode: 0,
+        isRunning: false,
+        signal: 'SIGTERM',
+      }),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    expect(rawWebviewView.webview.html).toContain('id="metadata-block"');
+    expect(rawWebviewView.webview.html).toContain('>Exit Code<');
+    expect(rawWebviewView.webview.html).toContain('>SIGTERM (0)<');
+    expect(rawWebviewView.webview.html).toContain('>/workspace/project<');
+    expect(rawWebviewView.webview.html).toContain('>1234abcd<');
+    expect(rawWebviewView.webview.html).toContain('data-copy-field="cwd"');
+    expect(rawWebviewView.webview.html).toContain('data-copy-field="id"');
+    expect(rawWebviewView.webview.html).toContain('grid-template-columns: repeat(3, 1fr);');
+    expect(rawWebviewView.webview.html).toContain('align-items: center;');
+    expect(rawWebviewView.webview.html).toContain('padding: 4px 6px;');
+    expect(rawWebviewView.webview.html).toContain('background: var(--vscode-editor-background);');
+    expect(rawWebviewView.webview.html).toContain('.metadata-value-truncate-start');
+    expect(rawWebviewView.webview.html).toContain('.metadata-item-error .metadata-value');
+    expect(rawWebviewView.webview.html).not.toContain('>Termination Signal<');
+    expect(rawWebviewView.webview.html).not.toContain('title="Id:');
+  });
+
+  it('shows running state in completed and exit code metadata while a command is in progress', async () => {
+    const detailsRef = {
+      current: createDetails({
+        completedAt: null,
+        exitCode: null,
+        isRunning: true,
+        signal: null,
+      }),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    expect(rawWebviewView.webview.html).toContain('>--<');
+    expect(rawWebviewView.webview.html.match(/>--</g)?.length).toBe(2);
+    expect(rawWebviewView.webview.html).not.toContain('>Running...<');
+    expect(rawWebviewView.webview.html).toContain('.metadata-item-running .metadata-value');
+  });
+
+  it('copies the public id and cwd from metadata actions', async () => {
+    const detailsRef = {
+      current: createDetails({
+        cwd: '/workspace/project',
+      }),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    const messageHandler = getMessageHandler();
+
+    expect(messageHandler).toBeTypeOf('function');
+
+    await messageHandler?.({
+      commandId: 'shell-1234abcd',
+      copyField: 'id',
+      type: 'copy',
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(vscode.env.clipboard.writeText).toHaveBeenLastCalledWith('1234abcd');
+
+    await messageHandler?.({
+      commandId: 'shell-1234abcd',
+      copyField: 'cwd',
+      type: 'copy',
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(vscode.env.clipboard.writeText).toHaveBeenLastCalledWith('/workspace/project');
   });
 });

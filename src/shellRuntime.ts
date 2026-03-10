@@ -46,6 +46,7 @@ interface BackgroundProcessState {
   completedAt: null | string;
   completion: Promise<void>;
   completionTimer: NodeJS.Timeout | undefined;
+  cwd: string;
   exitCode: null | number;
   killedByUser: boolean;
   lastReadCursor: number;
@@ -64,6 +65,7 @@ interface BackgroundProcessState {
 export interface ShellCommandListItem {
   command: string;
   completedAt: null | string;
+  cwd: string;
   exitCode: null | number;
   id: string;
   isRunning: boolean;
@@ -168,11 +170,14 @@ export class ShellRuntime {
     return removedCount;
   }
 
-  createCompletedCommandRecord(command: string, result: RunCommandResult, shell?: string): string {
+  createCompletedCommandRecord(command: string, result: RunCommandResult, shell?: string, cwd?: string): string {
     const id = this.createUniqueShellId();
     const startedAt = new Date().toISOString();
     const completedAt = new Date().toISOString();
     const outputBytes = Buffer.byteLength(result.output, 'utf8');
+    const commandCwd = typeof cwd === 'string' && cwd.trim().length > 0
+      ? cwd
+      : os.homedir();
 
     const state: BackgroundProcessState = {
       command,
@@ -180,6 +185,7 @@ export class ShellRuntime {
       completedAt,
       completion: Promise.resolve(),
       completionTimer: undefined,
+      cwd: commandCwd,
       exitCode: result.exitCode,
       killedByUser: false,
       lastReadCursor: 0,
@@ -346,6 +352,7 @@ export class ShellRuntime {
       completedAt: null,
       completion: Promise.resolve(),
       completionTimer: undefined,
+      cwd: commandCwd,
       exitCode: null,
       killedByUser: false,
       lastReadCursor: 0,
@@ -625,6 +632,7 @@ export class ShellRuntime {
     writeShellCommandMetadata({
       command: state.command,
       completedAt: state.completedAt,
+      cwd: state.cwd,
       exitCode: state.exitCode,
       id,
       killedByUser: state.killedByUser,
@@ -743,6 +751,7 @@ export class ShellRuntime {
     return {
       command: state.command,
       completedAt: state.completedAt,
+      cwd: state.cwd,
       exitCode: state.exitCode,
       id,
       isRunning: !state.completed,

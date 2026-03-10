@@ -12,6 +12,7 @@ const DEFAULT_STARTUP_PURGE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 export interface ShellCommandMetadata {
   command: string;
   completedAt: null | string;
+  cwd: string;
   exitCode: null | number;
   id: string;
   killedByUser: boolean;
@@ -211,6 +212,7 @@ export function readShellCommandMetadata(shellId: string): ShellCommandMetadata 
     if (
       typeof candidate.id !== 'string'
       || typeof candidate.command !== 'string'
+      || (candidate.cwd !== undefined && typeof candidate.cwd !== 'string')
       || typeof candidate.startedAt !== 'string'
       || (candidate.completedAt !== null && typeof candidate.completedAt !== 'string')
       || (candidate.exitCode !== null && typeof candidate.exitCode !== 'number')
@@ -223,6 +225,7 @@ export function readShellCommandMetadata(shellId: string): ShellCommandMetadata 
     return {
       command: candidate.command,
       completedAt: candidate.completedAt,
+      cwd: typeof candidate.cwd === 'string' ? candidate.cwd : os.homedir(),
       exitCode: candidate.exitCode,
       id: candidate.id,
       killedByUser: candidate.killedByUser,

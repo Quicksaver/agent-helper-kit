@@ -41,6 +41,7 @@ describe('shell output store startup purge', () => {
     writeShellCommandMetadata({
       command: 'echo old',
       completedAt: oldDate.toISOString(),
+      cwd: '/tmp',
       exitCode: 0,
       id: oldShellId,
       killedByUser: false,
@@ -51,6 +52,7 @@ describe('shell output store startup purge', () => {
     writeShellCommandMetadata({
       command: 'echo fresh',
       completedAt: null,
+      cwd: '/tmp',
       exitCode: null,
       id: freshShellId,
       killedByUser: false,

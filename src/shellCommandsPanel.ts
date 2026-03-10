@@ -7,6 +7,7 @@ import {
   type ShellCommandDetails,
   type ShellCommandListItem,
   type ShellRuntime,
+  toPublicCommandId,
 } from '@/shellRuntime';
 
 const SHELL_COMMANDS_VIEW_ID = 'agent-helper-kit.shellCommandsView';
@@ -35,6 +36,8 @@ const ANSI_BRIGHT_COLORS = [
   '#ffffff',
 ];
 
+type CopyField = 'command' | 'cwd' | 'id';
+
 type ShellCommandTreeItem = {
   commandRun: {
     id: string;
@@ -43,6 +46,7 @@ type ShellCommandTreeItem = {
 
 type WebviewMessage = {
   commandId?: string;
+  copyField?: CopyField;
   type: 'clear' | 'copy' | 'delete' | 'kill' | 'select';
 };
 
@@ -144,23 +148,76 @@ function getCommandStatusIcon(command: ShellCommandListItem): string {
   return '<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M8 1C4.14 1 1 4.14 1 8C1 11.86 4.14 15 8 15C11.86 15 15 11.86 15 8C15 4.14 11.86 1 8 1ZM8 14C4.691 14 2 11.309 2 8C2 4.691 4.691 2 8 2C11.309 2 14 4.691 14 8C14 11.309 11.309 14 8 14ZM10.854 5.854L8.708 8L10.854 10.146C11.049 10.341 11.049 10.658 10.854 10.853C10.756 10.951 10.628 10.999 10.5 10.999C10.372 10.999 10.244 10.95 10.146 10.853L8 8.707L5.854 10.853C5.756 10.951 5.628 10.999 5.5 10.999C5.372 10.999 5.244 10.95 5.146 10.853C4.951 10.658 4.951 10.341 5.146 10.146L7.292 8L5.146 5.854C4.951 5.659 4.951 5.342 5.146 5.147C5.341 4.952 5.658 4.952 5.853 5.147L7.999 7.293L10.145 5.147C10.34 4.952 10.657 4.952 10.852 5.147C11.047 5.342 11.047 5.659 10.852 5.854H10.854Z"/></svg>';
 }
 
-function buildCommandTooltip(command: ShellCommandListItem): string {
-  const lines = [
-    `Id: ${command.id}`,
-    `Shell: ${command.shell}`,
-    `Started: ${formatTimestamp(command.startedAt)}`,
-  ];
+function buildMetadataFieldMarkup(
+  label: string,
+  value: string,
+  options?: {
+    commandId?: string;
+    copyField?: CopyField;
+    emphasized?: boolean;
+    statusClass?: string;
+    truncateFromStart?: boolean;
+  },
+): string {
+  const emphasizedClass = options?.emphasized === true ? ' metadata-item-emphasized' : '';
+  const statusClass = options?.statusClass ? ` ${options.statusClass}` : '';
+  const truncationClass = options?.truncateFromStart === true ? ' metadata-value-truncate-start' : '';
+  const copyButtonMarkup = options?.copyField && options.commandId
+    ? `
+        <button
+          class="icon-action metadata-copy"
+          data-action="copy"
+          data-copy-field="${options.copyField}"
+          data-id="${escapeHtml(options.commandId)}"
+          title="Copy ${escapeHtml(label.toLowerCase())}"
+          aria-label="Copy ${escapeHtml(label.toLowerCase())}"
+        >⧉</button>
+      `
+    : '';
 
-  if (!command.isRunning) {
-    lines.push(`Completed: ${formatTimestamp(command.completedAt)}`);
-    lines.push(`Exit Code: ${String(command.exitCode)}`);
+  return `
+    <div class="metadata-item${emphasizedClass}${statusClass}">
+      <span class="metadata-label">${escapeHtml(label)}</span>
+      <span class="metadata-value${truncationClass}">${escapeHtml(value)}</span>
+      ${copyButtonMarkup}
+    </div>
+  `;
+}
+
+function getMetadataStatusClass(details: ShellCommandDetails): string {
+  if (details.isRunning) {
+    return 'metadata-item-running';
   }
 
-  if (command.signal) {
-    lines.push(`Termination Signal: ${command.signal}`);
+  if (details.killedByUser || details.signal || details.exitCode !== 0) {
+    return 'metadata-item-error';
   }
 
-  return lines.join('\n');
+  return 'metadata-item-success';
+}
+
+function getExitCodeLabel(details: ShellCommandDetails): string {
+  if (details.signal && details.exitCode !== null) {
+    return `${details.signal} (${String(details.exitCode)})`;
+  }
+
+  if (details.signal) {
+    return details.signal;
+  }
+
+  if (details.exitCode === null) {
+    return '--';
+  }
+
+  return String(details.exitCode);
+}
+
+function getCompletedLabel(details: ShellCommandDetails): string {
+  if (details.isRunning) {
+    return '--';
+  }
+
+  return formatTimestamp(details.completedAt);
 }
 
 function getAnsiColorFromCode(code: number, isBackground: boolean): string | undefined {
@@ -530,8 +587,30 @@ function resolveCommandId(target: unknown): string | undefined {
 
 function buildDetailsMarkup(details: ShellCommandDetails | undefined): string {
   if (!details) {
-    return '<div class="details-empty"></div><div id="output-block" class="output-block"></div>';
+    return '<div class="details-empty"></div><div id="metadata-block" class="metadata-block"></div><div id="output-block" class="output-block"></div>';
   }
+
+  const publicCommandId = toPublicCommandId(details.id);
+  const metadataFields = [
+    buildMetadataFieldMarkup('Exit Code', getExitCodeLabel(details), {
+      emphasized: true,
+      statusClass: getMetadataStatusClass(details),
+    }),
+    buildMetadataFieldMarkup('Shell', details.shell, {
+      truncateFromStart: true,
+    }),
+    buildMetadataFieldMarkup('CWD', details.cwd, {
+      commandId: details.id,
+      copyField: 'cwd',
+      truncateFromStart: true,
+    }),
+    buildMetadataFieldMarkup('Started', formatTimestamp(details.startedAt)),
+    buildMetadataFieldMarkup('Completed', getCompletedLabel(details)),
+    buildMetadataFieldMarkup('ID', publicCommandId, {
+      commandId: details.id,
+      copyField: 'id',
+    }),
+  ].join('');
 
   return `
     <div class="command-header">
@@ -540,12 +619,14 @@ function buildDetailsMarkup(details: ShellCommandDetails | undefined): string {
         <button
           class="icon-action"
           data-action="copy"
+          data-copy-field="command"
           data-id="${escapeHtml(details.id)}"
           title="Copy command"
           aria-label="Copy command"
         >⧉</button>
       </div>
     </div>
+    <div id="metadata-block" class="metadata-block">${metadataFields}</div>
     <div
       id="output-block"
       class="output-block"
@@ -553,6 +634,18 @@ function buildDetailsMarkup(details: ShellCommandDetails | undefined): string {
       data-command-running="${details.isRunning ? 'true' : 'false'}"
     >${convertAnsiToHtml(details.output)}</div>
   `;
+}
+
+function getCopyValue(details: ShellCommandDetails, copyField: CopyField | undefined): string {
+  if (copyField === 'cwd') {
+    return details.cwd;
+  }
+
+  if (copyField === 'id') {
+    return toPublicCommandId(details.id);
+  }
+
+  return details.command;
 }
 
 function getWebviewHtml(
@@ -566,11 +659,11 @@ function getWebviewHtml(
   const commandItems = commands.map(command => {
     const commandPreview = getCommandListLabel(command.command);
     const shellLabel = getShellLabel(command.shell);
+    const publicCommandId = toPublicCommandId(command.id);
     const selectedClass = command.id === selectedCommandId ? 'selected' : '';
     const rowAction = command.isRunning ? 'kill' : 'delete';
     const rowActionIcon = command.isRunning ? '■' : '✕';
     const rowActionTitle = command.isRunning ? 'Kill' : 'Delete';
-    const tooltip = buildCommandTooltip(command);
 
     return `
       <div
@@ -578,9 +671,8 @@ function getWebviewHtml(
         data-action="select"
         data-id="${escapeHtml(command.id)}"
         data-filter-command="${escapeHtml(command.command.toLowerCase())}"
-        data-filter-id="${escapeHtml(command.id.toLowerCase())}"
+        data-filter-id="${escapeHtml(publicCommandId.toLowerCase())}"
         data-filter-shell="${escapeHtml(shellLabel)}"
-        title="${escapeHtml(tooltip)}"
         role="button"
         tabindex="0"
       >
@@ -759,6 +851,56 @@ function getWebviewHtml(
         gap: 4px;
         padding: 6px;
         border-left: 1px solid var(--vscode-editorWidget-border);
+      }
+      .metadata-block {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        align-items: center;
+        gap: 0;
+        padding: 4px 6px;
+        border-bottom: 1px solid var(--vscode-editorWidget-border);
+        background: var(--vscode-editor-background);
+      }
+      .metadata-item {
+        min-width: 0;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: end;
+        gap: 6px;
+        padding: 2px 0;
+      }
+      .metadata-item-emphasized {
+        font-weight: 600;
+      }
+      .metadata-item-running .metadata-value {
+        color: var(--vscode-terminal-ansiYellow);
+      }
+      .metadata-item-success .metadata-value {
+        color: var(--vscode-terminal-ansiGreen);
+      }
+      .metadata-item-error .metadata-value {
+        color: var(--vscode-terminal-ansiRed);
+      }
+      .metadata-label {
+        color: var(--vscode-descriptionForeground);
+        font-size: 10px;
+        white-space: nowrap;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .metadata-value {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        user-select: text;
+      }
+      .metadata-value-truncate-start {
+        direction: rtl;
+        text-align: left;
+      }
+      .metadata-copy {
+        padding-right: 0;
       }
       .output-block {
         padding: 8px;
@@ -1056,9 +1198,13 @@ function getWebviewHtml(
         }
 
         const commandId = actionable.getAttribute('data-id') ?? undefined;
+        const copyField = actionable.getAttribute('data-copy-field');
 
         vscodeApi.postMessage({
           commandId,
+          copyField: copyField === 'command' || copyField === 'cwd' || copyField === 'id'
+            ? copyField
+            : undefined,
           type: action,
         });
       });
@@ -1241,7 +1387,7 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
         return;
       }
 
-      await vscode.env.clipboard.writeText(details.command);
+      await vscode.env.clipboard.writeText(getCopyValue(details, message.copyField));
       return;
     }
 
