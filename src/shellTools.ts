@@ -107,7 +107,7 @@ function resolveCommandCwd(inputCwd?: string): string {
   }
 
   try {
-    fs.accessSync(resolvedCwd, fs.constants.R_OK + fs.constants.X_OK);
+    fs.accessSync(resolvedCwd, fs.constants.R_OK | fs.constants.X_OK);
   }
   catch {
     throw new Error(`cwd does not exist or is inaccessible: ${resolvedCwd}`);

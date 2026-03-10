@@ -78,7 +78,6 @@ const styleConfig: Linter.Config = {
       newIsCap: true,
       newIsCapExceptions: [],
     } ],
-    'no-bitwise': 'error',
     'no-lonely-if': 'error',
     'no-multi-assign': [ 'error' ],
     'no-nested-ternary': 'error',
