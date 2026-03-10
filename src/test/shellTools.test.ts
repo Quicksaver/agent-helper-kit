@@ -52,6 +52,19 @@ function expectedShellArgs(shell: string): string[] {
 
 type FakeReadable = EventEmitter;
 
+type SpawnInvocationOptions = {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+};
+
+type SpawnCall = [ string, string[], SpawnInvocationOptions ];
+
+type SpawnInvocation = {
+  args: string[];
+  command: string;
+  options: SpawnInvocationOptions;
+};
+
 interface FakeProcess extends EventEmitter {
   exitCode: null | number;
   kill: ReturnType<typeof vi.fn>;
@@ -79,6 +92,21 @@ function createFakeProcess(): FakeProcess {
   });
 
   return fakeProcess;
+}
+
+function captureEnvironmentVariables(variableNames: string[]): () => void {
+  const previousValues = new Map(variableNames.map(variableName => [ variableName, process.env[variableName] ]));
+
+  return () => {
+    for (const [ variableName, previousValue ] of previousValues) {
+      if (previousValue === undefined) {
+        Reflect.deleteProperty(process.env, variableName);
+      }
+      else {
+        process.env[variableName] = previousValue;
+      }
+    }
+  };
 }
 
 const spawn = vi.hoisted(() => vi.fn());
@@ -284,14 +312,7 @@ function setupShellTools(fakeProcess: FakeProcess = createFakeProcess()): {
   };
 }
 
-function getLastSpawnInvocation(): {
-  args: string[];
-  command: string;
-  options: {
-    cwd?: string;
-    env?: NodeJS.ProcessEnv;
-  };
-} {
+function getLastSpawnInvocation(): SpawnInvocation {
   const spawnCalls = spawn.mock.calls as unknown[][];
   const invocation = spawnCalls.at(-1);
 
@@ -303,14 +324,7 @@ function getLastSpawnInvocation(): {
     command,
     args,
     options,
-  ] = invocation as [
-    string,
-    string[],
-    {
-      cwd?: string;
-      env?: NodeJS.ProcessEnv;
-    },
-  ];
+  ] = invocation as SpawnCall;
 
   return {
     args,
@@ -1099,8 +1113,7 @@ describe('shell tools', () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
 
-    const previousForceColor = process.env.FORCE_COLOR;
-    const previousCliColorForce = process.env.CLICOLOR_FORCE;
+    const restoreEnvironment = captureEnvironmentVariables([ 'FORCE_COLOR', 'CLICOLOR_FORCE' ]);
 
     delete process.env.FORCE_COLOR;
     delete process.env.CLICOLOR_FORCE;
@@ -1133,19 +1146,7 @@ describe('shell tools', () => {
       await runPromise;
     }
     finally {
-      if (previousForceColor === undefined) {
-        delete process.env.FORCE_COLOR;
-      }
-      else {
-        process.env.FORCE_COLOR = previousForceColor;
-      }
-
-      if (previousCliColorForce === undefined) {
-        delete process.env.CLICOLOR_FORCE;
-      }
-      else {
-        process.env.CLICOLOR_FORCE = previousCliColorForce;
-      }
+      restoreEnvironment();
     }
   });
 
@@ -1154,9 +1155,7 @@ describe('shell tools', () => {
     spawn.mockReturnValue(fakeProcess);
     getConfiguration.mockReturnValue(createConfiguration());
 
-    const previousNoColor = process.env.NO_COLOR;
-    const previousForceColor = process.env.FORCE_COLOR;
-    const previousCliColorForce = process.env.CLICOLOR_FORCE;
+    const restoreEnvironment = captureEnvironmentVariables([ 'NO_COLOR', 'FORCE_COLOR', 'CLICOLOR_FORCE' ]);
     process.env.NO_COLOR = '1';
     delete process.env.FORCE_COLOR;
     delete process.env.CLICOLOR_FORCE;
@@ -1190,26 +1189,7 @@ describe('shell tools', () => {
       await runPromise;
     }
     finally {
-      if (previousNoColor === undefined) {
-        delete process.env.NO_COLOR;
-      }
-      else {
-        process.env.NO_COLOR = previousNoColor;
-      }
-
-      if (previousForceColor === undefined) {
-        delete process.env.FORCE_COLOR;
-      }
-      else {
-        process.env.FORCE_COLOR = previousForceColor;
-      }
-
-      if (previousCliColorForce === undefined) {
-        delete process.env.CLICOLOR_FORCE;
-      }
-      else {
-        process.env.CLICOLOR_FORCE = previousCliColorForce;
-      }
+      restoreEnvironment();
     }
   });
 
