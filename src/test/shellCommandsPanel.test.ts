@@ -183,6 +183,7 @@ describe('ShellCommandsPanelProvider polling', () => {
       resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
     };
     const {
+      getMessageHandler,
       postMessage,
       webviewView: rawWebviewView,
     } = createWebviewView();
@@ -190,6 +191,11 @@ describe('ShellCommandsPanelProvider polling', () => {
 
     await provider.resolveWebviewView(webviewView);
     const initialHtml = rawWebviewView.webview.html;
+
+    await getMessageHandler()?.({
+      type: 'ready',
+    });
+    await flushWebviewMessageMicrotasks();
     postMessage.mockClear();
 
     expect(initialHtml).toContain('data-command-id="shell-1234abcd"');
@@ -222,12 +228,18 @@ describe('ShellCommandsPanelProvider polling', () => {
       resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
     };
     const {
+      getMessageHandler,
       postMessage,
       webviewView: rawWebviewView,
     } = createWebviewView();
     const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
 
     await provider.resolveWebviewView(webviewView);
+
+    await getMessageHandler()?.({
+      type: 'ready',
+    });
+    await flushWebviewMessageMicrotasks();
     postMessage.mockClear();
 
     detailsRef.current = createDetails({ output: '\u001B[38;2;1;2;3m<script>\u001B[0m\n' });
@@ -407,6 +419,10 @@ describe('ShellCommandsPanelProvider polling', () => {
     const initialHtml = rawWebviewView.webview.html;
     const messageHandler = getMessageHandler();
 
+    await messageHandler?.({
+      type: 'ready',
+    });
+    await flushWebviewMessageMicrotasks();
     postMessage.mockClear();
 
     await messageHandler?.({
@@ -431,5 +447,103 @@ describe('ShellCommandsPanelProvider polling', () => {
     expect(firstMessage?.commandItemsHtml).toContain('command-item selected');
     expect(firstMessage?.detailsHtml).toContain('printf second');
     expect(firstMessage?.detailsHtml).toContain('second line');
+  });
+
+  it('waits for the webview ready signal before posting incremental panel updates', async () => {
+    const firstDetails = createDetails({
+      command: 'printf first',
+      id: 'shell-1234abcd',
+      output: 'first line\n',
+    });
+    const secondDetails = createDetails({
+      command: 'printf second',
+      completedAt: '2026-03-10T00:01:00.000Z',
+      exitCode: 0,
+      id: 'shell-beefcafe',
+      isRunning: false,
+      output: 'second line\n',
+    });
+    const detailsById = new Map<string, ShellCommandDetails>([
+      [ firstDetails.id, firstDetails ],
+      [ secondDetails.id, secondDetails ],
+    ]);
+    const runtime = {
+      clearCompletedCommands: vi.fn(() => 0),
+      deleteCompletedCommand: vi.fn(() => false),
+      getCommandDetails: vi.fn(async (commandId: string) => detailsById.get(commandId)),
+      killBackgroundCommand: vi.fn(() => true),
+      listCommands: vi.fn(() => [
+        createCommand({
+          command: firstDetails.command,
+          id: firstDetails.id,
+          isRunning: true,
+        }),
+        createCommand({
+          command: secondDetails.command,
+          completedAt: secondDetails.completedAt,
+          exitCode: secondDetails.exitCode,
+          id: secondDetails.id,
+          isRunning: false,
+        }),
+      ]),
+      onDidChangeCommands: vi.fn(() => () => undefined),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      postMessage,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    const initialHtml = rawWebviewView.webview.html;
+    const messageHandler = getMessageHandler();
+
+    await messageHandler?.({
+      commandId: secondDetails.id,
+      type: 'select',
+    });
+    await flushWebviewMessageMicrotasks();
+
+    expect(rawWebviewView.webview.html).toBe(initialHtml);
+    expect(postMessage).not.toHaveBeenCalled();
+
+    await messageHandler?.({
+      type: 'ready',
+    });
+    await flushWebviewMessageMicrotasks();
+
+    expect(postMessage).toHaveBeenCalledOnce();
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'replacePanelState',
+    }));
+  });
+
+  it('re-reads persisted scroll state inside the webview restore hooks', async () => {
+    const detailsRef = {
+      current: createDetails(),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    expect(rawWebviewView.webview.html).toContain('const getCurrentState = () => vscodeApi.getState() || {};');
+    expect(rawWebviewView.webview.html).toContain('const savedCommandListScrollTop = getCurrentState().commandListScrollTop;');
+    expect(rawWebviewView.webview.html).toContain('const savedOutputScrollState = getCurrentState().outputScrollState;');
   });
 });

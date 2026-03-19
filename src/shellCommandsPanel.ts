@@ -48,7 +48,7 @@ type ShellCommandTreeItem = {
 type WebviewMessage = {
   commandId?: string;
   copyField?: CopyField;
-  type: 'clear' | 'copy' | 'delete' | 'kill' | 'select';
+  type: 'clear' | 'copy' | 'delete' | 'kill' | 'ready' | 'select';
 };
 
 type ReplaceOutputWebviewMessage = {
@@ -1019,7 +1019,8 @@ function getWebviewHtml(
       const getDetailsPane = () => document.getElementById('details-pane');
       const getOutputBlock = () => document.getElementById('output-block');
       const outputEndThreshold = 4;
-      const previousState = vscodeApi.getState() || {};
+      const getCurrentState = () => vscodeApi.getState() || {};
+      const previousState = getCurrentState();
       let currentState = { ...previousState };
 
       const persistState = updates => {
@@ -1057,11 +1058,11 @@ function getWebviewHtml(
           return;
         }
 
-        if (typeof currentState.commandListScrollTop === 'number') {
-          commandList.scrollTop = currentState.commandListScrollTop;
-        }
+        const savedCommandListScrollTop = getCurrentState().commandListScrollTop;
 
-        syncCommandListScrollState();
+        if (typeof savedCommandListScrollTop === 'number') {
+          commandList.scrollTop = savedCommandListScrollTop;
+        }
       };
 
       const syncOutputScrollState = () => {
@@ -1087,7 +1088,7 @@ function getWebviewHtml(
           return;
         }
 
-        const savedOutputScrollState = currentState.outputScrollState;
+        const savedOutputScrollState = getCurrentState().outputScrollState;
         const commandId = outputBlock.dataset.commandId ?? '';
         const shouldScrollToEnd = !savedOutputScrollState
           || typeof savedOutputScrollState !== 'object'
@@ -1382,6 +1383,10 @@ function getWebviewHtml(
         event.stopPropagation();
         selectOutputContents();
       }, true);
+
+      vscodeApi.postMessage({
+        type: 'ready',
+      });
     </script>
   </body>
 </html>
@@ -1391,6 +1396,7 @@ function getWebviewHtml(
 class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewViewProvider {
   private readonly disposeRuntimeListener: () => void;
   private hasRenderedWebview = false;
+  private isWebviewReady = false;
   private renderedSelectedCommandId: string | undefined;
   private renderedSelectedOutputLength = 0;
   private renderRequestId = 0;
@@ -1408,6 +1414,7 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
 
   dispose(): void {
     this.hasRenderedWebview = false;
+    this.isWebviewReady = false;
     this.disposeRuntimeListener();
     this.stopPolling();
     this.view = undefined;
@@ -1455,7 +1462,7 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
       );
       this.hasRenderedWebview = true;
     }
-    else {
+    else if (this.isWebviewReady) {
       const message: ExtensionWebviewMessage = {
         commandItemsHtml: buildCommandItemsMarkup(commands, this.selectedCommandId),
         detailsHtml: buildDetailsMarkup(selectedDetails),
@@ -1479,6 +1486,7 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
 
     webviewView.onDidDispose(() => {
       this.hasRenderedWebview = false;
+      this.isWebviewReady = false;
       this.stopPolling();
       this.view = undefined;
     });
@@ -1506,6 +1514,12 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
   }
 
   private async handleMessage(message: WebviewMessage): Promise<void> {
+    if (message.type === 'ready') {
+      this.isWebviewReady = true;
+      await this.refresh();
+      return;
+    }
+
     if (message.type === 'select' && message.commandId) {
       this.selectedCommandId = message.commandId;
       await this.refresh();
@@ -1577,6 +1591,10 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
 
     if (!details.isRunning) {
       await this.refresh();
+      return;
+    }
+
+    if (!this.isWebviewReady) {
       return;
     }
 
