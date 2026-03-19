@@ -350,4 +350,86 @@ describe('ShellCommandsPanelProvider polling', () => {
     await flushWebviewMessageMicrotasks();
     expect(vscode.env.clipboard.writeText).toHaveBeenLastCalledWith('/workspace/project');
   });
+
+  it('updates the selected command without rewriting the full webview html', async () => {
+    const firstDetails = createDetails({
+      command: 'printf first',
+      id: 'shell-1234abcd',
+      output: 'first line\n',
+    });
+    const secondDetails = createDetails({
+      command: 'printf second',
+      completedAt: '2026-03-10T00:01:00.000Z',
+      exitCode: 0,
+      id: 'shell-beefcafe',
+      isRunning: false,
+      output: 'second line\n',
+    });
+    const detailsById = new Map<string, ShellCommandDetails>([
+      [ firstDetails.id, firstDetails ],
+      [ secondDetails.id, secondDetails ],
+    ]);
+    const runtime = {
+      clearCompletedCommands: vi.fn(() => 0),
+      deleteCompletedCommand: vi.fn(() => false),
+      getCommandDetails: vi.fn(async (commandId: string) => detailsById.get(commandId)),
+      killBackgroundCommand: vi.fn(() => true),
+      listCommands: vi.fn(() => [
+        createCommand({
+          command: firstDetails.command,
+          id: firstDetails.id,
+          isRunning: true,
+        }),
+        createCommand({
+          command: secondDetails.command,
+          completedAt: secondDetails.completedAt,
+          exitCode: secondDetails.exitCode,
+          id: secondDetails.id,
+          isRunning: false,
+        }),
+      ]),
+      onDidChangeCommands: vi.fn(() => () => undefined),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      postMessage,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+    const initialHtml = rawWebviewView.webview.html;
+    const messageHandler = getMessageHandler();
+
+    postMessage.mockClear();
+
+    await messageHandler?.({
+      commandId: secondDetails.id,
+      type: 'select',
+    });
+    await flushWebviewMessageMicrotasks();
+
+    expect(rawWebviewView.webview.html).toBe(initialHtml);
+    expect(postMessage).toHaveBeenCalledOnce();
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'replacePanelState',
+    }));
+
+    const firstMessage = postMessage.mock.calls[0]?.[0] as undefined | {
+      commandItemsHtml: string;
+      detailsHtml: string;
+      type: string;
+    };
+
+    expect(firstMessage?.commandItemsHtml).toContain('data-id="shell-beefcafe"');
+    expect(firstMessage?.commandItemsHtml).toContain('command-item selected');
+    expect(firstMessage?.detailsHtml).toContain('printf second');
+    expect(firstMessage?.detailsHtml).toContain('second line');
+  });
 });

@@ -51,12 +51,20 @@ type WebviewMessage = {
   type: 'clear' | 'copy' | 'delete' | 'kill' | 'select';
 };
 
-type ExtensionWebviewMessage = {
+type ReplaceOutputWebviewMessage = {
   commandId: string;
   isRunning: boolean;
   outputHtml: string;
   type: 'replaceOutput';
 };
+
+type ReplacePanelStateWebviewMessage = {
+  commandItemsHtml: string;
+  detailsHtml: string;
+  type: 'replacePanelState';
+};
+
+type ExtensionWebviewMessage = ReplaceOutputWebviewMessage | ReplacePanelStateWebviewMessage;
 
 interface AnsiRenderState {
   backgroundColor?: string;
@@ -657,27 +665,11 @@ function buildDetailsMarkup(details: ShellCommandDetails | undefined): string {
   `;
 }
 
-function getCopyValue(details: ShellCommandDetails, copyField: CopyField | undefined): string {
-  if (copyField === 'cwd') {
-    return details.cwd;
-  }
-
-  if (copyField === 'id') {
-    return toPublicCommandId(details.id);
-  }
-
-  return details.command;
-}
-
-function getWebviewHtml(
-  webview: vscode.Webview,
+function buildCommandItemsMarkup(
   commands: ShellCommandListItem[],
   selectedCommandId: string | undefined,
-  selectedDetails: ShellCommandDetails | undefined,
 ): string {
-  const scriptNonce = randomBytes(16).toString('hex');
-  const styleNonce = randomBytes(16).toString('hex');
-  const commandItems = commands.map(command => {
+  return commands.map(command => {
     const commandPreview = getCommandListLabel(command.command);
     const shellLabel = getShellLabel(command.shell);
     const publicCommandId = toPublicCommandId(command.id);
@@ -710,7 +702,29 @@ function getWebviewHtml(
       </div>
     `;
   }).join('');
+}
 
+function getCopyValue(details: ShellCommandDetails, copyField: CopyField | undefined): string {
+  if (copyField === 'cwd') {
+    return details.cwd;
+  }
+
+  if (copyField === 'id') {
+    return toPublicCommandId(details.id);
+  }
+
+  return details.command;
+}
+
+function getWebviewHtml(
+  webview: vscode.Webview,
+  commands: ShellCommandListItem[],
+  selectedCommandId: string | undefined,
+  selectedDetails: ShellCommandDetails | undefined,
+): string {
+  const scriptNonce = randomBytes(16).toString('hex');
+  const styleNonce = randomBytes(16).toString('hex');
+  const commandItems = buildCommandItemsMarkup(commands, selectedCommandId);
   const detailsMarkup = buildDetailsMarkup(selectedDetails);
 
   return `
@@ -978,7 +992,7 @@ function getWebviewHtml(
   </head>
   <body>
     <div class="layout" id="layout">
-      <main class="main-pane">${detailsMarkup}</main>
+      <main class="main-pane"><div id="details-pane">${detailsMarkup}</div></main>
       <div id="resizer" class="resizer" aria-hidden="true"></div>
       <aside class="sidebar">
         <div class="sidebar-toolbar">
@@ -992,7 +1006,7 @@ function getWebviewHtml(
           />
           <button class="icon-action" data-action="clear" title="Clear Finished" aria-label="Clear Finished">✕</button>
         </div>
-        <div class="command-list">${commandItems}</div>
+        <div id="command-list" class="command-list">${commandItems}</div>
       </aside>
     </div>
     <script nonce="${scriptNonce}">
@@ -1001,6 +1015,8 @@ function getWebviewHtml(
       const layout = document.getElementById('layout');
       const resizer = document.getElementById('resizer');
       const filterInput = document.getElementById('command-filter');
+      const getCommandList = () => document.getElementById('command-list');
+      const getDetailsPane = () => document.getElementById('details-pane');
       const getOutputBlock = () => document.getElementById('output-block');
       const outputEndThreshold = 4;
       const previousState = vscodeApi.getState() || {};
@@ -1021,6 +1037,32 @@ function getWebviewHtml(
       };
 
       const isNearOutputEnd = element => (element.scrollTop + element.clientHeight) >= (element.scrollHeight - outputEndThreshold);
+
+      const syncCommandListScrollState = () => {
+        const commandList = getCommandList();
+
+        if (!(commandList instanceof HTMLElement)) {
+          return;
+        }
+
+        persistState({
+          commandListScrollTop: commandList.scrollTop,
+        });
+      };
+
+      const restoreCommandListScrollState = () => {
+        const commandList = getCommandList();
+
+        if (!(commandList instanceof HTMLElement)) {
+          return;
+        }
+
+        if (typeof currentState.commandListScrollTop === 'number') {
+          commandList.scrollTop = currentState.commandListScrollTop;
+        }
+
+        syncCommandListScrollState();
+      };
 
       const syncOutputScrollState = () => {
         const outputBlock = getOutputBlock();
@@ -1063,6 +1105,23 @@ function getWebviewHtml(
         syncOutputScrollState();
       };
 
+      const bindOutputBlock = () => {
+        const outputBlock = getOutputBlock();
+
+        if (!(outputBlock instanceof HTMLElement) || outputBlock.dataset.scrollBound === 'true') {
+          return;
+        }
+
+        outputBlock.dataset.scrollBound = 'true';
+        outputBlock.addEventListener('scroll', () => {
+          syncOutputScrollState();
+        });
+
+        requestAnimationFrame(() => {
+          restoreOutputScroll();
+        });
+      };
+
       const replaceOutput = message => {
         const outputBlock = getOutputBlock();
 
@@ -1078,6 +1137,27 @@ function getWebviewHtml(
         outputBlock.innerHTML = message.outputHtml;
         outputBlock.dataset.commandRunning = message.isRunning ? 'true' : 'false';
         restoreOutputScroll();
+      };
+
+      const replacePanelState = message => {
+        const commandList = getCommandList();
+        const detailsPane = getDetailsPane();
+
+        if (!(commandList instanceof HTMLElement) || !(detailsPane instanceof HTMLElement)) {
+          return;
+        }
+
+        syncCommandListScrollState();
+        syncOutputScrollState();
+        commandList.innerHTML = message.commandItemsHtml;
+        detailsPane.innerHTML = message.detailsHtml;
+
+        if (filterInput instanceof HTMLInputElement) {
+          applyFilter(filterInput.value);
+        }
+
+        restoreCommandListScrollState();
+        bindOutputBlock();
       };
 
       if (typeof previousState.sidebarWidth === 'number') {
@@ -1144,17 +1224,19 @@ function getWebviewHtml(
         });
       }
 
-      const outputBlock = getOutputBlock();
+      const commandList = getCommandList();
 
-      if (outputBlock instanceof HTMLElement) {
-        outputBlock.addEventListener('scroll', () => {
-          syncOutputScrollState();
+      if (commandList instanceof HTMLElement) {
+        commandList.addEventListener('scroll', () => {
+          syncCommandListScrollState();
         });
 
         requestAnimationFrame(() => {
-          restoreOutputScroll();
+          restoreCommandListScrollState();
         });
       }
+
+      bindOutputBlock();
 
       window.addEventListener('message', event => {
         const message = event.data;
@@ -1165,6 +1247,11 @@ function getWebviewHtml(
 
         if (message.type === 'replaceOutput') {
           replaceOutput(message);
+          return;
+        }
+
+        if (message.type === 'replacePanelState') {
+          replacePanelState(message);
         }
       });
 
@@ -1259,6 +1346,8 @@ function getWebviewHtml(
       });
 
       const selectOutputContents = () => {
+        const outputBlock = getOutputBlock();
+
         if (!(outputBlock instanceof HTMLElement)) {
           return;
         }
@@ -1301,6 +1390,7 @@ function getWebviewHtml(
 
 class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewViewProvider {
   private readonly disposeRuntimeListener: () => void;
+  private hasRenderedWebview = false;
   private renderedSelectedCommandId: string | undefined;
   private renderedSelectedOutputLength = 0;
   private renderRequestId = 0;
@@ -1317,6 +1407,7 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
   }
 
   dispose(): void {
+    this.hasRenderedWebview = false;
     this.disposeRuntimeListener();
     this.stopPolling();
     this.view = undefined;
@@ -1355,12 +1446,24 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
       return;
     }
 
-    view.webview.html = getWebviewHtml(
-      view.webview,
-      commands,
-      this.selectedCommandId,
-      selectedDetails,
-    );
+    if (!this.hasRenderedWebview) {
+      view.webview.html = getWebviewHtml(
+        view.webview,
+        commands,
+        this.selectedCommandId,
+        selectedDetails,
+      );
+      this.hasRenderedWebview = true;
+    }
+    else {
+      const message: ExtensionWebviewMessage = {
+        commandItemsHtml: buildCommandItemsMarkup(commands, this.selectedCommandId),
+        detailsHtml: buildDetailsMarkup(selectedDetails),
+        type: 'replacePanelState',
+      };
+
+      await view.webview.postMessage(message);
+    }
 
     this.renderedSelectedCommandId = selectedDetails?.id;
     this.renderedSelectedOutputLength = selectedDetails?.output.length ?? 0;
@@ -1375,6 +1478,7 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     };
 
     webviewView.onDidDispose(() => {
+      this.hasRenderedWebview = false;
       this.stopPolling();
       this.view = undefined;
     });
