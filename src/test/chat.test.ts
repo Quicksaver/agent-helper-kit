@@ -127,4 +127,41 @@ describe('buildComment', () => {
 
     expect(markdown.value).toContain('[Line 4](file:///workspace/src/foo.ts#L4) | *A B*');
   });
+
+  it('should render severity and strip details-like html wrappers from the comment body', async () => {
+    const markdown = await buildComment(
+      {
+        comments: [],
+        target: 'src/foo.ts',
+      },
+      {
+        comment: '<details><summary>ignored</summary>Keep body</details>',
+        file: 'src/foo.ts',
+        fileUri: 'file:///workspace/src/foo.ts',
+        line: 5,
+        severity: 'major',
+      },
+    );
+
+    expect(markdown.value).toContain('[Line 5](file:///workspace/src/foo.ts#L5) | **major**');
+    expect(markdown.value).toContain('\nignoredKeep body');
+    expect(markdown.value).not.toContain('<details>');
+    expect(markdown.value).not.toContain('<summary>');
+  });
+
+  it('should fall back to workspace-relative uri generation when fileUri is missing', async () => {
+    const markdown = await buildComment(
+      {
+        comments: [],
+        target: 'src/bar.ts',
+      },
+      {
+        comment: 'Uses generated uri',
+        file: 'src/bar.ts',
+        line: 9,
+      },
+    );
+
+    expect(markdown.value).toContain('[Line 9](file:///workspace/src/bar.ts#L9)');
+  });
 });

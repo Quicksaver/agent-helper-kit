@@ -15,13 +15,19 @@ import {
   resetExtensionOutputChannelForTest,
 } from '@/logging';
 import {
+  appendShellOutput,
   createShellOutputFile,
   getShellOutputDirectoryPath,
   getShellOutputFilePath,
   initializeShellOutputStore,
+  listShellMetadataIds,
+  listShellOutputIds,
   overwriteShellOutput,
   readShellCommandMetadata,
+  readShellOutput,
   readShellOutputSync,
+  removeShellCommandMetadata,
+  removeShellOutputFile,
   writeShellCommandMetadata,
 } from '@/shellOutputStore';
 
@@ -76,6 +82,12 @@ describe('shell output store startup purge', () => {
     expect(outputFilePath.endsWith('/output-shell-abc12345.log')).toBe(true);
   });
 
+  it('sanitizes shell ids before building output file paths', () => {
+    const outputFilePath = getShellOutputFilePath('../shell:abc12345');
+
+    expect(outputFilePath.endsWith('/output-___shell_abc12345.log')).toBe(true);
+  });
+
   it('disposes the cached extension output channel when resetting test state', () => {
     getExtensionOutputChannel();
 
@@ -104,6 +116,94 @@ describe('shell output store startup purge', () => {
     fs.mkdirSync(outputFilePath, { recursive: true });
 
     expect(readShellOutputSync('shell-abc12345')).toBeUndefined();
+  });
+
+  it('appends, lists, reads, and removes shell output artifacts', async () => {
+    createShellOutputFile('shell-b');
+    createShellOutputFile('shell-a');
+    appendShellOutput('shell-a', 'first\n');
+    appendShellOutput('shell-a', 'second\n');
+
+    expect(listShellOutputIds()).toEqual([ 'shell-a', 'shell-b' ]);
+    expect(readShellOutputSync('shell-a')).toBe('first\nsecond\n');
+    await expect(readShellOutput('shell-a')).resolves.toBe('first\nsecond\n');
+
+    removeShellOutputFile('shell-a');
+
+    expect(readShellOutputSync('shell-a')).toBeUndefined();
+    await expect(readShellOutput('shell-a')).resolves.toBe('');
+  });
+
+  it('lists metadata ids and removes metadata files', () => {
+    writeShellCommandMetadata({
+      command: 'echo second',
+      completedAt: null,
+      cwd: '/tmp',
+      exitCode: null,
+      id: 'shell-b',
+      killedByUser: false,
+      shell: '/bin/bash',
+      signal: null,
+      startedAt: new Date().toISOString(),
+    });
+    writeShellCommandMetadata({
+      command: 'echo first',
+      completedAt: null,
+      cwd: '/tmp',
+      exitCode: null,
+      id: 'shell-a',
+      killedByUser: false,
+      shell: '/bin/bash',
+      signal: null,
+      startedAt: new Date().toISOString(),
+    });
+
+    expect(listShellMetadataIds()).toEqual([ 'shell-a', 'shell-b' ]);
+
+    removeShellCommandMetadata('shell-a');
+
+    expect(readShellCommandMetadata('shell-a')).toBeUndefined();
+    expect(listShellMetadataIds()).toEqual([ 'shell-b' ]);
+  });
+
+  it('defaults missing cwd and shell values when reading stored metadata', () => {
+    const shellId = 'shell-defaults';
+    const metadataPath = path.join(getShellOutputDirectoryPath(), `metadata-${shellId}.json`);
+
+    fs.mkdirSync(getShellOutputDirectoryPath(), { recursive: true });
+    fs.writeFileSync(metadataPath, JSON.stringify({
+      command: 'echo defaults',
+      completedAt: null,
+      exitCode: null,
+      id: shellId,
+      killedByUser: false,
+      signal: null,
+      startedAt: '2026-03-19T00:00:00.000Z',
+    }), { encoding: 'utf8' });
+
+    expect(readShellCommandMetadata(shellId)).toMatchObject({
+      command: 'echo defaults',
+      cwd: process.env.HOME,
+      shell: '',
+    });
+  });
+
+  it('returns undefined for malformed metadata payloads', () => {
+    const shellId = 'shell-invalid';
+    const metadataPath = path.join(getShellOutputDirectoryPath(), `metadata-${shellId}.json`);
+
+    fs.mkdirSync(getShellOutputDirectoryPath(), { recursive: true });
+    fs.writeFileSync(metadataPath, JSON.stringify({
+      command: 'echo invalid',
+      completedAt: null,
+      exitCode: '0',
+      id: shellId,
+      killedByUser: false,
+      signal: null,
+      startedAt: '2026-03-19T00:00:00.000Z',
+    }), { encoding: 'utf8' });
+
+    expect(readShellCommandMetadata(shellId)).toBeUndefined();
   });
 
   it('purges persisted shell output files older than configured max age', () => {
