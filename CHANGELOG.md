@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed a Shell Runs panel bug where selecting a command or taking actions in the panel could reset the command list scroll position back to the top.
+
 ## [1.2.0] - 2026-03-10
 
 ### Added
