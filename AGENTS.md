@@ -20,15 +20,6 @@ This file provides context for AI agents working in this codebase.
 - **Tests:** Vitest (`src/**/*.test.ts`)
 - **Package manager:** Yarn 4 (`yarn.lock` present)
 
-## Features
-
-**Bring code review comments into VS Code Chat:**
-
-- Registers command: `agent-helper-kit.reviewCommentToChat`
-- Contributes command in comment thread title menu (`Copy to Chat`)
-- Registers chat participant: `agent-helper-kit.bringCommentsToChat` (`@bringCommentsToChat`)
-- Queues selected review comments, opens chat, and streams formatted markdown with anchors/line links
-
 ## Conventions and Constraints
 
 - Use path alias `@/*` for imports from `src/*`.

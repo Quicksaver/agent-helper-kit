@@ -30,5 +30,9 @@
   "prettier.enable": true,
   "prettier.ignorePath": ".prettierignore",
   "yaml.format.printWidth": 120,
-  "yaml.format.singleQuote": true
+  "yaml.format.singleQuote": true,
+  "lgtm.contextFiles": [
+    "AGENTS.md",
+    "README.md"
+  ]
 }
