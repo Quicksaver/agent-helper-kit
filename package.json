@@ -465,6 +465,7 @@
     "package:install": "code --install-extension $(ls -t *.vsix | head -1)",
     "package:publish": "env-cmd -f ./.env.local vsce publish --yarn --no-dependencies",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "vscode:prepublish": "yarn lint:check && yarn build",
     "watch": "node esbuild.mjs --watch"
@@ -475,6 +476,7 @@
     "@stylistic/eslint-plugin": "^5.9.0",
     "@types/node": "^25.3.3",
     "@types/vscode": "^1.109.0",
+    "@vitest/coverage-v8": "4.0.18",
     "@vscode/vsce": "^3.7.1",
     "env-cmd": "^11.0.0",
     "esbuild": "^0.27.3",
@@ -487,7 +489,7 @@
     "prettier": "^3.8.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1",
-    "vitest": "^4.0.18"
+    "vitest": "4.0.18"
   },
   "dependencies": {
     "ansi-regex": "^6.2.2",

@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { defineConfig } from 'vitest/config';
+import { coverageConfigDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   resolve: {
@@ -9,6 +9,15 @@ export default defineConfig({
     },
   },
   test: {
+    coverage: {
+      exclude: [
+        'src/test/**',
+        'src/extension.ts',
+        ...coverageConfigDefaults.exclude,
+      ],
+      include: [ 'src/**/*.ts' ],
+      reporter: [ 'text', 'lcov' ],
+    },
     globals: false,
     include: [ 'src/**/*.test.ts' ],
     restoreMocks: true,

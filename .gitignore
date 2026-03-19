@@ -42,6 +42,7 @@ Temporary Items
 
 # Directories, debug stuff, generated files, credentials and configuration
 .env*.local
+coverage/
 node_modules/
 tsconfig.tsbuildinfo
 

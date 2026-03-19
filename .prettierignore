@@ -3,6 +3,7 @@
 .stylelintignore
 .eslintignore
 yarn.lock
+coverage/
 
 # ESLint as default formatter
 **/*.js
