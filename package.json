@@ -464,7 +464,6 @@
   "packageManager": "yarn@4.12.0",
   "scripts": {
     "build": "node esbuild.mjs",
-    "bump": "./scripts/bump.sh",
     "git:merge": "./scripts/git/merge.sh",
     "git:stage": "./scripts/git/stage-all.sh",
     "lint:check": "yarn lint:tsc && yarn lint:eslint --max-warnings 0 && yarn lint:prettier",
@@ -475,7 +474,8 @@
     "package": "yarn package:build && yarn package:install",
     "package:build": "vsce package --yarn --no-dependencies",
     "package:install": "code --install-extension $(ls -t *.vsix | head -1)",
-    "package:publish": "env-cmd -f ./.env.local vsce publish --yarn --no-dependencies",
+    "package:publish": "env-cmd -f ./.env.local vsce publish --yarn --no-dependencies --packagePath $(ls -t *.vsix | head -1)",
+    "release": "./scripts/release.sh",
     "test": "vitest run --coverage",
     "test:unit": "vitest run",
     "test:watch": "vitest",
