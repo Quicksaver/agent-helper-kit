@@ -866,6 +866,14 @@ function getWebviewHtml(
         flex-direction: column;
         overflow: hidden;
       }
+      .details-pane {
+        min-height: 0;
+        height: 100%;
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        overflow: hidden;
+      }
       .command-header {
         display: flex;
         align-items: stretch;
@@ -992,7 +1000,7 @@ function getWebviewHtml(
   </head>
   <body>
     <div class="layout" id="layout">
-      <main class="main-pane"><div id="details-pane">${detailsMarkup}</div></main>
+      <main class="main-pane"><div id="details-pane" class="details-pane">${detailsMarkup}</div></main>
       <div id="resizer" class="resizer" aria-hidden="true"></div>
       <aside class="sidebar">
         <div class="sidebar-toolbar">

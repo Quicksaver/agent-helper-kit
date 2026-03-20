@@ -546,4 +546,29 @@ describe('ShellCommandsPanelProvider polling', () => {
     expect(rawWebviewView.webview.html).toContain('const savedCommandListScrollTop = getCurrentState().commandListScrollTop;');
     expect(rawWebviewView.webview.html).toContain('const savedOutputScrollState = getCurrentState().outputScrollState;');
   });
+
+  it('keeps the details wrapper as a constrained flex column so output stays scrollable after panel updates', async () => {
+    const detailsRef = {
+      current: createDetails({
+        output: Array.from({ length: 200 }, (_, index) => `line ${String(index)}`).join('\n'),
+      }),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    expect(rawWebviewView.webview.html).toContain('<div id="details-pane" class="details-pane">');
+    expect(rawWebviewView.webview.html).toContain('.details-pane {');
+    expect(rawWebviewView.webview.html).toContain('display: flex;');
+    expect(rawWebviewView.webview.html).toContain('flex-direction: column;');
+    expect(rawWebviewView.webview.html).toContain('overflow: hidden;');
+  });
 });
