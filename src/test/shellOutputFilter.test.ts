@@ -7,6 +7,7 @@ import {
 import {
   getFilteredOutput,
   normalizeShellOutput,
+  stripShellControlSequences,
 } from '@/shellOutputFilter';
 
 describe('shell output normalization', () => {
@@ -46,5 +47,64 @@ describe('shell output normalization', () => {
 
   it('matches regex against visible text while preserving ANSI color sequences', () => {
     expect(getFilteredOutput({ regex: '^second$' }, '\u001B[31msecond\u001B[0m\nthird\n')).toBe('\u001B[31msecond\u001B[0m\n');
+  });
+
+  it('strips OSC and non-SGR control sequences while preserving visible text', () => {
+    expect(stripShellControlSequences('prefix\u001B]0;title\u0007mid\u001B[2Ksuffix')).toBe('prefixmidsuffix');
+  });
+
+  it('normalizes standalone carriage returns to newlines', () => {
+    expect(normalizeShellOutput('first\rsecond\rthird')).toBe('first\nsecond\nthird');
+  });
+
+  it('returns empty output when last_lines is zero', () => {
+    expect(getFilteredOutput({ last_lines: 0 }, 'first\nsecond\n')).toBe('');
+  });
+
+  it('returns empty output when regex does not match any visible line', () => {
+    expect(getFilteredOutput({ regex: '^missing$' }, 'first\nsecond\n')).toBe('');
+  });
+
+  it('rejects conflicting last_lines and regex filters', () => {
+    expect(() => getFilteredOutput({
+      last_lines: 1,
+      regex: 'first',
+    }, 'first\n')).toThrow('last_lines and regex are mutually exclusive');
+  });
+
+  it('rejects regex_flags without a regex pattern', () => {
+    expect(() => getFilteredOutput({ regex_flags: 'i' }, 'first\n')).toThrow('regex_flags requires regex');
+  });
+
+  it('rejects regex patterns above the supported length limit', () => {
+    expect(() => getFilteredOutput({ regex: 'a'.repeat(2049) }, 'first\n')).toThrow(
+      'regex exceeds maximum supported length (2048 characters)',
+    );
+  });
+
+  it('rejects regex flags above the supported length limit', () => {
+    expect(() => getFilteredOutput({
+      regex: 'first',
+      regex_flags: 'i'.repeat(17),
+    }, 'first\n')).toThrow('regex_flags exceeds maximum supported length (16 characters)');
+  });
+
+  it('rejects unsupported, duplicate, and stateful regex flags', () => {
+    expect(() => getFilteredOutput({ regex: 'first', regex_flags: 'z' }, 'first\n')).toThrow(
+      'regex_flags contains unsupported flags',
+    );
+    expect(() => getFilteredOutput({ regex: 'first', regex_flags: 'ii' }, 'first\n')).toThrow(
+      'regex_flags contains duplicate flags',
+    );
+    expect(() => getFilteredOutput({ regex: 'first', regex_flags: 'g' }, 'first\n')).toThrow(
+      'regex_flags cannot include g or y',
+    );
+    expect(() => getFilteredOutput({ regex: 'first', regex_flags: 'y' }, 'first\n')).toThrow(
+      'regex_flags cannot include g or y',
+    );
+  });
+
+  it('rejects invalid regex syntax', () => {
+    expect(() => getFilteredOutput({ regex: '[' }, 'first\n')).toThrow('Invalid regex pattern or flags');
   });
 });

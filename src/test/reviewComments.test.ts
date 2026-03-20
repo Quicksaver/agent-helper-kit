@@ -8,15 +8,64 @@ import {
   dismissQueueToast,
   formatQueueParts,
   getQueuedPendingComments,
+  registerReviewParticipant,
   reviewCommentToChat,
 } from '@/reviewComments';
 
+type MockReviewComment = {
+  comment: string;
+  file: string;
+  line: number;
+};
+
+type StreamAnchorLike = {
+  toString: () => string;
+};
+
+const buildComment = vi.hoisted(() => vi.fn(async (_file: unknown, comment: MockReviewComment) => (
+  `rendered:${comment.file}:${comment.line}:${comment.comment}`
+)));
+const toUri = vi.hoisted(() => vi.fn(async (file: string) => ({
+  fsPath: `/workspace/${file}`,
+  toString: () => `file:///workspace/${file}`,
+})));
+
+vi.mock('@/chat', () => ({
+  buildComment,
+}));
+
+vi.mock('@/uri', () => ({
+  toUri,
+}));
+
 const vscode = vi.hoisted(() => {
   const _cancelHandlers: (() => void)[] = [];
+  const participantState: {
+    handler?: (request: unknown, context: unknown, stream: {
+      anchor: ReturnType<typeof vi.fn>;
+      markdown: ReturnType<typeof vi.fn>;
+    }) => Promise<void>;
+  } = {};
   const queueModeState = { enabled: false };
+
+  function ThemeIcon(this: { id: string }, id: string) {
+    this.id = id;
+  }
+
+  const chatParticipant = {
+    dispose: vi.fn(),
+    iconPath: undefined as unknown,
+  };
 
   return {
     _cancelHandlers,
+    _participantState: participantState,
+    chat: {
+      createChatParticipant: vi.fn((_id: string, handler: typeof participantState.handler) => {
+        participantState.handler = handler;
+        return chatParticipant;
+      }),
+    },
     commands: {
       executeCommand: vi.fn(),
     },
@@ -24,6 +73,13 @@ const vscode = vi.hoisted(() => {
       Notification: 15,
     },
     queueModeState,
+    ThemeIcon,
+    Uri: {
+      parse: (value: string) => ({
+        fsPath: value.replace(/^file:\/\//, ''),
+        toString: () => value,
+      }),
+    },
     window: {
       withProgress: vi.fn().mockImplementation(
         (
@@ -77,8 +133,11 @@ const mockUri = (fsPath: string) => ({
 describe('reviewCommentToChat', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    buildComment.mockClear();
     clearQueuedPendingComments();
+    toUri.mockClear();
     vscode._cancelHandlers.splice(0);
+    vscode._participantState.handler = undefined;
     vscode.queueModeState.enabled = false;
   });
 
@@ -716,6 +775,66 @@ describe('reviewCommentToChat', () => {
       }),
       expect.any(Function),
     );
+  });
+
+  it('registers the review participant with the expected id and icon', () => {
+    const participant = registerReviewParticipant();
+
+    expect(vscode.chat.createChatParticipant).toHaveBeenCalledWith(
+      'agent-helper-kit.bringCommentsToChat',
+      expect.any(Function),
+    );
+    expect(participant).toBeDefined();
+    expect((participant as unknown as { iconPath: { id: string } }).iconPath).toEqual({ id: 'comment-discussion' });
+  });
+
+  it('streams a no-pending message when the review participant is invoked without queued comments', async () => {
+    registerReviewParticipant();
+    const stream = {
+      anchor: vi.fn(),
+      markdown: vi.fn(),
+    };
+
+    await vscode._participantState.handler?.({}, {}, stream);
+
+    expect(stream.anchor).not.toHaveBeenCalled();
+    expect(stream.markdown).toHaveBeenCalledWith('No review comment pending.');
+  });
+
+  it('streams queued comments grouped by file and falls back to toUri for standalone comments', async () => {
+    registerReviewParticipant();
+
+    reviewCommentToChat({
+      comments: [
+        { body: 'First thread comment' },
+        { body: 'Second thread comment' },
+      ],
+      label: 'Grouped | high',
+      range: { start: { line: 2 } },
+      uri: mockUri('/workspace/src/grouped.ts'),
+    });
+    reviewCommentToChat({ body: 'Standalone comment' });
+
+    const stream = {
+      anchor: vi.fn(),
+      markdown: vi.fn(),
+    };
+
+    await vscode._participantState.handler?.({}, {}, stream);
+
+    const firstAnchor = stream.anchor.mock.calls[0]?.[0] as StreamAnchorLike | undefined;
+    const secondAnchor = stream.anchor.mock.calls[1]?.[0] as StreamAnchorLike | undefined;
+
+    expect(stream.anchor).toHaveBeenCalledTimes(2);
+    expect(firstAnchor?.toString()).toBe('file:///workspace/src/grouped.ts');
+    expect(secondAnchor?.toString()).toBe('file:///workspace/unknown');
+    expect(buildComment).toHaveBeenCalledTimes(2);
+    expect(buildComment.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ target: 'src/grouped.ts' }));
+    expect(buildComment.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ comment: 'First thread comment\nSecond thread comment' }));
+    expect(buildComment.mock.calls[1]?.[0]).toEqual(expect.objectContaining({ target: 'unknown' }));
+    expect(buildComment.mock.calls[1]?.[1]).toEqual(expect.objectContaining({ comment: 'Standalone comment' }));
+    expect(toUri).toHaveBeenCalledWith('unknown');
+    expect(getQueuedPendingComments()).toEqual([]);
   });
 });
 

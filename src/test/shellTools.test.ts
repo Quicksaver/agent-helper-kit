@@ -226,6 +226,18 @@ function getRegisteredTool(name: string) {
   };
 }
 
+function getRegisteredToolWithPrepare(name: string) {
+  return getRegisteredTool(name) as ReturnType<typeof getRegisteredTool> & {
+    prepareInvocation: (options: { input: Record<string, unknown> }) => {
+      confirmationMessages?: {
+        message: string;
+        title: string;
+      };
+      invocationMessage: string;
+    };
+  };
+}
+
 function parseYamlScalar(value: string): unknown {
   const normalized = value.trim();
 
@@ -1078,6 +1090,50 @@ describe('shell tools', () => {
     await runPromise;
   });
 
+  it('uses the home directory when no workspace folder is open', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const previousWorkspaceFolders = vscode.workspace.workspaceFolders;
+    const mutableWorkspace = vscode.workspace as {
+      workspaceFolders: undefined | {
+        uri: {
+          fsPath: string;
+        };
+      }[];
+    };
+    mutableWorkspace.workspaceFolders = undefined;
+
+    try {
+      registerShellTools();
+
+      const runTool = getRegisteredTool('run_in_sync_shell');
+
+      const runPromise = runTool.invoke({
+        input: {
+          command: 'echo home cwd',
+          explanation: 'verify home directory fallback',
+          goal: 'fallback cwd selection',
+          timeout: 0,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      expect(spawn).toHaveBeenCalledWith(
+        '/bin/zsh',
+        [ ...expectedShellArgs('/bin/zsh'), 'echo home cwd' ],
+        expect.objectContaining({
+          cwd: os.homedir(),
+        }),
+      );
+
+      fakeProcess.emit('close', 0, null);
+      await runPromise;
+    }
+    finally {
+      mutableWorkspace.workspaceFolders = previousWorkspaceFolders;
+    }
+  });
+
   it('uses provided cwd for sync shell runs', async () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
@@ -1249,6 +1305,106 @@ describe('shell tools', () => {
     }, {})).rejects.toThrow('cwd does not exist or is inaccessible');
 
     expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('rejects empty cwd before spawning a command', async () => {
+    const { runAsyncTool } = setupShellTools();
+
+    await expect(runAsyncTool.invoke({
+      input: {
+        command: 'echo empty cwd',
+        cwd: '   ',
+        explanation: 'verify empty cwd validation',
+        goal: 'reject empty cwd',
+      },
+      toolInvocationToken: undefined,
+    }, {})).rejects.toThrow('cwd must not be empty');
+
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('rejects cwd values that point to files instead of directories', async () => {
+    const { runSyncTool } = setupShellTools();
+    const fileCwd = path.join(createTemporaryDirectory('agent-helper-kit-file-cwd-'), 'file.txt');
+    fs.writeFileSync(fileCwd, 'not a directory', { encoding: 'utf8' });
+
+    await expect(runSyncTool.invoke({
+      input: {
+        command: 'echo file cwd',
+        cwd: fileCwd,
+        explanation: 'verify file cwd validation',
+        goal: 'reject file cwd',
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {})).rejects.toThrow('cwd is not a directory');
+
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('returns null for the last-command lookup before any shell command has run', async () => {
+    registerShellTools();
+
+    const getShellCommandTool = getRegisteredTool('get_shell_command');
+    const getLastShellCommandTool = getRegisteredTool('get_last_shell_command');
+
+    await expect(getShellCommandTool.invoke({
+      input: { id: 'deadbeef' },
+      toolInvocationToken: undefined,
+    }, {})).rejects.toThrow('Unknown shell command id: deadbeef');
+
+    const lastResult = await getLastShellCommandTool.invoke({
+      input: {},
+      toolInvocationToken: undefined,
+    }, {});
+
+    expect(getResultPayload(lastResult)).toEqual({ command: null });
+  });
+
+  it('exposes prepareInvocation metadata for registered shell tools', () => {
+    registerShellTools();
+
+    const runAsyncTool = getRegisteredToolWithPrepare('run_in_async_shell');
+    const runSyncTool = getRegisteredToolWithPrepare('run_in_sync_shell');
+    const awaitTool = getRegisteredToolWithPrepare('await_shell');
+    const getOutputTool = getRegisteredToolWithPrepare('get_shell_output');
+    const getShellCommandTool = getRegisteredToolWithPrepare('get_shell_command');
+    const getLastShellCommandTool = getRegisteredToolWithPrepare('get_last_shell_command');
+    const killTool = getRegisteredToolWithPrepare('kill_shell');
+
+    expect(runAsyncTool.prepareInvocation({ input: { command: '\nsecond line' } })).toEqual({
+      confirmationMessages: {
+        message: 'Run shell command: (empty command)',
+        title: 'Run async shell command?',
+      },
+      invocationMessage: 'Running async shell command: (empty command)',
+    });
+    expect(runSyncTool.prepareInvocation({ input: { command: 'echo ok\nnext' } })).toEqual({
+      confirmationMessages: {
+        message: 'Run shell command: echo ok',
+        title: 'Run sync shell command?',
+      },
+      invocationMessage: 'Running sync shell command: echo ok',
+    });
+    expect(awaitTool.prepareInvocation({ input: { id: 'abcd1234' } })).toEqual({
+      invocationMessage: 'Waiting for shell command abcd1234',
+    });
+    expect(getOutputTool.prepareInvocation({ input: { id: 'abcd1234' } })).toEqual({
+      invocationMessage: 'Reading output for shell command abcd1234',
+    });
+    expect(getShellCommandTool.prepareInvocation({ input: { id: 'abcd1234' } })).toEqual({
+      invocationMessage: 'Reading shell command abcd1234',
+    });
+    expect(getLastShellCommandTool.prepareInvocation({ input: {} })).toEqual({
+      invocationMessage: 'Reading most recent shell command',
+    });
+    expect(killTool.prepareInvocation({ input: { id: 'abcd1234' } })).toEqual({
+      confirmationMessages: {
+        message: 'Stop shell command abcd1234',
+        title: 'Stop running shell command?',
+      },
+      invocationMessage: 'Stopping shell command abcd1234',
+    });
   });
 
   it('rejects inaccessible cwd before spawning a sync command', async () => {
