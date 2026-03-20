@@ -18,7 +18,9 @@ import {
 } from '@/shellTools';
 
 const SHELL_ID_REGEX = /^[a-f0-9]{8}$/;
+const SHELL_OUTPUT_DIR_ENV_VAR = 'AGENT_HELPER_KIT_SHELL_OUTPUT_DIR';
 const temporaryDirectories = new Set<string>();
+const previousShellOutputDirectory = process.env[SHELL_OUTPUT_DIR_ENV_VAR];
 
 function createTemporaryDirectory(prefix: string): string {
   const directoryPath = fs.mkdtempSync(`${os.tmpdir()}/${prefix}`);
@@ -348,6 +350,7 @@ function getLastSpawnInvocation(): SpawnInvocation {
 
 describe('shell tools', () => {
   beforeEach(() => {
+    process.env[SHELL_OUTPUT_DIR_ENV_VAR] = createTemporaryDirectory('agent-helper-kit-shellTools-output-');
     vi.clearAllMocks();
     resetShellRuntimeForTest();
     getConfiguration.mockReturnValue(createConfiguration());
@@ -355,6 +358,13 @@ describe('shell tools', () => {
 
   afterEach(() => {
     fs.rmSync(getShellOutputDirectoryPath(), { force: true, recursive: true });
+
+    if (previousShellOutputDirectory === undefined) {
+      Reflect.deleteProperty(process.env, SHELL_OUTPUT_DIR_ENV_VAR);
+    }
+    else {
+      process.env[SHELL_OUTPUT_DIR_ENV_VAR] = previousShellOutputDirectory;
+    }
 
     for (const directoryPath of temporaryDirectories) {
       fs.rmSync(directoryPath, { force: true, recursive: true });

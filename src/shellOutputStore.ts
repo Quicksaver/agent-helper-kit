@@ -10,6 +10,7 @@ const OUTPUT_FILE_SUFFIX = '.log';
 const METADATA_FILE_PREFIX = 'metadata-';
 const METADATA_FILE_SUFFIX = '.json';
 const DEFAULT_STARTUP_PURGE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+export const SHELL_OUTPUT_DIR_ENV_VAR = 'AGENT_HELPER_KIT_SHELL_OUTPUT_DIR';
 
 type NodeErrorWithCode = NodeJS.ErrnoException;
 
@@ -39,6 +40,12 @@ export interface ShellCommandMetadata {
 }
 
 function getOutputDirectoryPath(): string {
+  const configuredDirectoryPath = globalThis.process.env[SHELL_OUTPUT_DIR_ENV_VAR]?.trim();
+
+  if (configuredDirectoryPath) {
+    return path.resolve(configuredDirectoryPath);
+  }
+
   return path.join(os.tmpdir(), OUTPUT_DIR_NAME);
 }
 
@@ -85,10 +92,7 @@ function canRecoverOutputDirectory(error: unknown): boolean {
 }
 
 function isExpectedOutputDirectoryPath(directoryPath: string): boolean {
-  const resolvedDirectoryPath = path.resolve(directoryPath);
-
-  return path.basename(resolvedDirectoryPath) === OUTPUT_DIR_NAME
-    && path.resolve(path.dirname(resolvedDirectoryPath)) === path.resolve(os.tmpdir());
+  return path.resolve(directoryPath) === path.resolve(getOutputDirectoryPath());
 }
 
 function ensureOutputDirectory(): string {

@@ -97,6 +97,7 @@ function createWebviewView(): {
   getMessageHandler: () => MessageHandler | undefined;
   onDidReceiveMessage: ReturnType<typeof vi.fn>;
   postMessage: ReturnType<typeof vi.fn>;
+  triggerDispose: () => void;
   webviewView: {
     onDidDispose: ReturnType<typeof vi.fn>;
     webview: {
@@ -108,8 +109,13 @@ function createWebviewView(): {
   };
 } {
   let messageHandler: MessageHandler | undefined;
+  let disposeHandler: (() => void) | undefined;
   const onDidReceiveMessage = vi.fn((listener: MessageHandler) => {
     messageHandler = listener;
+    return { dispose: vi.fn() };
+  });
+  const onDidDispose = vi.fn((listener: () => void) => {
+    disposeHandler = listener;
     return { dispose: vi.fn() };
   });
   const postMessage = vi.fn(async () => true);
@@ -118,8 +124,11 @@ function createWebviewView(): {
     getMessageHandler: () => messageHandler,
     onDidReceiveMessage,
     postMessage,
+    triggerDispose: () => {
+      disposeHandler?.();
+    },
     webviewView: {
-      onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidDispose,
       webview: {
         html: '',
         onDidReceiveMessage,
@@ -128,6 +137,17 @@ function createWebviewView(): {
       },
     },
   };
+}
+
+function getRegisteredCommandHandler(commandId: string) {
+  const call = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls
+    .find(([ registeredCommandId ]) => registeredCommandId === commandId);
+
+  if (!call) {
+    throw new Error(`Command not registered: ${commandId}`);
+  }
+
+  return call[1] as (item?: unknown) => Promise<void>;
 }
 
 async function flushWebviewMessageMicrotasks(): Promise<void> {
@@ -255,6 +275,159 @@ describe('ShellCommandsPanelProvider polling', () => {
     expect(outputHtml).not.toContain('<script>');
   });
 
+  it('renders inline ANSI declarations for RGB foreground and background colors', async () => {
+    const detailsRef = {
+      current: createDetails(),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      postMessage,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    await getMessageHandler()?.({
+      type: 'ready',
+    });
+    await flushWebviewMessageMicrotasks();
+    postMessage.mockClear();
+
+    detailsRef.current = createDetails({
+      output: '\u001B[38;2;1;2;3;48;2;4;5;6mstyled\u001B[0m\n',
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const firstMessage = postMessage.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    const outputHtml = firstMessage?.outputHtml;
+
+    expect(outputHtml).toBeTypeOf('string');
+    expect(outputHtml).toContain('color: rgb(1, 2, 3)');
+    expect(outputHtml).toContain('background-color: rgb(4, 5, 6)');
+  });
+
+  it('renders inverse ANSI colors and removes styling after reset codes', async () => {
+    const detailsRef = {
+      current: createDetails(),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      postMessage,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+    await getMessageHandler()?.({ type: 'ready' });
+    await flushWebviewMessageMicrotasks();
+    postMessage.mockClear();
+
+    detailsRef.current = createDetails({
+      output: '\u001B[31;44;7mA\u001B[27mB\u001B[39;49mC\n',
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const firstMessage = postMessage.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    const outputHtml = firstMessage?.outputHtml;
+
+    expect(outputHtml).toBeTypeOf('string');
+    expect(outputHtml).toContain('class="ansi-fg-4 ansi-bg-1"');
+    expect(outputHtml).toContain('class="ansi-fg-1 ansi-bg-4"');
+    expect(outputHtml).toContain('</span>C');
+  });
+
+  it('parses C1 ANSI sequences and 256-color palette values into RGB styles', async () => {
+    const detailsRef = {
+      current: createDetails(),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      postMessage,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+    await getMessageHandler()?.({ type: 'ready' });
+    await flushWebviewMessageMicrotasks();
+    postMessage.mockClear();
+
+    detailsRef.current = createDetails({
+      output: '\u009B38;5;16;48;5;232mX\u001B[0m\u001B[38;5;21mY\u001B[0m\n',
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const firstMessage = postMessage.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    const outputHtml = firstMessage?.outputHtml;
+
+    expect(outputHtml).toBeTypeOf('string');
+    expect(outputHtml).toContain('color: rgb(0, 0, 0)');
+    expect(outputHtml).toContain('background-color: rgb(8, 8, 8)');
+    expect(outputHtml).toContain('color: rgb(0, 0, 255)');
+  });
+
+  it('clears class-based ANSI emphasis flags after explicit reset codes', async () => {
+    const detailsRef = {
+      current: createDetails(),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      postMessage,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+    await getMessageHandler()?.({ type: 'ready' });
+    await flushWebviewMessageMicrotasks();
+    postMessage.mockClear();
+
+    detailsRef.current = createDetails({
+      output: '\u001B[1;2;3;4;9mA\u001B[22;23;24;29mB\n',
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const firstMessage = postMessage.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    const outputHtml = firstMessage?.outputHtml;
+
+    expect(outputHtml).toBeTypeOf('string');
+    expect(outputHtml).toContain('class="ansi-bold ansi-dim ansi-italic ansi-underline ansi-strikethrough"');
+    expect(outputHtml).toContain('</span>B');
+  });
+
   it('renders command metadata in the main pane without relying on list item tooltips', async () => {
     const detailsRef = {
       current: createDetails({
@@ -361,6 +534,181 @@ describe('ShellCommandsPanelProvider polling', () => {
     });
     await flushWebviewMessageMicrotasks();
     expect(vscode.env.clipboard.writeText).toHaveBeenLastCalledWith('/workspace/project');
+  });
+
+  it('handles kill messages by stopping the running command and refreshing the panel', async () => {
+    const killBackgroundCommand = vi.fn(() => true);
+    const detailsRef = {
+      current: createDetails(),
+    };
+    const baseRuntime = createRuntime(detailsRef);
+    const runtime = {
+      clearCompletedCommands: () => baseRuntime.clearCompletedCommands(),
+      deleteCompletedCommand: (commandId: string) => baseRuntime.deleteCompletedCommand(commandId),
+      getCommandDetails: (commandId: string) => baseRuntime.getCommandDetails(commandId),
+      killBackgroundCommand,
+      listCommands: () => baseRuntime.listCommands(),
+      onDidChangeCommands: (listener: () => void) => baseRuntime.onDidChangeCommands(listener),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      postMessage,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+    await getMessageHandler()?.({ type: 'ready' });
+    await flushWebviewMessageMicrotasks();
+    postMessage.mockClear();
+
+    await getMessageHandler()?.({
+      commandId: 'shell-1234abcd',
+      type: 'kill',
+    });
+    await flushWebviewMessageMicrotasks();
+
+    expect(killBackgroundCommand).toHaveBeenCalledWith('shell-1234abcd');
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'replacePanelState',
+    }));
+  });
+
+  it('handles delete messages by clearing the selected command when it is removed', async () => {
+    let commands: ShellCommandListItem[] = [
+      createCommand({
+        completedAt: '2026-03-10T00:01:00.000Z',
+        exitCode: 0,
+        id: 'shell-1234abcd',
+        isRunning: false,
+      }),
+    ];
+    const deleteCompletedCommand = vi.fn((commandId: string) => {
+      commands = commands.filter(command => command.id !== commandId);
+      return true;
+    });
+    const runtime = {
+      clearCompletedCommands: vi.fn(() => 0),
+      deleteCompletedCommand,
+      getCommandDetails: vi.fn(async (commandId: string) => {
+        const exists = commands.some(command => command.id === commandId);
+
+        if (!exists) {
+          throw new Error('missing');
+        }
+
+        return createDetails({
+          completedAt: '2026-03-10T00:01:00.000Z',
+          exitCode: 0,
+          id: commandId,
+          isRunning: false,
+        });
+      }),
+      killBackgroundCommand: vi.fn(() => true),
+      listCommands: vi.fn(() => commands),
+      onDidChangeCommands: vi.fn(() => () => undefined),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      postMessage,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+    await getMessageHandler()?.({ type: 'ready' });
+    await flushWebviewMessageMicrotasks();
+    postMessage.mockClear();
+
+    await getMessageHandler()?.({
+      commandId: 'shell-1234abcd',
+      type: 'delete',
+    });
+    await flushWebviewMessageMicrotasks();
+
+    expect(deleteCompletedCommand).toHaveBeenCalledWith('shell-1234abcd');
+    const deleteMessage = postMessage.mock.calls[0]?.[0] as undefined | {
+      detailsHtml: string;
+      type: string;
+    };
+    expect(deleteMessage?.type).toBe('replacePanelState');
+    expect(deleteMessage?.detailsHtml).toContain('class="details-empty"');
+  });
+
+  it('handles clear messages by clearing a removed selected command and refreshing the panel', async () => {
+    let commands: ShellCommandListItem[] = [
+      createCommand({
+        completedAt: '2026-03-10T00:01:00.000Z',
+        exitCode: 0,
+        id: 'shell-1234abcd',
+        isRunning: false,
+      }),
+    ];
+    const clearCompletedCommands = vi.fn(() => {
+      commands = [];
+      return 1;
+    });
+    const runtime = {
+      clearCompletedCommands,
+      deleteCompletedCommand: vi.fn(() => false),
+      getCommandDetails: vi.fn(async (commandId: string) => {
+        const exists = commands.some(command => command.id === commandId);
+
+        if (!exists) {
+          throw new Error('missing');
+        }
+
+        return createDetails({
+          completedAt: '2026-03-10T00:01:00.000Z',
+          exitCode: 0,
+          id: commandId,
+          isRunning: false,
+        });
+      }),
+      killBackgroundCommand: vi.fn(() => true),
+      listCommands: vi.fn(() => commands),
+      onDidChangeCommands: vi.fn(() => () => undefined),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      postMessage,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+    await getMessageHandler()?.({ type: 'ready' });
+    await flushWebviewMessageMicrotasks();
+    postMessage.mockClear();
+
+    await getMessageHandler()?.({ type: 'clear' });
+    await flushWebviewMessageMicrotasks();
+
+    expect(clearCompletedCommands).toHaveBeenCalledOnce();
+    const clearMessage = postMessage.mock.calls[0]?.[0] as undefined | {
+      detailsHtml: string;
+      type: string;
+    };
+    expect(clearMessage?.type).toBe('replacePanelState');
+    expect(clearMessage?.detailsHtml).toContain('class="details-empty"');
   });
 
   it('updates the selected command without rewriting the full webview html', async () => {
@@ -570,5 +918,476 @@ describe('ShellCommandsPanelProvider polling', () => {
     expect(rawWebviewView.webview.html).toContain('display: flex;');
     expect(rawWebviewView.webview.html).toContain('flex-direction: column;');
     expect(rawWebviewView.webview.html).toContain('overflow: hidden;');
+  });
+
+  it('renders the empty details state when command details cannot be resolved', async () => {
+    const runtime = {
+      clearCompletedCommands: vi.fn(() => 0),
+      deleteCompletedCommand: vi.fn(() => false),
+      getCommandDetails: vi.fn(async () => {
+        throw new Error('missing');
+      }),
+      killBackgroundCommand: vi.fn(() => true),
+      listCommands: vi.fn(() => [
+        createCommand({
+          completedAt: '2026-03-10T00:01:00.000Z',
+          exitCode: 0,
+          id: 'shell-missing',
+          isRunning: false,
+        }),
+      ]),
+      onDidChangeCommands: vi.fn(() => () => undefined),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    expect(rawWebviewView.webview.html).toContain('class="details-empty"');
+    expect(rawWebviewView.webview.html).toContain('id="output-block" class="output-block"');
+  });
+
+  it('ignores copy messages when command details cannot be loaded', async () => {
+    const runtime = {
+      clearCompletedCommands: vi.fn(() => 0),
+      deleteCompletedCommand: vi.fn(() => false),
+      getCommandDetails: vi.fn(async () => {
+        throw new Error('missing');
+      }),
+      killBackgroundCommand: vi.fn(() => true),
+      listCommands: vi.fn(() => [ createCommand() ]),
+      onDidChangeCommands: vi.fn(() => () => undefined),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    await getMessageHandler()?.({
+      commandId: 'shell-1234abcd',
+      copyField: 'command',
+      type: 'copy',
+    });
+    await flushWebviewMessageMicrotasks();
+
+    expect(vscode.env.clipboard.writeText).not.toHaveBeenCalled();
+  });
+
+  it('registers openEntry and reveals the selected command in the shell runs panel', async () => {
+    const detailsRef = {
+      current: createDetails({
+        command: 'printf selected',
+        id: 'shell-beefcafe',
+      }),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+    await provider.resolveWebviewView(webviewView);
+
+    const openEntry = getRegisteredCommandHandler('agent-helper-kit.shellCommands.openEntry');
+
+    await openEntry({
+      commandRun: {
+        id: 'shell-beefcafe',
+      },
+    });
+
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+      'workbench.view.extension.agent-helper-kit-shellCommandsPanel',
+    );
+
+    const latestHtml = rawWebviewView.webview.html;
+    expect(latestHtml).toContain('data-command-id="shell-beefcafe"');
+  });
+
+  it('registers kill and delete commands that act on explicit items', async () => {
+    const deleteCompletedCommand = vi.fn(() => true);
+    const killBackgroundCommand = vi.fn(() => true);
+    const runtime = {
+      clearCompletedCommands: vi.fn(() => 0),
+      deleteCompletedCommand,
+      getCommandDetails: vi.fn(async (commandId: string) => createDetails({
+        command: 'printf explicit',
+        completedAt: '2026-03-10T00:01:00.000Z',
+        exitCode: 0,
+        id: commandId,
+        isRunning: false,
+      })),
+      killBackgroundCommand,
+      listCommands: vi.fn(() => []),
+      onDidChangeCommands: vi.fn(() => () => undefined),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+    await provider.resolveWebviewView(webviewView);
+
+    const killEntry = getRegisteredCommandHandler('agent-helper-kit.shellCommands.killEntry');
+    const deleteEntry = getRegisteredCommandHandler('agent-helper-kit.shellCommands.deleteEntry');
+
+    await killEntry('shell-1234abcd');
+    await deleteEntry('shell-1234abcd');
+
+    expect(killBackgroundCommand).toHaveBeenCalledWith('shell-1234abcd');
+    expect(deleteCompletedCommand).toHaveBeenCalledWith('shell-1234abcd');
+    expect(rawWebviewView.webview.html).toContain('class="details-empty"');
+  });
+
+  it('registers clearFinished and skips refresh when nothing was removed', async () => {
+    const clearCompletedCommands = vi.fn(() => 0);
+    const runtime = {
+      clearCompletedCommands,
+      deleteCompletedCommand: vi.fn(() => false),
+      getCommandDetails: vi.fn(async () => createDetails()),
+      killBackgroundCommand: vi.fn(() => true),
+      listCommands: vi.fn(() => [ createCommand() ]),
+      onDidChangeCommands: vi.fn(() => () => undefined),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      postMessage,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+    await provider.resolveWebviewView(webviewView);
+
+    await getMessageHandler()?.({ type: 'ready' });
+    await flushWebviewMessageMicrotasks();
+    postMessage.mockClear();
+
+    const clearFinished = getRegisteredCommandHandler('agent-helper-kit.shellCommands.clearFinished');
+    await clearFinished();
+
+    expect(clearCompletedCommands).toHaveBeenCalledOnce();
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it('renders ANSI class styles and fallback labels for completed killed commands', async () => {
+    const detailsRef = {
+      current: createDetails({
+        command: '   ',
+        completedAt: '2026-03-10T00:01:00.000Z',
+        exitCode: 1,
+        isRunning: false,
+        killedByUser: true,
+        output: '\u001B[31;44;1;2;3;4;9mstyled\u001B[0m\n',
+        shell: '   ',
+        signal: null,
+      }),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    const { html } = rawWebviewView.webview;
+    expect(html).toContain('class="status-indicator killed"');
+    expect(html).toContain('data-action="delete"');
+    expect(html).toContain('title="Delete"');
+    expect(html).toContain('class="ansi-fg-1 ansi-bg-4 ansi-bold ansi-dim ansi-italic ansi-underline ansi-strikethrough"');
+  });
+
+  it('copies the command text when copyField is omitted', async () => {
+    const detailsRef = {
+      current: createDetails({
+        command: 'printf copied-command',
+      }),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    await getMessageHandler()?.({
+      commandId: 'shell-1234abcd',
+      type: 'copy',
+    });
+    await flushWebviewMessageMicrotasks();
+
+    expect(vscode.env.clipboard.writeText).toHaveBeenLastCalledWith('printf copied-command');
+  });
+
+  it('stops posting updates after the webview is disposed', async () => {
+    const detailsRef = {
+      current: createDetails(),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      postMessage,
+      triggerDispose,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+    await getMessageHandler()?.({ type: 'ready' });
+    await flushWebviewMessageMicrotasks();
+    postMessage.mockClear();
+
+    triggerDispose();
+    detailsRef.current = createDetails({ output: 'first line\nsecond line\n' });
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a full panel refresh when polled command details disappear', async () => {
+    let shouldThrow = false;
+    const runtime = {
+      clearCompletedCommands: vi.fn(() => 0),
+      deleteCompletedCommand: vi.fn(() => false),
+      getCommandDetails: vi.fn(async () => {
+        if (shouldThrow) {
+          throw new Error('missing');
+        }
+
+        return createDetails();
+      }),
+      killBackgroundCommand: vi.fn(() => true),
+      listCommands: vi.fn(() => [ createCommand() ]),
+      onDidChangeCommands: vi.fn(() => () => undefined),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      postMessage,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+    await getMessageHandler()?.({ type: 'ready' });
+    await flushWebviewMessageMicrotasks();
+    postMessage.mockClear();
+
+    shouldThrow = true;
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const missingDetailsMessage = postMessage.mock.calls[0]?.[0] as undefined | {
+      detailsHtml: string;
+      type: string;
+    };
+    expect(missingDetailsMessage?.type).toBe('replacePanelState');
+    expect(missingDetailsMessage?.detailsHtml).toContain('class="details-empty"');
+  });
+
+  it('falls back to a full panel refresh when the selected command finishes during polling', async () => {
+    let details: ShellCommandDetails = createDetails();
+    const runtime = {
+      clearCompletedCommands: vi.fn(() => 0),
+      deleteCompletedCommand: vi.fn(() => false),
+      getCommandDetails: vi.fn(async () => details),
+      killBackgroundCommand: vi.fn(() => true),
+      listCommands: vi.fn(() => [ createCommand({
+        completedAt: details.completedAt,
+        exitCode: details.exitCode,
+        id: details.id,
+        isRunning: details.isRunning,
+      }) ]),
+      onDidChangeCommands: vi.fn(() => () => undefined),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      postMessage,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+    await getMessageHandler()?.({ type: 'ready' });
+    await flushWebviewMessageMicrotasks();
+    postMessage.mockClear();
+
+    details = createDetails({
+      completedAt: '2026-03-10T00:01:00.000Z',
+      exitCode: 0,
+      isRunning: false,
+      output: 'first line\nfinished line\n',
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const finishedMessage = postMessage.mock.calls[0]?.[0] as undefined | {
+      detailsHtml: string;
+      type: string;
+    };
+    expect(finishedMessage?.type).toBe('replacePanelState');
+    expect(finishedMessage?.detailsHtml).toContain('finished line');
+  });
+
+  it('uses the selected command fallback for registered delete and kill commands', async () => {
+    const detailsRef = {
+      current: createDetails({
+        command: 'printf selected-fallback',
+        id: 'shell-selected',
+      }),
+    };
+    const deleteCompletedCommand = vi.fn(() => true);
+    const killBackgroundCommand = vi.fn(() => true);
+    const runtime = {
+      clearCompletedCommands: vi.fn(() => 1),
+      deleteCompletedCommand,
+      getCommandDetails: vi.fn(async () => detailsRef.current),
+      killBackgroundCommand,
+      listCommands: vi.fn(() => [
+        createCommand({
+          command: detailsRef.current.command,
+          id: detailsRef.current.id,
+          isRunning: true,
+        }),
+      ]),
+      onDidChangeCommands: vi.fn(() => () => undefined),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+    await provider.resolveWebviewView(webviewView);
+
+    const openEntry = getRegisteredCommandHandler('agent-helper-kit.shellCommands.openEntry');
+    const killEntry = getRegisteredCommandHandler('agent-helper-kit.shellCommands.killEntry');
+    const deleteEntry = getRegisteredCommandHandler('agent-helper-kit.shellCommands.deleteEntry');
+
+    await openEntry('shell-selected');
+    await killEntry();
+    await deleteEntry();
+
+    expect(killBackgroundCommand).toHaveBeenCalledWith('shell-selected');
+    expect(deleteCompletedCommand).toHaveBeenCalledWith('shell-selected');
+  });
+
+  it('returns early for registered delete and kill commands when nothing is selected', async () => {
+    const deleteCompletedCommand = vi.fn(() => true);
+    const killBackgroundCommand = vi.fn(() => true);
+    const runtime = {
+      clearCompletedCommands: vi.fn(() => 1),
+      deleteCompletedCommand,
+      getCommandDetails: vi.fn(async () => undefined),
+      killBackgroundCommand,
+      listCommands: vi.fn(() => []),
+      onDidChangeCommands: vi.fn(() => () => undefined),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+    await provider.resolveWebviewView(webviewView);
+
+    const killEntry = getRegisteredCommandHandler('agent-helper-kit.shellCommands.killEntry');
+    const deleteEntry = getRegisteredCommandHandler('agent-helper-kit.shellCommands.deleteEntry');
+
+    await killEntry();
+    await deleteEntry();
+
+    expect(killBackgroundCommand).not.toHaveBeenCalled();
+    expect(deleteCompletedCommand).not.toHaveBeenCalled();
+  });
+
+  it('clears the selected command when clearFinished removes it', async () => {
+    const clearCompletedCommands = vi.fn(() => 1);
+    const runtime = {
+      clearCompletedCommands,
+      deleteCompletedCommand: vi.fn(() => false),
+      getCommandDetails: vi.fn(async () => undefined),
+      killBackgroundCommand: vi.fn(() => true),
+      listCommands: vi.fn(() => []),
+      onDidChangeCommands: vi.fn(() => () => undefined),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+    await provider.resolveWebviewView(webviewView);
+
+    const openEntry = getRegisteredCommandHandler('agent-helper-kit.shellCommands.openEntry');
+    const clearFinished = getRegisteredCommandHandler('agent-helper-kit.shellCommands.clearFinished');
+
+    await openEntry('shell-selected');
+    await clearFinished();
+
+    expect(clearCompletedCommands).toHaveBeenCalledOnce();
+    expect(rawWebviewView.webview.html).toContain('class="details-empty"');
   });
 });

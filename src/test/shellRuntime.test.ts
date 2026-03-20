@@ -1,5 +1,7 @@
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 import {
   afterEach,
@@ -13,6 +15,7 @@ import {
 import { resetExtensionOutputChannelForTest } from '@/logging';
 import {
   getShellOutputDirectoryPath,
+  getShellOutputFilePath,
   listShellMetadataIds,
   readShellCommandMetadata,
 } from '@/shellOutputStore';
@@ -42,6 +45,9 @@ const vscode = vi.hoisted(() => ({
 vi.mock('vscode', () => vscode);
 
 const SHELL_ID_REGEX = /^shell-[a-f0-9]{8}$/;
+const SHELL_OUTPUT_DIR_ENV_VAR = 'AGENT_HELPER_KIT_SHELL_OUTPUT_DIR';
+const shellOutputTestDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-helper-kit-shellRuntime-test-'));
+const previousShellOutputDirectory = process.env[SHELL_OUTPUT_DIR_ENV_VAR];
 
 type FakeReadable = EventEmitter;
 
@@ -78,10 +84,19 @@ function removeShellOutputDirectory(): void {
 
 afterEach(() => {
   removeShellOutputDirectory();
+
+  if (previousShellOutputDirectory === undefined) {
+    Reflect.deleteProperty(process.env, SHELL_OUTPUT_DIR_ENV_VAR);
+  }
+  else {
+    process.env[SHELL_OUTPUT_DIR_ENV_VAR] = previousShellOutputDirectory;
+  }
+
   vi.restoreAllMocks();
 });
 
 beforeEach(() => {
+  process.env[SHELL_OUTPUT_DIR_ENV_VAR] = shellOutputTestDirectory;
   vi.clearAllMocks();
   resetExtensionOutputChannelForTest();
 });
@@ -182,6 +197,30 @@ describe('ShellRuntime session command list', () => {
     expect(runtime.deleteCompletedCommand('shell-missing')).toBe(false);
     expect(runtime.deleteCompletedCommand(id)).toBe(true);
     expect(runtime.deleteCompletedCommand(id)).toBe(false);
+  });
+
+  it('clears only completed commands and leaves running commands intact', () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const runningId = runtime.startBackgroundCommand('echo running');
+    const completedId = runtime.createCompletedCommandRecord('echo done', {
+      exitCode: 0,
+      output: 'done\n',
+      shell: '/bin/bash',
+      terminationSignal: null,
+      timedOut: false,
+    });
+
+    expect(runtime.clearCompletedCommands()).toBe(1);
+    expect(runtime.listCommands()).toEqual([
+      expect.objectContaining({
+        id: runningId,
+        isRunning: true,
+      }),
+    ]);
+    expect(runtime.deleteCompletedCommand(completedId)).toBe(false);
   });
 });
 
@@ -340,6 +379,25 @@ describe('ShellRuntime shell id generation', () => {
 });
 
 describe('ShellRuntime background execution', () => {
+  it('returns timedOut when awaiting a command that is still running after the timeout', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.startBackgroundCommand('echo waiting');
+    fakeProcess.stdout.emit('data', 'partial\n');
+
+    await expect(runtime.awaitBackgroundCommand({
+      id,
+      timeout: 1,
+    })).resolves.toMatchObject({
+      exitCode: null,
+      output: 'partial\n',
+      terminationSignal: null,
+      timedOut: true,
+    });
+  });
+
   it('supports public ids for await and output reads', async () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
@@ -366,6 +424,92 @@ describe('ShellRuntime background execution', () => {
       exitCode: 0,
       isRunning: false,
       output: 'hello\n',
+    });
+  });
+
+  it('captures stderr output in the command details', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.startBackgroundCommand('echo stderr');
+    const awaitPromise = runtime.awaitBackgroundCommand({
+      id,
+      timeout: 0,
+    });
+
+    fakeProcess.stderr.emit('data', 'problem\n');
+    fakeProcess.emit('close', 0, null);
+
+    await expect(awaitPromise).resolves.toMatchObject({
+      output: 'problem\n',
+    });
+    await expect(runtime.getCommandDetails(id)).resolves.toMatchObject({
+      output: 'problem\n',
+    });
+  });
+
+  it('falls back to in-memory output when appending to spilled output fails', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({
+      memoryToFileDelayMs: 60_000,
+      outputLimitBytes: 1,
+    });
+
+    const id = runtime.startBackgroundCommand('echo recover');
+
+    fakeProcess.stdout.emit('data', 'a');
+
+    const outputFilePath = getShellOutputDirectoryPath();
+    expect(fs.existsSync(outputFilePath)).toBe(true);
+
+    const spilledOutputPath = getShellOutputFilePath(id);
+    fs.rmSync(spilledOutputPath, { force: true, recursive: true });
+    fs.mkdirSync(spilledOutputPath, { recursive: true });
+
+    const awaitPromise = runtime.awaitBackgroundCommand({
+      id,
+      timeout: 0,
+    });
+
+    fakeProcess.stdout.emit('data', 'b');
+    fakeProcess.emit('close', 0, null);
+
+    await expect(awaitPromise).resolves.toMatchObject({
+      exitCode: 0,
+      output: 'b',
+    });
+    await expect(runtime.getCommandDetails(id)).resolves.toMatchObject({
+      output: 'b',
+    });
+  });
+
+  it('returns full output once for completed records and then only deltas on later reads', async () => {
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.createCompletedCommandRecord('echo done', {
+      exitCode: 0,
+      output: 'done\n',
+      shell: '/bin/bash',
+      terminationSignal: null,
+      timedOut: false,
+    });
+
+    await expect(runtime.readBackgroundOutput({
+      id,
+    })).resolves.toMatchObject({
+      exitCode: 0,
+      isRunning: false,
+      output: 'done\n',
+    });
+
+    await expect(runtime.readBackgroundOutput({
+      id,
+    })).resolves.toMatchObject({
+      exitCode: 0,
+      isRunning: false,
+      output: '',
     });
   });
 
@@ -422,5 +566,67 @@ describe('ShellRuntime background execution', () => {
     await runtime.awaitBackgroundCommand({ id, timeout: 0 });
 
     expect(runtime.killBackgroundCommand(id)).toBe(false);
+  });
+
+  it('records child exit metadata when kill fails after the process already exited', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fakeProcess = createFakeProcess();
+      spawn.mockReturnValue(fakeProcess);
+      fakeProcess.kill.mockImplementation(() => {
+        fakeProcess.exitCode = 7;
+        return false;
+      });
+      const runtime = new ShellRuntime({});
+
+      const id = runtime.startBackgroundCommand('echo already-exited');
+
+      expect(runtime.killBackgroundCommand(id)).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(25);
+
+      await expect(runtime.awaitBackgroundCommand({ id, timeout: 0 })).resolves.toMatchObject({
+        exitCode: 7,
+        terminationSignal: null,
+        timedOut: false,
+      });
+      expect(runtime.listCommands()[0]).toEqual(expect.objectContaining({
+        exitCode: 7,
+        id,
+        isRunning: false,
+      }));
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses default color-related environment variables and respects NO_COLOR', () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({
+      shellEnv: {
+        NO_COLOR: '1',
+      },
+    });
+
+    runtime.startBackgroundCommand('echo env');
+
+    const spawnOptions = spawn.mock.calls[0]?.[2] as undefined | {
+      env?: NodeJS.ProcessEnv;
+    };
+    const spawnEnvironment = spawnOptions?.env;
+
+    expect(spawnEnvironment).toMatchObject({
+      CLICOLOR: '1',
+      COLORTERM: 'truecolor',
+      COLUMNS: '240',
+      LINES: '80',
+      NO_COLOR: '1',
+      TERM: 'xterm-256color',
+    });
+    expect(spawnEnvironment?.CLICOLOR_FORCE).toBeUndefined();
+    expect(spawnEnvironment?.FORCE_COLOR).toBeUndefined();
   });
 });
