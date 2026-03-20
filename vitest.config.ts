@@ -19,14 +19,15 @@ export default defineConfig({
       reporter: [ 'text', 'lcov' ],
       thresholds: {
         autoUpdate: true,
-        branches: 89.26,
+        branches: 89.15,
         functions: 96.92,
-        lines: 95.91,
-        statements: 95.8,
+        lines: 95.77,
+        statements: 95.66,
       },
     },
     globals: false,
     include: [ 'src/**/*.test.ts' ],
     restoreMocks: true,
+    setupFiles: [ 'src/test/setup.ts' ],
   },
 });

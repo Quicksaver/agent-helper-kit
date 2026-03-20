@@ -29,6 +29,7 @@ import {
 } from '@/test/fakeShellProcess';
 
 const spawn = vi.hoisted(() => vi.fn());
+const terminalWidthShimPath = path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs');
 
 vi.mock('node:child_process', () => ({
   spawn,
@@ -79,6 +80,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetExtensionOutputChannelForTest();
 });
+
+function getSpawnEnvironment(): NodeJS.ProcessEnv | undefined {
+  const spawnOptions = spawn.mock.calls.at(-1)?.[2] as undefined | {
+    env?: NodeJS.ProcessEnv;
+  };
+
+  return spawnOptions?.env;
+}
 
 describe('ShellRuntime helpers', () => {
   it('strips only the public shell id prefix when converting ids', () => {
@@ -592,10 +601,7 @@ describe('ShellRuntime background execution', () => {
 
     runtime.startBackgroundCommand('echo env');
 
-    const spawnOptions = spawn.mock.calls[0]?.[2] as undefined | {
-      env?: NodeJS.ProcessEnv;
-    };
-    const spawnEnvironment = spawnOptions?.env;
+    const spawnEnvironment = getSpawnEnvironment();
 
     expect(spawnEnvironment).toMatchObject({
       CLICOLOR: '1',
@@ -622,11 +628,7 @@ describe('ShellRuntime background execution', () => {
       columns: 320,
     });
 
-    const spawnOptions = spawn.mock.calls[0]?.[2] as undefined | {
-      env?: NodeJS.ProcessEnv;
-    };
-
-    expect(spawnOptions?.env?.COLUMNS).toBe('320');
+    expect(getSpawnEnvironment()?.COLUMNS).toBe('320');
   });
 
   it('sanitizes direct runtime column overrides before exporting COLUMNS', () => {
@@ -638,10 +640,87 @@ describe('ShellRuntime background execution', () => {
       columns: MAX_SHELL_COLUMNS + 0.9,
     });
 
-    const spawnOptions = spawn.mock.calls[0]?.[2] as undefined | {
-      env?: NodeJS.ProcessEnv;
-    };
+    expect(getSpawnEnvironment()?.COLUMNS).toBe(String(MAX_SHELL_COLUMNS));
+  });
 
-    expect(spawnOptions?.env?.COLUMNS).toBe(String(MAX_SHELL_COLUMNS));
+  it('appends the terminal width shim to direct runtime NODE_OPTIONS', () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({
+      shellEnv: {
+        NODE_OPTIONS: '--trace-warnings',
+      },
+    });
+
+    runtime.startBackgroundCommand('echo env');
+
+    expect(getSpawnEnvironment()?.NODE_OPTIONS).toBe(`--trace-warnings --require ${JSON.stringify(terminalWidthShimPath)}`);
+  });
+
+  it('reuses an existing long-form terminal width shim require option', () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const existingNodeOptions = `--trace-warnings --require ${JSON.stringify(terminalWidthShimPath)}`;
+    const runtime = new ShellRuntime({
+      shellEnv: {
+        NODE_OPTIONS: existingNodeOptions,
+      },
+    });
+
+    runtime.startBackgroundCommand('echo env');
+
+    expect(getSpawnEnvironment()?.NODE_OPTIONS).toBe(existingNodeOptions);
+  });
+
+  it('reuses existing short and equals-form terminal width shim require options', () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({
+      shellEnv: {
+        NODE_OPTIONS: `--trace-warnings -r ${JSON.stringify(terminalWidthShimPath)}`,
+      },
+    });
+
+    runtime.startBackgroundCommand('echo env');
+
+    expect(getSpawnEnvironment()?.NODE_OPTIONS).toBe(`--trace-warnings -r ${JSON.stringify(terminalWidthShimPath)}`);
+
+    const nextFakeProcess = createFakeProcess();
+    spawn.mockReturnValue(nextFakeProcess);
+    const secondRuntime = new ShellRuntime({
+      shellEnv: {
+        NODE_OPTIONS: `--trace-warnings --require=${JSON.stringify(terminalWidthShimPath)}`,
+      },
+    });
+
+    secondRuntime.startBackgroundCommand('echo env');
+
+    expect(getSpawnEnvironment()?.NODE_OPTIONS).toBe(`--trace-warnings --require=${JSON.stringify(terminalWidthShimPath)}`);
+  });
+
+  it('preserves trailing escapes and substring-only NODE_OPTIONS while appending the shim', () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({
+      shellEnv: {
+        NODE_OPTIONS: '--trace-warnings\\',
+      },
+    });
+
+    runtime.startBackgroundCommand('echo env');
+
+    expect(getSpawnEnvironment()?.NODE_OPTIONS).toBe(`--trace-warnings\\ --require ${JSON.stringify(terminalWidthShimPath)}`);
+
+    const nextFakeProcess = createFakeProcess();
+    spawn.mockReturnValue(nextFakeProcess);
+    const secondRuntime = new ShellRuntime({
+      shellEnv: {
+        NODE_OPTIONS: `--title=${terminalWidthShimPath}-copy`,
+      },
+    });
+
+    secondRuntime.startBackgroundCommand('echo env');
+
+    expect(getSpawnEnvironment()?.NODE_OPTIONS).toBe(`--title=${terminalWidthShimPath}-copy --require ${JSON.stringify(terminalWidthShimPath)}`);
   });
 });
