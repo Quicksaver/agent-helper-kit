@@ -474,12 +474,12 @@
     "package": "yarn package:build && yarn package:install",
     "package:build": "vsce package --yarn --no-dependencies",
     "package:install": "code --install-extension $(ls -t *.vsix | head -1)",
-    "package:publish": "env-cmd -f ./.env.local vsce publish --yarn --no-dependencies --packagePath $(ls -t *.vsix | head -1)",
+    "package:publish": "env-cmd -f ./.env.local vsce publish --yarn --no-dependencies",
     "release": "./scripts/release.sh",
     "test": "vitest run --coverage",
     "test:unit": "vitest run",
     "test:watch": "vitest",
-    "vscode:prepublish": "yarn lint:check && yarn build",
+    "vscode:prepublish": "yarn lint:check && yarn test && yarn build",
     "watch": "node esbuild.mjs --watch"
   },
   "devDependencies": {

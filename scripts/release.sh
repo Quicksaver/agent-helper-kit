@@ -334,14 +334,14 @@ run_step \
 resolve_built_vsix_path "$package_name" "$next_version"
 
 run_step \
-    "Commit release changes for $release_tag" \
-    "Failed to create the release commit." \
+    "Stage release changes for $release_tag" \
+    "Failed to stage release changes." \
     git -C "$project_root" add package.json CHANGELOG.md || exit 1
 
 run_step \
     "Create release commit for $release_tag" \
     "Failed to create the release commit." \
-    git -C "$project_root" commit -m "Bump version to $release_tag" || exit 1
+    git -C "$project_root" commit -m "Bump version to $next_version" || exit 1
 
 run_step \
     "Create git tag $release_tag" \
@@ -368,6 +368,6 @@ run_step \
 run_step \
     "Publish extension package for $next_version" \
     "Failed to publish the extension package via yarn package:publish." \
-    yarn package:publish || exit 1
+    yarn package:publish --packagePath "$built_vsix_path" || exit 1
 
 pass "Released $release_tag and published package version $next_version."
