@@ -29,6 +29,7 @@ import {
   readShellOutputSync,
   removeShellCommandMetadata,
   removeShellOutputFile,
+  SHELL_OUTPUT_DIR_ENV_VAR,
   writeShellCommandMetadata,
 } from '@/shellOutputStore';
 
@@ -48,7 +49,6 @@ vi.mock('vscode', () => vscode);
 
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 const SEVEN_HOURS_MS = 7 * 60 * 60 * 1000;
-const SHELL_OUTPUT_DIR_ENV_VAR = 'AGENT_HELPER_KIT_SHELL_OUTPUT_DIR';
 const shellOutputTestDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-helper-kit-shellOutputStore-test-'));
 const previousShellOutputDirectory = process.env[SHELL_OUTPUT_DIR_ENV_VAR];
 

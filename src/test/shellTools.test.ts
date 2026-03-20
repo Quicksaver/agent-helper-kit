@@ -10,17 +10,25 @@ import {
 import {
   getShellOutputDirectoryPath,
   getShellOutputFilePath,
+  SHELL_OUTPUT_DIR_ENV_VAR,
 } from '@/shellOutputStore';
 import { SHELL_COMMAND_ID_PREFIX } from '@/shellRuntime';
 import {
   registerShellTools,
   resetShellRuntimeForTest,
 } from '@/shellTools';
+import {
+  createFakeProcess as createBaseFakeProcess,
+  type FakeProcess,
+} from '@/test/fakeShellProcess';
 
 const SHELL_ID_REGEX = /^[a-f0-9]{8}$/;
-const SHELL_OUTPUT_DIR_ENV_VAR = 'AGENT_HELPER_KIT_SHELL_OUTPUT_DIR';
 const temporaryDirectories = new Set<string>();
 const previousShellOutputDirectory = process.env[SHELL_OUTPUT_DIR_ENV_VAR];
+
+function createFakeProcess(): FakeProcess {
+  return createBaseFakeProcess({ emitCloseOnKill: true });
+}
 
 function createTemporaryDirectory(prefix: string): string {
   const directoryPath = fs.mkdtempSync(`${os.tmpdir()}/${prefix}`);
@@ -53,8 +61,6 @@ function expectedShellArgs(shell: string): string[] {
   return [ '-lc' ];
 }
 
-type FakeReadable = EventEmitter;
-
 type SpawnInvocationOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
@@ -67,35 +73,6 @@ type SpawnInvocation = {
   command: string;
   options: SpawnInvocationOptions;
 };
-
-interface FakeProcess extends EventEmitter {
-  exitCode: null | number;
-  kill: ReturnType<typeof vi.fn>;
-  signalCode: NodeJS.Signals | null;
-  stderr: FakeReadable;
-  stdout: FakeReadable;
-}
-
-function createFakeProcess(): FakeProcess {
-  const processEmitter = new EventEmitter();
-  const stdout = new EventEmitter();
-  const stderr = new EventEmitter();
-  const fakeProcess = Object.assign(processEmitter, {
-    exitCode: null,
-    kill: vi.fn(),
-    signalCode: null,
-    stderr,
-    stdout,
-  }) as FakeProcess;
-
-  fakeProcess.kill.mockImplementation((signal?: NodeJS.Signals) => {
-    fakeProcess.signalCode = signal ?? 'SIGTERM';
-    fakeProcess.emit('close', null, signal ?? 'SIGTERM');
-    return true;
-  });
-
-  return fakeProcess;
-}
 
 function captureEnvironmentVariables(variableNames: string[]): () => void {
   const previousValues = new Map(variableNames.map(variableName => [ variableName, process.env[variableName] ]));

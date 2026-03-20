@@ -1,4 +1,3 @@
-import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -11,15 +10,9 @@ import {
   vi,
 } from 'vitest';
 
-type FakeReadable = EventEmitter;
-
-interface FakeProcess extends EventEmitter {
-  exitCode: null | number;
-  kill: ReturnType<typeof vi.fn>;
-  signalCode: NodeJS.Signals | null;
-  stderr: FakeReadable;
-  stdout: FakeReadable;
-}
+import {
+  createFakeProcess,
+} from '@/test/fakeShellProcess';
 
 const spawn = vi.hoisted(() => vi.fn());
 
@@ -34,24 +27,9 @@ const vscode = vi.hoisted(() => ({
     })),
   },
 }));
-
 const SHELL_OUTPUT_DIR_ENV_VAR = 'AGENT_HELPER_KIT_SHELL_OUTPUT_DIR';
 const shellOutputTestDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-helper-kit-shellRuntimePlatform-test-'));
 const previousShellOutputDirectory = process.env[SHELL_OUTPUT_DIR_ENV_VAR];
-
-function createFakeProcess(): FakeProcess {
-  const processEmitter = new EventEmitter();
-  const stdout = new EventEmitter();
-  const stderr = new EventEmitter();
-
-  return Object.assign(processEmitter, {
-    exitCode: null,
-    kill: vi.fn(() => true),
-    signalCode: null,
-    stderr,
-    stdout,
-  }) as FakeProcess;
-}
 
 async function importShellRuntimeForPlatform(platform: NodeJS.Platform, homeDir: string) {
   vi.resetModules();
@@ -87,9 +65,7 @@ afterEach(() => {
   else {
     process.env[SHELL_OUTPUT_DIR_ENV_VAR] = previousShellOutputDirectory;
   }
-});
 
-afterEach(() => {
   fs.rmSync(shellOutputTestDirectory, {
     force: true,
     maxRetries: 3,

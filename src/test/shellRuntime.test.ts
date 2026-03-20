@@ -1,4 +1,3 @@
-import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -18,11 +17,15 @@ import {
   getShellOutputFilePath,
   listShellMetadataIds,
   readShellCommandMetadata,
+  SHELL_OUTPUT_DIR_ENV_VAR,
 } from '@/shellOutputStore';
 import {
   ShellRuntime,
   toPublicCommandId,
 } from '@/shellRuntime';
+import {
+  createFakeProcess,
+} from '@/test/fakeShellProcess';
 
 const spawn = vi.hoisted(() => vi.fn());
 
@@ -45,33 +48,8 @@ const vscode = vi.hoisted(() => ({
 vi.mock('vscode', () => vscode);
 
 const SHELL_ID_REGEX = /^shell-[a-f0-9]{8}$/;
-const SHELL_OUTPUT_DIR_ENV_VAR = 'AGENT_HELPER_KIT_SHELL_OUTPUT_DIR';
 const shellOutputTestDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-helper-kit-shellRuntime-test-'));
 const previousShellOutputDirectory = process.env[SHELL_OUTPUT_DIR_ENV_VAR];
-
-type FakeReadable = EventEmitter;
-
-interface FakeProcess extends EventEmitter {
-  exitCode: null | number;
-  kill: ReturnType<typeof vi.fn>;
-  signalCode: NodeJS.Signals | null;
-  stderr: FakeReadable;
-  stdout: FakeReadable;
-}
-
-function createFakeProcess(): FakeProcess {
-  const processEmitter = new EventEmitter();
-  const stdout = new EventEmitter();
-  const stderr = new EventEmitter();
-
-  return Object.assign(processEmitter, {
-    exitCode: null,
-    kill: vi.fn(() => true),
-    signalCode: null,
-    stderr,
-    stdout,
-  }) as FakeProcess;
-}
 
 function removeShellOutputDirectory(): void {
   fs.rmSync(getShellOutputDirectoryPath(), {
@@ -119,7 +97,7 @@ describe('ShellRuntime helpers', () => {
     }, '   ', '   ');
 
     await expect(runtime.getCommandDetails(id)).resolves.toMatchObject({
-      cwd: process.env.HOME,
+      cwd: os.homedir(),
       output: 'fallback\n',
       shell: process.env.SHELL ?? '/bin/bash',
     });

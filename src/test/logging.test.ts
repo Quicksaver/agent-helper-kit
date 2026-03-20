@@ -45,15 +45,22 @@ describe('logging', () => {
   });
 
   it('writes formatted error, info, and warning messages to the channel', () => {
-    vi.setSystemTime(new Date('2026-03-19T12:00:00.000Z'));
+    vi.useFakeTimers();
 
-    logError('first problem');
-    logInfo('hello');
-    logWarn('careful');
+    try {
+      vi.setSystemTime(new Date('2026-03-19T12:00:00.000Z'));
 
-    expect(appendLine).toHaveBeenNthCalledWith(1, '[2026-03-19T12:00:00.000Z] [ERROR] first problem');
-    expect(appendLine).toHaveBeenNthCalledWith(2, '[2026-03-19T12:00:00.000Z] [INFO] hello');
-    expect(appendLine).toHaveBeenNthCalledWith(3, '[2026-03-19T12:00:00.000Z] [WARN] careful');
+      logError('first problem');
+      logInfo('hello');
+      logWarn('careful');
+
+      expect(appendLine).toHaveBeenNthCalledWith(1, '[2026-03-19T12:00:00.000Z] [ERROR] first problem');
+      expect(appendLine).toHaveBeenNthCalledWith(2, '[2026-03-19T12:00:00.000Z] [INFO] hello');
+      expect(appendLine).toHaveBeenNthCalledWith(3, '[2026-03-19T12:00:00.000Z] [WARN] careful');
+    }
+    finally {
+      vi.useRealTimers();
+    }
   });
 
   it('disposes the cached channel when reset for tests is called', () => {
