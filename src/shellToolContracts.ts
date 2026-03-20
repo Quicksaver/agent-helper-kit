@@ -217,8 +217,12 @@ export interface GetShellCommandInput {
 
 export type GetLastShellCommandInput = Record<string, never>;
 
+const shellColumnsSchema = z.number().int().gt(0, {
+  message: 'columns must be greater than 0',
+}).optional();
+
 export const runInAsyncShellInputSchema = {
-  columns: z.number().int().positive().optional(),
+  columns: shellColumnsSchema,
   command: z.string(),
   cwd: z.string().optional(),
   explanation: z.string(),
@@ -227,7 +231,7 @@ export const runInAsyncShellInputSchema = {
 } satisfies z.ZodRawShape;
 
 export const runInSyncShellInputSchema = {
-  columns: z.number().int().positive().optional(),
+  columns: shellColumnsSchema,
   command: z.string(),
   cwd: z.string().optional(),
   explanation: z.string(),

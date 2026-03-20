@@ -140,7 +140,7 @@ describe('shell tool contracts', () => {
       explanation: 'print ok',
       goal: 'test sync validation',
       timeout: 0,
-    })).toThrowError();
+    })).toThrowError(/columns must be greater than 0/);
 
     expect(() => validateRunInSyncShellInput({
       command: 'echo ok',
