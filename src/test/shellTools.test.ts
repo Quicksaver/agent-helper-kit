@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
+import * as path from 'node:path';
 
 import {
   afterEach, beforeEach, describe, expect, it, vi,
@@ -1113,10 +1114,13 @@ describe('shell tools', () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
 
-    const restoreEnvironment = captureEnvironmentVariables([ 'FORCE_COLOR', 'CLICOLOR_FORCE' ]);
+    const restoreEnvironment = captureEnvironmentVariables([ 'COLUMNS', 'CLICOLOR_FORCE', 'FORCE_COLOR', 'LINES', 'NODE_OPTIONS' ]);
 
+    delete process.env.COLUMNS;
     delete process.env.FORCE_COLOR;
     delete process.env.CLICOLOR_FORCE;
+    delete process.env.LINES;
+    delete process.env.NODE_OPTIONS;
 
     try {
       registerShellTools();
@@ -1138,9 +1142,46 @@ describe('shell tools', () => {
       expect(invocation.args).toEqual([ ...expectedShellArgs('/bin/zsh'), 'printf hello' ]);
       expect(invocation.options.env?.CLICOLOR).toBe('1');
       expect(invocation.options.env?.CLICOLOR_FORCE).toBe('1');
+      expect(invocation.options.env?.COLUMNS).toBe('240');
       expect(invocation.options.env?.COLORTERM).toBe('truecolor');
       expect(invocation.options.env?.FORCE_COLOR).toBe('3');
+      expect(invocation.options.env?.LINES).toBe('80');
+      expect(invocation.options.env?.NODE_OPTIONS).toContain(`--require ${JSON.stringify(path.join(process.cwd(), 'scripts', 'node-terminal-width-shim.cjs'))}`);
       expect(invocation.options.env?.TERM).toBe('xterm-256color');
+
+      fakeProcess.emit('close', 0, null);
+      await runPromise;
+    }
+    finally {
+      restoreEnvironment();
+    }
+  });
+
+  it('preserves existing NODE_OPTIONS while appending the terminal width shim', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+
+    const restoreEnvironment = captureEnvironmentVariables([ 'NODE_OPTIONS' ]);
+    process.env.NODE_OPTIONS = '--trace-warnings';
+
+    try {
+      registerShellTools();
+
+      const runTool = getRegisteredTool('run_in_sync_shell');
+
+      const runPromise = runTool.invoke({
+        input: {
+          command: 'printf hello',
+          explanation: 'verify NODE_OPTIONS merging',
+          goal: 'preserve existing node options',
+          timeout: 0,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      const invocation = getLastSpawnInvocation();
+      expect(invocation.options.env?.NODE_OPTIONS).toContain('--trace-warnings');
+      expect(invocation.options.env?.NODE_OPTIONS).toContain(`--require ${JSON.stringify(path.join(process.cwd(), 'scripts', 'node-terminal-width-shim.cjs'))}`);
 
       fakeProcess.emit('close', 0, null);
       await runPromise;

@@ -1,5 +1,6 @@
 import * as childProcess from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
@@ -28,6 +29,9 @@ export const SHELL_COMMAND_ID_PREFIX = 'shell-';
 const SHELL_ID_HEX_LENGTH = 8;
 const SHELL_ID_GENERATION_MAX_ATTEMPTS = 8;
 const MAX_MEMORY_TO_FILE_RETRY_ATTEMPTS = 3;
+const DEFAULT_SHELL_COLUMNS = 240;
+const DEFAULT_SHELL_ROWS = 80;
+const NODE_TERMINAL_SIZE_SHIM_PATH = path.resolve(__dirname, '..', 'scripts', 'node-terminal-width-shim.cjs');
 
 interface CompletionInfo {
   exitCode: null | number;
@@ -93,6 +97,8 @@ export interface RunCommandResult {
 
 interface ShellInvocation {
   command: string;
+  displayShell: string;
+  executable: string;
   shell: string;
   shellArgs: string[];
 }
@@ -342,7 +348,7 @@ export class ShellRuntime {
       ? cwd
       : os.homedir();
     const childProc = childProcess.spawn(
-      shellInvocation.shell,
+      shellInvocation.executable,
       [ ...shellInvocation.shellArgs, shellInvocation.command ],
       {
         cwd: commandCwd,
@@ -369,7 +375,7 @@ export class ShellRuntime {
       pendingExit: undefined,
       readsSinceCompletion: 0,
       resolveCompletion: () => undefined,
-      shell: shellInvocation.shell,
+      shell: shellInvocation.displayShell,
       signal: null,
       startedAt: new Date().toISOString(),
     };
@@ -447,6 +453,14 @@ export class ShellRuntime {
       ...source,
     };
 
+    if (typeof environment.COLUMNS !== 'string' || environment.COLUMNS.length === 0) {
+      environment.COLUMNS = String(DEFAULT_SHELL_COLUMNS);
+    }
+
+    if (typeof environment.LINES !== 'string' || environment.LINES.length === 0) {
+      environment.LINES = String(DEFAULT_SHELL_ROWS);
+    }
+
     if (typeof environment.TERM !== 'string' || environment.TERM.length === 0) {
       environment.TERM = 'xterm-256color';
     }
@@ -470,6 +484,17 @@ export class ShellRuntime {
 
       if (typeof environment.FORCE_COLOR !== 'string' || environment.FORCE_COLOR.length === 0) {
         environment.FORCE_COLOR = '3';
+      }
+    }
+
+    if (fs.existsSync(NODE_TERMINAL_SIZE_SHIM_PATH)) {
+      const shimOption = `--require ${JSON.stringify(NODE_TERMINAL_SIZE_SHIM_PATH)}`;
+      const existingNodeOptions = environment.NODE_OPTIONS?.trim();
+
+      if (!existingNodeOptions?.includes(NODE_TERMINAL_SIZE_SHIM_PATH)) {
+        environment.NODE_OPTIONS = existingNodeOptions
+          ? `${existingNodeOptions} ${shimOption}`
+          : shimOption;
       }
     }
 
@@ -538,6 +563,8 @@ export class ShellRuntime {
   private createPosixShellInvocation(command: string, shell: string): ShellInvocation {
     return {
       command,
+      displayShell: shell,
+      executable: shell,
       shell,
       shellArgs: [ '-lc' ],
     };
@@ -552,6 +579,8 @@ export class ShellRuntime {
       if (shellName === 'powershell' || shellName === 'pwsh') {
         return {
           command,
+          displayShell: shell,
+          executable: shell,
           shell,
           shellArgs: [ '-NoLogo', '-Command' ],
         };
@@ -559,6 +588,8 @@ export class ShellRuntime {
 
       return {
         command,
+        displayShell: shell,
+        executable: shell,
         shell,
         shellArgs: [ '/d', '/s', '/c' ],
       };
