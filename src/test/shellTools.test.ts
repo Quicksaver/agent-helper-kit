@@ -325,6 +325,44 @@ function getLastSpawnInvocation(): SpawnInvocation {
   };
 }
 
+async function expectSyncRunNodeOptions(options: {
+  expectedNodeOptions: string;
+  explanation: string;
+  goal: string;
+  initialNodeOptions: string;
+}): Promise<void> {
+  const fakeProcess = createFakeProcess();
+  spawn.mockReturnValue(fakeProcess);
+
+  const restoreEnvironment = captureEnvironmentVariables([ 'NODE_OPTIONS' ]);
+  process.env.NODE_OPTIONS = options.initialNodeOptions;
+
+  try {
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_sync_shell');
+
+    const runPromise = runTool.invoke({
+      input: {
+        command: 'printf hello',
+        explanation: options.explanation,
+        goal: options.goal,
+        timeout: 0,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const invocation = getLastSpawnInvocation();
+    expect(invocation.options.env?.NODE_OPTIONS).toBe(options.expectedNodeOptions);
+
+    fakeProcess.emit('close', 0, null);
+    await runPromise;
+  }
+  finally {
+    restoreEnvironment();
+  }
+}
+
 describe('shell tools', () => {
   beforeEach(() => {
     process.env[SHELL_OUTPUT_DIR_ENV_VAR] = createTemporaryDirectory('agent-helper-kit-shellTools-output-');
@@ -1310,139 +1348,50 @@ describe('shell tools', () => {
   });
 
   it('does not append the terminal width shim when NODE_OPTIONS already requires it', async () => {
-    const fakeProcess = createFakeProcess();
-    spawn.mockReturnValue(fakeProcess);
-
     const shimPath = path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs');
-    const restoreEnvironment = captureEnvironmentVariables([ 'NODE_OPTIONS' ]);
-    process.env.NODE_OPTIONS = `--trace-warnings --require ${JSON.stringify(shimPath)}`;
+    const nodeOptions = `--trace-warnings --require ${JSON.stringify(shimPath)}`;
 
-    try {
-      registerShellTools();
-
-      const runTool = getRegisteredTool('run_in_sync_shell');
-
-      const runPromise = runTool.invoke({
-        input: {
-          command: 'printf hello',
-          explanation: 'verify existing terminal width shim option reuse',
-          goal: 'avoid duplicate node require options',
-          timeout: 0,
-        },
-        toolInvocationToken: undefined,
-      }, {});
-
-      const invocation = getLastSpawnInvocation();
-      expect(invocation.options.env?.NODE_OPTIONS).toBe(`--trace-warnings --require ${JSON.stringify(shimPath)}`);
-
-      fakeProcess.emit('close', 0, null);
-      await runPromise;
-    }
-    finally {
-      restoreEnvironment();
-    }
+    await expectSyncRunNodeOptions({
+      expectedNodeOptions: nodeOptions,
+      explanation: 'verify existing terminal width shim option reuse',
+      goal: 'avoid duplicate node require options',
+      initialNodeOptions: nodeOptions,
+    });
   });
 
   it('does not append the terminal width shim when NODE_OPTIONS uses the short -r form', async () => {
-    const fakeProcess = createFakeProcess();
-    spawn.mockReturnValue(fakeProcess);
-
     const shimPath = path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs');
-    const restoreEnvironment = captureEnvironmentVariables([ 'NODE_OPTIONS' ]);
-    process.env.NODE_OPTIONS = `--trace-warnings -r ${JSON.stringify(shimPath)}`;
+    const nodeOptions = `--trace-warnings -r ${JSON.stringify(shimPath)}`;
 
-    try {
-      registerShellTools();
-
-      const runTool = getRegisteredTool('run_in_sync_shell');
-
-      const runPromise = runTool.invoke({
-        input: {
-          command: 'printf hello',
-          explanation: 'verify short node require option reuse',
-          goal: 'avoid duplicate short node require options',
-          timeout: 0,
-        },
-        toolInvocationToken: undefined,
-      }, {});
-
-      const invocation = getLastSpawnInvocation();
-      expect(invocation.options.env?.NODE_OPTIONS).toBe(`--trace-warnings -r ${JSON.stringify(shimPath)}`);
-
-      fakeProcess.emit('close', 0, null);
-      await runPromise;
-    }
-    finally {
-      restoreEnvironment();
-    }
+    await expectSyncRunNodeOptions({
+      expectedNodeOptions: nodeOptions,
+      explanation: 'verify short node require option reuse',
+      goal: 'avoid duplicate short node require options',
+      initialNodeOptions: nodeOptions,
+    });
   });
 
   it('does not append the terminal width shim when NODE_OPTIONS uses the equals require form', async () => {
-    const fakeProcess = createFakeProcess();
-    spawn.mockReturnValue(fakeProcess);
-
     const shimPath = path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs');
-    const restoreEnvironment = captureEnvironmentVariables([ 'NODE_OPTIONS' ]);
-    process.env.NODE_OPTIONS = `--trace-warnings --require=${JSON.stringify(shimPath)}`;
+    const nodeOptions = `--trace-warnings --require=${JSON.stringify(shimPath)}`;
 
-    try {
-      registerShellTools();
-
-      const runTool = getRegisteredTool('run_in_sync_shell');
-
-      const runPromise = runTool.invoke({
-        input: {
-          command: 'printf hello',
-          explanation: 'verify equals node require option reuse',
-          goal: 'avoid duplicate equals node require options',
-          timeout: 0,
-        },
-        toolInvocationToken: undefined,
-      }, {});
-
-      const invocation = getLastSpawnInvocation();
-      expect(invocation.options.env?.NODE_OPTIONS).toBe(`--trace-warnings --require=${JSON.stringify(shimPath)}`);
-
-      fakeProcess.emit('close', 0, null);
-      await runPromise;
-    }
-    finally {
-      restoreEnvironment();
-    }
+    await expectSyncRunNodeOptions({
+      expectedNodeOptions: nodeOptions,
+      explanation: 'verify equals node require option reuse',
+      goal: 'avoid duplicate equals node require options',
+      initialNodeOptions: nodeOptions,
+    });
   });
 
   it('preserves trailing escape characters in NODE_OPTIONS while appending the terminal width shim', async () => {
-    const fakeProcess = createFakeProcess();
-    spawn.mockReturnValue(fakeProcess);
-
     const shimPath = path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs');
-    const restoreEnvironment = captureEnvironmentVariables([ 'NODE_OPTIONS' ]);
-    process.env.NODE_OPTIONS = '--trace-warnings\\';
-
-    try {
-      registerShellTools();
-
-      const runTool = getRegisteredTool('run_in_sync_shell');
-
-      const runPromise = runTool.invoke({
-        input: {
-          command: 'printf hello',
-          explanation: 'verify trailing escape handling in node options',
-          goal: 'preserve escaped node option text while appending shim',
-          timeout: 0,
-        },
-        toolInvocationToken: undefined,
-      }, {});
-
-      const invocation = getLastSpawnInvocation();
-      expect(invocation.options.env?.NODE_OPTIONS).toBe(`--trace-warnings\\ --require ${JSON.stringify(shimPath)}`);
-
-      fakeProcess.emit('close', 0, null);
-      await runPromise;
-    }
-    finally {
-      restoreEnvironment();
-    }
+    // Preserve a pasted continuation fragment before appending the shim requirement.
+    await expectSyncRunNodeOptions({
+      expectedNodeOptions: `--trace-warnings\\ --require ${JSON.stringify(shimPath)}`,
+      explanation: 'verify trailing escape handling in node options',
+      goal: 'preserve escaped node option text while appending shim',
+      initialNodeOptions: '--trace-warnings\\',
+    });
   });
 
   it('appends the terminal width shim when NODE_OPTIONS only contains the shim path as a substring', async () => {

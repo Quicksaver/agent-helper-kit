@@ -15,6 +15,26 @@ afterEach(() => {
   vi.doUnmock('node:path');
 });
 
+type ShellToolContractsModule = typeof import('../shellToolContracts.js');
+
+async function importShellToolContractsWithPackageJson(packageJson: unknown): Promise<ShellToolContractsModule> {
+  vi.doMock('node:fs', () => ({
+    readFileSync: vi.fn(() => JSON.stringify(packageJson)),
+  }));
+
+  return import('../shellToolContracts.js');
+}
+
+async function importShellToolContractsWithReadError(message: string): Promise<ShellToolContractsModule> {
+  vi.doMock('node:fs', () => ({
+    readFileSync: vi.fn(() => {
+      throw new Error(message);
+    }),
+  }));
+
+  return import('../shellToolContracts.js');
+}
+
 describe('shell tool contracts', () => {
   it('reads package version and manifest-backed tool metadata', async () => {
     const packageJsonPath = path.resolve(__dirname, '..', '..', 'package.json');
@@ -52,13 +72,7 @@ describe('shell tool contracts', () => {
   });
 
   it('falls back cleanly when package.json cannot be read', async () => {
-    vi.doMock('node:fs', () => ({
-      readFileSync: vi.fn(() => {
-        throw new Error('unreadable');
-      }),
-    }));
-
-    const contracts = await import('../shellToolContracts.js');
+    const contracts = await importShellToolContractsWithReadError('unreadable');
 
     expect(contracts.getPackageVersion()).toBe('0.0.0');
     expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.title).toBe('run_in_sync_shell');
@@ -66,11 +80,7 @@ describe('shell tool contracts', () => {
   });
 
   it('falls back cleanly when package.json is missing contributes metadata', async () => {
-    vi.doMock('node:fs', () => ({
-      readFileSync: vi.fn(() => JSON.stringify({ version: '9.9.9' })),
-    }));
-
-    const contracts = await import('../shellToolContracts.js');
+    const contracts = await importShellToolContractsWithPackageJson({ version: '9.9.9' });
 
     expect(contracts.getPackageVersion()).toBe('9.9.9');
     expect(contracts.SHELL_TOOL_METADATA.runInAsyncShell.title).toBe('run_in_async_shell');
@@ -78,11 +88,7 @@ describe('shell tool contracts', () => {
   });
 
   it('falls back cleanly when package.json is valid JSON but not an object', async () => {
-    vi.doMock('node:fs', () => ({
-      readFileSync: vi.fn(() => JSON.stringify('not-an-object')),
-    }));
-
-    const contracts = await import('../shellToolContracts.js');
+    const contracts = await importShellToolContractsWithPackageJson('not-an-object');
 
     expect(contracts.getPackageVersion()).toBe('0.0.0');
     expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.title).toBe('run_in_sync_shell');
@@ -90,14 +96,10 @@ describe('shell tool contracts', () => {
   });
 
   it('falls back cleanly when package.json contributes is not an object', async () => {
-    vi.doMock('node:fs', () => ({
-      readFileSync: vi.fn(() => JSON.stringify({
-        contributes: 'invalid',
-        version: '2.0.0',
-      })),
-    }));
-
-    const contracts = await import('../shellToolContracts.js');
+    const contracts = await importShellToolContractsWithPackageJson({
+      contributes: 'invalid',
+      version: '2.0.0',
+    });
 
     expect(contracts.getPackageVersion()).toBe('2.0.0');
     expect(contracts.SHELL_TOOL_METADATA.getShellOutput.title).toBe('get_shell_output');
@@ -105,18 +107,14 @@ describe('shell tool contracts', () => {
   });
 
   it('falls back cleanly when language model tools is not an array', async () => {
-    vi.doMock('node:fs', () => ({
-      readFileSync: vi.fn(() => JSON.stringify({
-        contributes: {
-          languageModelTools: {
-            name: 'run_in_sync_shell',
-          },
+    const contracts = await importShellToolContractsWithPackageJson({
+      contributes: {
+        languageModelTools: {
+          name: 'run_in_sync_shell',
         },
-        version: '3.0.0',
-      })),
-    }));
-
-    const contracts = await import('../shellToolContracts.js');
+      },
+      version: '3.0.0',
+    });
 
     expect(contracts.getPackageVersion()).toBe('3.0.0');
     expect(contracts.SHELL_TOOL_METADATA.awaitShell.title).toBe('await_shell');
@@ -124,18 +122,14 @@ describe('shell tool contracts', () => {
   });
 
   it('falls back cleanly when language model tool entries are malformed', async () => {
-    vi.doMock('node:fs', () => ({
-      readFileSync: vi.fn(() => JSON.stringify({
-        contributes: {
-          languageModelTools: [
-            null,
-          ],
-        },
-        version: '1.0.0',
-      })),
-    }));
-
-    const contracts = await import('../shellToolContracts.js');
+    const contracts = await importShellToolContractsWithPackageJson({
+      contributes: {
+        languageModelTools: [
+          null,
+        ],
+      },
+      version: '1.0.0',
+    });
 
     expect(contracts.getPackageVersion()).toBe('1.0.0');
     expect(contracts.SHELL_TOOL_METADATA.killShell.title).toBe('kill_shell');
@@ -143,21 +137,17 @@ describe('shell tool contracts', () => {
   });
 
   it('falls back cleanly when a language model tool entry is missing required fields', async () => {
-    vi.doMock('node:fs', () => ({
-      readFileSync: vi.fn(() => JSON.stringify({
-        contributes: {
-          languageModelTools: [
-            {
-              displayName: 'Run Shell Command (Sync)',
-              name: 'run_in_sync_shell',
-            },
-          ],
-        },
-        version: '1.1.0',
-      })),
-    }));
-
-    const contracts = await import('../shellToolContracts.js');
+    const contracts = await importShellToolContractsWithPackageJson({
+      contributes: {
+        languageModelTools: [
+          {
+            displayName: 'Run Shell Command (Sync)',
+            name: 'run_in_sync_shell',
+          },
+        ],
+      },
+      version: '1.1.0',
+    });
 
     expect(contracts.getPackageVersion()).toBe('1.1.0');
     expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.title).toBe('run_in_sync_shell');
