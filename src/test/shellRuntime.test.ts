@@ -12,6 +12,7 @@ import {
 } from 'vitest';
 
 import { resetExtensionOutputChannelForTest } from '@/logging';
+import { MAX_SHELL_COLUMNS } from '@/shellColumns';
 import {
   getShellOutputDirectoryPath,
   getShellOutputFilePath,
@@ -626,5 +627,21 @@ describe('ShellRuntime background execution', () => {
     };
 
     expect(spawnOptions?.env?.COLUMNS).toBe('320');
+  });
+
+  it('sanitizes direct runtime column overrides before exporting COLUMNS', () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    runtime.startBackgroundCommand('echo env', {
+      columns: MAX_SHELL_COLUMNS + 0.9,
+    });
+
+    const spawnOptions = spawn.mock.calls[0]?.[2] as undefined | {
+      env?: NodeJS.ProcessEnv;
+    };
+
+    expect(spawnOptions?.env?.COLUMNS).toBe(String(MAX_SHELL_COLUMNS));
   });
 });

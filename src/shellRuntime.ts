@@ -6,6 +6,10 @@ import * as path from 'node:path';
 
 import { logWarn } from '@/logging';
 import {
+  DEFAULT_SHELL_COLUMNS,
+  normalizeShellColumns,
+} from '@/shellColumns';
+import {
   getFilteredOutput,
   normalizeShellOutput,
   type ShellOutputFilterInput,
@@ -29,7 +33,6 @@ export const SHELL_COMMAND_ID_PREFIX = 'shell-';
 const SHELL_ID_HEX_LENGTH = 8;
 const SHELL_ID_GENERATION_MAX_ATTEMPTS = 8;
 const MAX_MEMORY_TO_FILE_RETRY_ATTEMPTS = 3;
-const DEFAULT_SHELL_COLUMNS = 240;
 const DEFAULT_SHELL_ROWS = 80;
 const NODE_TERMINAL_SIZE_SHIM_PATH = path.resolve(__dirname, '..', 'resources', 'node-terminal-width-shim.cjs');
 let hasNodeTerminalSizeShimFile: boolean | undefined;
@@ -550,9 +553,7 @@ export class ShellRuntime {
       ...source,
     };
 
-    const resolvedColumns = typeof columns === 'number' && Number.isFinite(columns) && columns > 0
-      ? Math.floor(columns)
-      : undefined;
+    const resolvedColumns = normalizeShellColumns(columns);
 
     if (resolvedColumns !== undefined) {
       environment.COLUMNS = String(resolvedColumns);

@@ -97,7 +97,10 @@ describe('shell tool contracts', () => {
   });
 
   it('validates async shell inputs', async () => {
-    const { validateRunInAsyncShellInput } = await import('../shellToolContracts.js');
+    const { MAX_SHELL_COLUMNS } = await import('../shellColumns.js');
+    const {
+      validateRunInAsyncShellInput,
+    } = await import('../shellToolContracts.js');
 
     expect(validateRunInAsyncShellInput({
       columns: 320,
@@ -114,6 +117,13 @@ describe('shell tool contracts', () => {
       goal: 'test async validation',
       shell: '/bin/zsh',
     });
+
+    expect(() => validateRunInAsyncShellInput({
+      columns: MAX_SHELL_COLUMNS + 1,
+      command: 'echo ok',
+      explanation: 'print ok',
+      goal: 'test async validation',
+    })).toThrowError(new RegExp(`columns must be less than or equal to ${MAX_SHELL_COLUMNS}`));
   });
 
   it('rejects incompatible get shell output options', async () => {
@@ -141,6 +151,14 @@ describe('shell tool contracts', () => {
       goal: 'test sync validation',
       timeout: 0,
     })).toThrowError(/columns must be greater than 0/);
+
+    expect(() => validateRunInSyncShellInput({
+      columns: 12.5,
+      command: 'echo ok',
+      explanation: 'print ok',
+      goal: 'test sync validation',
+      timeout: 0,
+    })).toThrowError(/columns must be a whole number/);
 
     expect(() => validateRunInSyncShellInput({
       command: 'echo ok',

@@ -206,9 +206,10 @@
               "description": "Optional shell executable path or name. Uses VS Code/default shell when omitted (preferred)."
             },
             "columns": {
-              "type": "number",
-              "description": "Optional terminal width in columns. Increase this if the command wraps or truncates long lines too aggressively. Defaults to 240.",
-              "minimum": 1
+              "type": "integer",
+              "description": "Optional terminal width in columns. Overrides any inherited COLUMNS value when provided. Increase this if the command wraps or truncates long lines too aggressively. Must be between 1 and 1000. Defaults to 240.",
+              "minimum": 1,
+              "maximum": 1000
             },
             "full_output": {
               "type": "boolean",
@@ -309,9 +310,10 @@
               "description": "Optional shell executable path or name. Uses VS Code/default shell when omitted (preferred)."
             },
             "columns": {
-              "type": "number",
-              "description": "Optional terminal width in columns. Increase this if the command wraps or truncates long lines too aggressively. Defaults to 240.",
-              "minimum": 1
+              "type": "integer",
+              "description": "Optional terminal width in columns. Overrides any inherited COLUMNS value when provided. Increase this if the command wraps or truncates long lines too aggressively. Must be between 1 and 1000. Defaults to 240.",
+              "minimum": 1,
+              "maximum": 1000
             }
           }
         }
@@ -475,6 +477,7 @@
     "package:install": "code --install-extension $(ls -t *.vsix | head -1)",
     "package:publish": "env-cmd -f ./.env.local vsce publish --yarn --no-dependencies",
     "test": "vitest run --coverage",
+    "test:unit": "vitest run",
     "test:watch": "vitest",
     "vscode:prepublish": "yarn lint:check && yarn build",
     "watch": "node esbuild.mjs --watch"

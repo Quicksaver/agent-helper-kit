@@ -3,6 +3,8 @@ import * as path from 'node:path';
 
 import { z } from 'zod';
 
+import { MAX_SHELL_COLUMNS } from '@/shellColumns';
+
 export const SHELL_TOOL_NAMES = {
   awaitShell: 'await_shell',
   getLastShellCommand: 'get_last_shell_command',
@@ -217,9 +219,14 @@ export interface GetShellCommandInput {
 
 export type GetLastShellCommandInput = Record<string, never>;
 
-const shellColumnsSchema = z.number().int().gt(0, {
+const shellColumnsSchema = z.number().int({
+  message: 'columns must be a whole number',
+}).gt(0, {
   message: 'columns must be greater than 0',
-}).optional();
+}).lte(MAX_SHELL_COLUMNS, {
+  message: `columns must be less than or equal to ${MAX_SHELL_COLUMNS}`,
+})
+  .optional();
 
 export const runInAsyncShellInputSchema = {
   columns: shellColumnsSchema,

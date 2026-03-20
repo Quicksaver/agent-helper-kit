@@ -1085,7 +1085,9 @@ describe('shell tools', () => {
 
     const runTool = getRegisteredTool('run_in_sync_shell');
     const previousShell = vscode.env.shell;
-    const expectedShell = process.env.SHELL ?? '/bin/bash';
+    const expectedShell = os.platform() === 'win32'
+      ? (process.env.ComSpec ?? 'cmd.exe')
+      : (process.env.SHELL ?? '/bin/bash');
     vscode.env.shell = '   ';
 
     try {
