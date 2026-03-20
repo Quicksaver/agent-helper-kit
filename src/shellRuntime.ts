@@ -32,6 +32,7 @@ const MAX_MEMORY_TO_FILE_RETRY_ATTEMPTS = 3;
 const DEFAULT_SHELL_COLUMNS = 240;
 const DEFAULT_SHELL_ROWS = 80;
 const NODE_TERMINAL_SIZE_SHIM_PATH = path.resolve(__dirname, '..', 'scripts', 'node-terminal-width-shim.cjs');
+let hasNodeTerminalSizeShimFile: boolean | undefined;
 
 interface CompletionInfo {
   exitCode: null | number;
@@ -99,8 +100,99 @@ interface ShellInvocation {
   command: string;
   displayShell: string;
   executable: string;
-  shell: string;
   shellArgs: string[];
+}
+
+function getNodeTerminalSizeShimPathExists(): boolean {
+  if (hasNodeTerminalSizeShimFile === undefined) {
+    hasNodeTerminalSizeShimFile = fs.existsSync(NODE_TERMINAL_SIZE_SHIM_PATH);
+  }
+
+  return hasNodeTerminalSizeShimFile;
+}
+
+function parseNodeOptionsArguments(nodeOptions: string): string[] {
+  const args: string[] = [];
+  let current = '';
+  let activeQuote: '"' | '\'' | undefined;
+  let escaping = false;
+
+  for (const character of nodeOptions) {
+    if (escaping) {
+      current += character;
+      escaping = false;
+      continue;
+    }
+
+    if (character === '\\') {
+      escaping = true;
+      continue;
+    }
+
+    if (activeQuote) {
+      if (character === activeQuote) {
+        activeQuote = undefined;
+      }
+      else {
+        current += character;
+      }
+
+      continue;
+    }
+
+    if (character === '"' || character === '\'') {
+      activeQuote = character;
+      continue;
+    }
+
+    if (/\s/u.test(character)) {
+      if (current.length > 0) {
+        args.push(current);
+        current = '';
+      }
+
+      continue;
+    }
+
+    current += character;
+  }
+
+  if (escaping) {
+    current += '\\';
+  }
+
+  if (current.length > 0) {
+    args.push(current);
+  }
+
+  return args;
+}
+
+function hasNodeRequireOption(nodeOptions: string | undefined, requiredPath: string): boolean {
+  if (typeof nodeOptions !== 'string' || nodeOptions.trim().length === 0) {
+    return false;
+  }
+
+  const args = parseNodeOptionsArguments(nodeOptions);
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === '--require' || arg === '-r') {
+      if (args[index + 1] === requiredPath) {
+        return true;
+      }
+
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--require=')) {
+      return arg.slice('--require='.length) === requiredPath;
+    }
+  }
+
+  return false;
 }
 
 export interface AwaitBackgroundInput {
@@ -487,11 +579,11 @@ export class ShellRuntime {
       }
     }
 
-    if (fs.existsSync(NODE_TERMINAL_SIZE_SHIM_PATH)) {
+    if (getNodeTerminalSizeShimPathExists()) {
       const shimOption = `--require ${JSON.stringify(NODE_TERMINAL_SIZE_SHIM_PATH)}`;
       const existingNodeOptions = environment.NODE_OPTIONS?.trim();
 
-      if (!existingNodeOptions?.includes(NODE_TERMINAL_SIZE_SHIM_PATH)) {
+      if (!hasNodeRequireOption(existingNodeOptions, NODE_TERMINAL_SIZE_SHIM_PATH)) {
         environment.NODE_OPTIONS = existingNodeOptions
           ? `${existingNodeOptions} ${shimOption}`
           : shimOption;
@@ -565,7 +657,6 @@ export class ShellRuntime {
       command,
       displayShell: shell,
       executable: shell,
-      shell,
       shellArgs: [ '-lc' ],
     };
   }
@@ -581,7 +672,6 @@ export class ShellRuntime {
           command,
           displayShell: shell,
           executable: shell,
-          shell,
           shellArgs: [ '-NoLogo', '-Command' ],
         };
       }
@@ -590,7 +680,6 @@ export class ShellRuntime {
         command,
         displayShell: shell,
         executable: shell,
-        shell,
         shellArgs: [ '/d', '/s', '/c' ],
       };
     }

@@ -11,27 +11,33 @@ function getPositiveInteger(value, fallback) {
   return parsed;
 }
 
+function tryDefineStreamDimension(stream, key, value) {
+  try {
+    Object.defineProperty(stream, key, {
+      configurable: true,
+      enumerable: false,
+      value,
+      writable: true,
+    });
+
+    return true;
+  }
+  catch {
+    return false;
+  }
+}
+
 function ensureStreamDimensions(stream, columns, rows) {
   if (!stream || stream.isTTY) {
     return;
   }
 
   if (typeof stream.columns !== 'number' || stream.columns <= 0) {
-    Object.defineProperty(stream, 'columns', {
-      configurable: true,
-      enumerable: false,
-      value: columns,
-      writable: true,
-    });
+    tryDefineStreamDimension(stream, 'columns', columns);
   }
 
   if (typeof stream.rows !== 'number' || stream.rows <= 0) {
-    Object.defineProperty(stream, 'rows', {
-      configurable: true,
-      enumerable: false,
-      value: rows,
-      writable: true,
-    });
+    tryDefineStreamDimension(stream, 'rows', rows);
   }
 }
 

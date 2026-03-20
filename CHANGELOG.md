@@ -8,8 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- Fixed shell-tool runs that could make Node CLI tables, including coverage summaries, appear clamped to 80 columns and truncate long rows even when more width was available.
-- Fixed a Shell Runs panel bug where selecting a command or taking actions in the panel could reset the command list scroll position back to the top.
+- Fixed shell-tool runs that could make Node CLI tables, appear clamped to 80 columns and truncate long rows even when more width was available.
+- Fixed a Shell Runs panel bug where selecting a command or taking actions in the panel could reset the command output scroll position back to the top.
 
 ## [1.2.0] - 2026-03-10
 

@@ -3,6 +3,9 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import { logError } from './logging.js';
+import { SHELL_OUTPUT_DIR_ENV_VAR } from './shellOutputConstants.js';
+
+export { SHELL_OUTPUT_DIR_ENV_VAR } from './shellOutputConstants.js';
 
 const OUTPUT_DIR_NAME = 'agent-helper-kit-shell-output';
 const OUTPUT_FILE_PREFIX = 'output-';
@@ -10,7 +13,6 @@ const OUTPUT_FILE_SUFFIX = '.log';
 const METADATA_FILE_PREFIX = 'metadata-';
 const METADATA_FILE_SUFFIX = '.json';
 const DEFAULT_STARTUP_PURGE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
-export const SHELL_OUTPUT_DIR_ENV_VAR = 'AGENT_HELPER_KIT_SHELL_OUTPUT_DIR';
 
 type NodeErrorWithCode = NodeJS.ErrnoException;
 

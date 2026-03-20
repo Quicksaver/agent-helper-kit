@@ -1234,6 +1234,75 @@ describe('shell tools', () => {
     }
   });
 
+  it('does not append the terminal width shim when NODE_OPTIONS already requires it', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+
+    const shimPath = path.join(process.cwd(), 'scripts', 'node-terminal-width-shim.cjs');
+    const restoreEnvironment = captureEnvironmentVariables([ 'NODE_OPTIONS' ]);
+    process.env.NODE_OPTIONS = `--trace-warnings --require ${JSON.stringify(shimPath)}`;
+
+    try {
+      registerShellTools();
+
+      const runTool = getRegisteredTool('run_in_sync_shell');
+
+      const runPromise = runTool.invoke({
+        input: {
+          command: 'printf hello',
+          explanation: 'verify existing terminal width shim option reuse',
+          goal: 'avoid duplicate node require options',
+          timeout: 0,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      const invocation = getLastSpawnInvocation();
+      expect(invocation.options.env?.NODE_OPTIONS).toBe(`--trace-warnings --require ${JSON.stringify(shimPath)}`);
+
+      fakeProcess.emit('close', 0, null);
+      await runPromise;
+    }
+    finally {
+      restoreEnvironment();
+    }
+  });
+
+  it('appends the terminal width shim when NODE_OPTIONS only contains the shim path as a substring', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+
+    const shimPath = path.join(process.cwd(), 'scripts', 'node-terminal-width-shim.cjs');
+    const restoreEnvironment = captureEnvironmentVariables([ 'NODE_OPTIONS' ]);
+    process.env.NODE_OPTIONS = `--title=${shimPath}-copy`;
+
+    try {
+      registerShellTools();
+
+      const runTool = getRegisteredTool('run_in_sync_shell');
+
+      const runPromise = runTool.invoke({
+        input: {
+          command: 'printf hello',
+          explanation: 'verify exact terminal width shim detection',
+          goal: 'append missing node require option',
+          timeout: 0,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      const invocation = getLastSpawnInvocation();
+      expect(invocation.options.env?.NODE_OPTIONS).toContain(`--title=${shimPath}-copy`);
+      expect(invocation.options.env?.NODE_OPTIONS).toContain(`--require ${JSON.stringify(shimPath)}`);
+
+      fakeProcess.emit('close', 0, null);
+      await runPromise;
+    }
+    finally {
+      restoreEnvironment();
+    }
+  });
+
   it('does not inject forced-color env vars when NO_COLOR is set', async () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);

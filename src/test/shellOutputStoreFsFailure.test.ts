@@ -10,6 +10,8 @@ import {
   vi,
 } from 'vitest';
 
+import { SHELL_OUTPUT_DIR_ENV_VAR } from '@/shellOutputConstants';
+
 const vscode = vi.hoisted(() => ({
   window: {
     createOutputChannel: vi.fn(() => ({
@@ -24,7 +26,6 @@ const vscode = vi.hoisted(() => ({
 
 vi.mock('vscode', () => vscode);
 
-const SHELL_OUTPUT_DIR_ENV_VAR = 'AGENT_HELPER_KIT_SHELL_OUTPUT_DIR';
 const shellOutputTestDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-helper-kit-shellOutputStoreFsFailure-test-'));
 const previousShellOutputDirectory = process.env[SHELL_OUTPUT_DIR_ENV_VAR];
 

@@ -10,6 +10,7 @@ import {
   vi,
 } from 'vitest';
 
+import { SHELL_OUTPUT_DIR_ENV_VAR } from '@/shellOutputConstants';
 import {
   createFakeProcess,
 } from '@/test/fakeShellProcess';
@@ -27,7 +28,6 @@ const vscode = vi.hoisted(() => ({
     })),
   },
 }));
-const SHELL_OUTPUT_DIR_ENV_VAR = 'AGENT_HELPER_KIT_SHELL_OUTPUT_DIR';
 const shellOutputTestDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-helper-kit-shellRuntimePlatform-test-'));
 const previousShellOutputDirectory = process.env[SHELL_OUTPUT_DIR_ENV_VAR];
 
