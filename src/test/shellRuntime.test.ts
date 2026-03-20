@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
 
 import {
@@ -12,9 +13,19 @@ import {
 import { resetExtensionOutputChannelForTest } from '@/logging';
 import {
   getShellOutputDirectoryPath,
+  listShellMetadataIds,
   readShellCommandMetadata,
 } from '@/shellOutputStore';
-import { ShellRuntime } from '@/shellRuntime';
+import {
+  ShellRuntime,
+  toPublicCommandId,
+} from '@/shellRuntime';
+
+const spawn = vi.hoisted(() => vi.fn());
+
+vi.mock('node:child_process', () => ({
+  spawn,
+}));
 
 const vscode = vi.hoisted(() => ({
   window: {
@@ -31,6 +42,30 @@ const vscode = vi.hoisted(() => ({
 vi.mock('vscode', () => vscode);
 
 const SHELL_ID_REGEX = /^shell-[a-f0-9]{8}$/;
+
+type FakeReadable = EventEmitter;
+
+interface FakeProcess extends EventEmitter {
+  exitCode: null | number;
+  kill: ReturnType<typeof vi.fn>;
+  signalCode: NodeJS.Signals | null;
+  stderr: FakeReadable;
+  stdout: FakeReadable;
+}
+
+function createFakeProcess(): FakeProcess {
+  const processEmitter = new EventEmitter();
+  const stdout = new EventEmitter();
+  const stderr = new EventEmitter();
+
+  return Object.assign(processEmitter, {
+    exitCode: null,
+    kill: vi.fn(() => true),
+    signalCode: null,
+    stderr,
+    stdout,
+  }) as FakeProcess;
+}
 
 function removeShellOutputDirectory(): void {
   fs.rmSync(getShellOutputDirectoryPath(), {
@@ -51,6 +86,31 @@ beforeEach(() => {
   resetExtensionOutputChannelForTest();
 });
 
+describe('ShellRuntime helpers', () => {
+  it('strips only the public shell id prefix when converting ids', () => {
+    expect(toPublicCommandId('shell-abc12345')).toBe('abc12345');
+    expect(toPublicCommandId('abc12345')).toBe('abc12345');
+  });
+
+  it('uses fallback cwd and shell metadata for completed command records', async () => {
+    const runtime = new ShellRuntime({ outputLimitBytes: Number.NaN });
+
+    const id = runtime.createCompletedCommandRecord('echo fallback', {
+      exitCode: 0,
+      output: 'fallback\n',
+      shell: '',
+      terminationSignal: null,
+      timedOut: false,
+    }, '   ', '   ');
+
+    await expect(runtime.getCommandDetails(id)).resolves.toMatchObject({
+      cwd: process.env.HOME,
+      output: 'fallback\n',
+      shell: process.env.SHELL ?? '/bin/bash',
+    });
+  });
+});
+
 describe('ShellRuntime session command list', () => {
   it('starts with an empty command list after a new runtime is created', () => {
     const firstRuntime = new ShellRuntime({});
@@ -68,6 +128,60 @@ describe('ShellRuntime session command list', () => {
     const nextRuntime = new ShellRuntime({});
 
     expect(nextRuntime.listCommands()).toEqual([]);
+  });
+
+  it('clears completed commands, deletes metadata, and notifies listeners', () => {
+    const runtime = new ShellRuntime({});
+    const listener = vi.fn();
+    const dispose = runtime.onDidChangeCommands(listener);
+
+    const firstId = runtime.createCompletedCommandRecord('echo one', {
+      exitCode: 0,
+      output: 'one\n',
+      shell: '/bin/bash',
+      terminationSignal: null,
+      timedOut: false,
+    });
+    runtime.createCompletedCommandRecord('echo two', {
+      exitCode: 0,
+      output: 'two\n',
+      shell: '/bin/bash',
+      terminationSignal: null,
+      timedOut: false,
+    });
+
+    expect(listShellMetadataIds().length).toBeGreaterThanOrEqual(1);
+    expect(runtime.clearCompletedCommands()).toBe(2);
+    expect(runtime.listCommands()).toEqual([]);
+    expect(listShellMetadataIds()).toEqual([]);
+    expect(readShellCommandMetadata(firstId)).toBeUndefined();
+    expect(listener).toHaveBeenCalled();
+
+    dispose();
+    runtime.createCompletedCommandRecord('echo three', {
+      exitCode: 0,
+      output: 'three\n',
+      shell: '/bin/bash',
+      terminationSignal: null,
+      timedOut: false,
+    });
+
+    expect(listener.mock.calls.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('deletes a single completed command and rejects unknown ids', () => {
+    const runtime = new ShellRuntime({});
+    const id = runtime.createCompletedCommandRecord('echo delete', {
+      exitCode: 0,
+      output: 'delete\n',
+      shell: '/bin/bash',
+      terminationSignal: null,
+      timedOut: false,
+    });
+
+    expect(runtime.deleteCompletedCommand('shell-missing')).toBe(false);
+    expect(runtime.deleteCompletedCommand(id)).toBe(true);
+    expect(runtime.deleteCompletedCommand(id)).toBe(false);
   });
 });
 
@@ -191,5 +305,122 @@ describe('ShellRuntime shell id generation', () => {
     finally {
       fs.rmSync(outputDirectoryPath, { force: true, recursive: true });
     }
+  });
+
+  it('sorts command list items newest first', () => {
+    vi.useFakeTimers();
+
+    try {
+      const runtime = new ShellRuntime({});
+
+      vi.setSystemTime(new Date('2026-03-19T00:00:00.000Z'));
+      const firstId = runtime.createCompletedCommandRecord('echo first', {
+        exitCode: 0,
+        output: 'first\n',
+        shell: '/bin/bash',
+        terminationSignal: null,
+        timedOut: false,
+      });
+
+      vi.setSystemTime(new Date('2026-03-19T00:00:01.000Z'));
+      const secondId = runtime.createCompletedCommandRecord('echo second', {
+        exitCode: 0,
+        output: 'second\n',
+        shell: '/bin/bash',
+        terminationSignal: null,
+        timedOut: false,
+      });
+
+      expect(runtime.listCommands().map(command => command.id)).toEqual([ secondId, firstId ]);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('ShellRuntime background execution', () => {
+  it('supports public ids for await and output reads', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.startBackgroundCommand('echo public-id');
+    const publicId = toPublicCommandId(id);
+    const awaitPromise = runtime.awaitBackgroundCommand({
+      id: publicId,
+      timeout: 0,
+    });
+
+    fakeProcess.stdout.emit('data', 'hello\n');
+    fakeProcess.emit('close', 0, null);
+
+    await expect(awaitPromise).resolves.toMatchObject({
+      exitCode: 0,
+      output: 'hello\n',
+    });
+    await expect(runtime.readBackgroundOutput({
+      full_output: true,
+      id: publicId,
+    })).resolves.toMatchObject({
+      exitCode: 0,
+      isRunning: false,
+      output: 'hello\n',
+    });
+  });
+
+  it('marks running commands as killed and exposes that through the command list', () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    fakeProcess.kill.mockImplementation((signal?: NodeJS.Signals) => {
+      fakeProcess.signalCode = signal ?? 'SIGTERM';
+      return true;
+    });
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.startBackgroundCommand('echo killable');
+
+    expect(runtime.killBackgroundCommand(toPublicCommandId(id))).toBe(true);
+    expect(fakeProcess.kill).toHaveBeenCalledWith('SIGTERM');
+    expect(runtime.listCommands()[0]).toEqual(expect.objectContaining({
+      id,
+      isRunning: true,
+      killedByUser: true,
+    }));
+  });
+
+  it('captures child process errors into output and completes the command', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.startBackgroundCommand('echo boom');
+    const awaitPromise = runtime.awaitBackgroundCommand({
+      id,
+      timeout: 0,
+    });
+
+    fakeProcess.emit('error', new Error('boom'));
+
+    await expect(awaitPromise).resolves.toMatchObject({
+      exitCode: null,
+      terminationSignal: null,
+    });
+    await expect(runtime.getCommandDetails(id)).resolves.toMatchObject({
+      isRunning: false,
+      output: 'Error: boom\n',
+    });
+  });
+
+  it('returns false when killing a command that has already completed', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.startBackgroundCommand('echo done');
+    fakeProcess.emit('close', 0, null);
+    await runtime.awaitBackgroundCommand({ id, timeout: 0 });
+
+    expect(runtime.killBackgroundCommand(id)).toBe(false);
   });
 });

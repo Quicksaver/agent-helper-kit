@@ -56,6 +56,24 @@ type MockOutputChannel = {
   show: ReturnType<typeof vi.fn>;
 };
 
+async function importShellOutputStoreWithFsOverrides(overrides: Partial<typeof fs> & {
+  promises?: Partial<typeof fs.promises>;
+} = {}) {
+  vi.resetModules();
+  const actualFs = await import('node:fs');
+
+  vi.doMock('node:fs', () => ({
+    ...actualFs,
+    ...overrides,
+    promises: {
+      ...actualFs.promises,
+      ...(overrides.promises ?? {}),
+    },
+  }));
+
+  return import('../shellOutputStore.js');
+}
+
 function removeShellOutputDirectory(): void {
   fs.rmSync(getShellOutputDirectoryPath(), {
     force: true,
@@ -74,6 +92,8 @@ describe('shell output store startup purge', () => {
   afterEach(() => {
     removeShellOutputDirectory();
     vi.restoreAllMocks();
+    vi.resetModules();
+    vi.doUnmock('node:fs');
   });
 
   it('stores output files without duplicating the shell id prefix', () => {
@@ -116,6 +136,43 @@ describe('shell output store startup purge', () => {
     fs.mkdirSync(outputFilePath, { recursive: true });
 
     expect(readShellOutputSync('shell-abc12345')).toBeUndefined();
+  });
+
+  it('returns an empty list when output directory reads fail', async () => {
+    const store = await importShellOutputStoreWithFsOverrides({
+      readdirSync: () => {
+        throw Object.assign(new Error('nope'), { code: 'EACCES' });
+      },
+    });
+
+    expect(store.listShellOutputIds()).toEqual([]);
+    expect(store.listShellMetadataIds()).toEqual([]);
+  });
+
+  it('returns an empty string for missing async output files and rejects unexpected async read errors', async () => {
+    await expect(readShellOutput('shell-missing')).resolves.toBe('');
+
+    const readFileSpy = vi.spyOn(fs.promises, 'readFile').mockRejectedValueOnce(
+      Object.assign(new Error('boom'), { code: 'EIO' }),
+    );
+
+    await expect(readShellOutput('shell-error')).rejects.toThrow('boom');
+
+    readFileSpy.mockRestore();
+  });
+
+  it('returns false when output writes fail', async () => {
+    const store = await importShellOutputStoreWithFsOverrides({
+      appendFileSync: () => {
+        throw Object.assign(new Error('append failed'), { code: 'EIO' });
+      },
+      writeFileSync: () => {
+        throw Object.assign(new Error('write failed'), { code: 'EIO' });
+      },
+    });
+
+    expect(store.overwriteShellOutput('shell-write-fail', 'value')).toBe(false);
+    expect(store.appendShellOutput('shell-append-fail', 'chunk')).toBe(false);
   });
 
   it('appends, lists, reads, and removes shell output artifacts', async () => {
@@ -204,6 +261,57 @@ describe('shell output store startup purge', () => {
     }), { encoding: 'utf8' });
 
     expect(readShellCommandMetadata(shellId)).toBeUndefined();
+  });
+
+  it('returns undefined for invalid metadata json', () => {
+    const shellId = 'shell-invalid-json';
+    const metadataPath = path.join(getShellOutputDirectoryPath(), `metadata-${shellId}.json`);
+
+    fs.mkdirSync(getShellOutputDirectoryPath(), { recursive: true });
+    fs.writeFileSync(metadataPath, '{not-json', { encoding: 'utf8' });
+
+    expect(readShellCommandMetadata(shellId)).toBeUndefined();
+  });
+
+  it('returns cleanly when startup purge cannot read the output directory', async () => {
+    const store = await importShellOutputStoreWithFsOverrides({
+      readdirSync: () => {
+        throw Object.assign(new Error('blocked'), { code: 'EACCES' });
+      },
+    });
+
+    expect(() => store.initializeShellOutputStore(SIX_HOURS_MS)).not.toThrow();
+  });
+
+  it('continues when startup purge cannot stat an artifact', async () => {
+    const store = await importShellOutputStoreWithFsOverrides({
+      readdirSync: ((() => [ 'output-shell-stat-fail.log' ]) as unknown) as typeof fs.readdirSync,
+      statSync: () => {
+        throw Object.assign(new Error('stat failed'), { code: 'EIO' });
+      },
+    });
+
+    expect(() => store.initializeShellOutputStore(SIX_HOURS_MS)).not.toThrow();
+  });
+
+  it('returns cleanly when writing metadata fails', async () => {
+    const store = await importShellOutputStoreWithFsOverrides({
+      writeFileSync: () => {
+        throw Object.assign(new Error('metadata failed'), { code: 'EIO' });
+      },
+    });
+
+    expect(() => store.writeShellCommandMetadata({
+      command: 'echo fail',
+      completedAt: null,
+      cwd: '/tmp',
+      exitCode: null,
+      id: 'shell-meta-fail',
+      killedByUser: false,
+      shell: '/bin/bash',
+      signal: null,
+      startedAt: new Date().toISOString(),
+    })).not.toThrow();
   });
 
   it('purges persisted shell output files older than configured max age', () => {
