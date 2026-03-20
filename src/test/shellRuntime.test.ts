@@ -607,4 +607,24 @@ describe('ShellRuntime background execution', () => {
     expect(spawnEnvironment?.CLICOLOR_FORCE).toBeUndefined();
     expect(spawnEnvironment?.FORCE_COLOR).toBeUndefined();
   });
+
+  it('overrides COLUMNS when a caller requests a custom terminal width', () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({
+      shellEnv: {
+        COLUMNS: '120',
+      },
+    });
+
+    runtime.startBackgroundCommand('echo env', {
+      columns: 320,
+    });
+
+    const spawnOptions = spawn.mock.calls[0]?.[2] as undefined | {
+      env?: NodeJS.ProcessEnv;
+    };
+
+    expect(spawnOptions?.env?.COLUMNS).toBe('320');
+  });
 });

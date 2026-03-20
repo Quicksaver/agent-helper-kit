@@ -31,7 +31,7 @@ const SHELL_ID_GENERATION_MAX_ATTEMPTS = 8;
 const MAX_MEMORY_TO_FILE_RETRY_ATTEMPTS = 3;
 const DEFAULT_SHELL_COLUMNS = 240;
 const DEFAULT_SHELL_ROWS = 80;
-const NODE_TERMINAL_SIZE_SHIM_PATH = path.resolve(__dirname, '..', 'scripts', 'node-terminal-width-shim.cjs');
+const NODE_TERMINAL_SIZE_SHIM_PATH = path.resolve(__dirname, '..', 'resources', 'node-terminal-width-shim.cjs');
 let hasNodeTerminalSizeShimFile: boolean | undefined;
 
 interface CompletionInfo {
@@ -98,9 +98,14 @@ export interface RunCommandResult {
 
 interface ShellInvocation {
   command: string;
-  displayShell: string;
-  executable: string;
+  shell: string;
   shellArgs: string[];
+}
+
+export interface StartBackgroundCommandOptions {
+  columns?: number;
+  cwd?: string;
+  shell?: string;
 }
 
 function getNodeTerminalSizeShimPathExists(): boolean {
@@ -431,20 +436,20 @@ export class ShellRuntime {
     };
   }
 
-  startBackgroundCommand(command: string, shell?: string, cwd?: string): string {
+  startBackgroundCommand(command: string, options: StartBackgroundCommandOptions = {}): string {
     this.lastCommand = command;
 
-    const shellInvocation = this.createShellInvocation(command, shell);
+    const shellInvocation = this.createShellInvocation(command, options.shell);
     const id = this.createUniqueShellId();
-    const commandCwd = typeof cwd === 'string' && cwd.trim().length > 0
-      ? cwd
+    const commandCwd = typeof options.cwd === 'string' && options.cwd.trim().length > 0
+      ? options.cwd
       : os.homedir();
     const childProc = childProcess.spawn(
-      shellInvocation.executable,
+      shellInvocation.shell,
       [ ...shellInvocation.shellArgs, shellInvocation.command ],
       {
         cwd: commandCwd,
-        env: this.buildShellEnv(),
+        env: this.buildShellEnv(options.columns),
       },
     );
 
@@ -467,7 +472,7 @@ export class ShellRuntime {
       pendingExit: undefined,
       readsSinceCompletion: 0,
       resolveCompletion: () => undefined,
-      shell: shellInvocation.displayShell,
+      shell: shellInvocation.shell,
       signal: null,
       startedAt: new Date().toISOString(),
     };
@@ -539,13 +544,20 @@ export class ShellRuntime {
     state.outputBytes = nextOutputBytes;
   }
 
-  private buildShellEnv(): NodeJS.ProcessEnv {
+  private buildShellEnv(columns?: number): NodeJS.ProcessEnv {
     const source = this.options.shellEnv ?? globalThis.process.env;
     const environment: NodeJS.ProcessEnv = {
       ...source,
     };
 
-    if (typeof environment.COLUMNS !== 'string' || environment.COLUMNS.length === 0) {
+    const resolvedColumns = typeof columns === 'number' && Number.isFinite(columns) && columns > 0
+      ? Math.floor(columns)
+      : undefined;
+
+    if (resolvedColumns !== undefined) {
+      environment.COLUMNS = String(resolvedColumns);
+    }
+    else if (typeof environment.COLUMNS !== 'string' || environment.COLUMNS.length === 0) {
       environment.COLUMNS = String(DEFAULT_SHELL_COLUMNS);
     }
 
@@ -655,8 +667,7 @@ export class ShellRuntime {
   private createPosixShellInvocation(command: string, shell: string): ShellInvocation {
     return {
       command,
-      displayShell: shell,
-      executable: shell,
+      shell,
       shellArgs: [ '-lc' ],
     };
   }
@@ -670,16 +681,14 @@ export class ShellRuntime {
       if (shellName === 'powershell' || shellName === 'pwsh') {
         return {
           command,
-          displayShell: shell,
-          executable: shell,
+          shell,
           shellArgs: [ '-NoLogo', '-Command' ],
         };
       }
 
       return {
         command,
-        displayShell: shell,
-        executable: shell,
+        shell,
         shellArgs: [ '/d', '/s', '/c' ],
       };
     }
@@ -778,18 +787,6 @@ export class ShellRuntime {
       signal: state.signal,
       startedAt: state.startedAt,
     });
-  }
-
-  private purgeBackgroundOutput(id: string, state: BackgroundProcessState): void {
-    state.output = '';
-    state.outputBytes = 0;
-    state.outputInFile = false;
-    removeShellOutputFile(id);
-
-    if (state.memoryToFileTimer) {
-      clearTimeout(state.memoryToFileTimer);
-      state.memoryToFileTimer = undefined;
-    }
   }
 
   private purgeCommandArtifacts(id: string, state: BackgroundProcessState): void {

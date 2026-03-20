@@ -106,7 +106,9 @@ describe('ShellRuntime platform-specific shell invocation', () => {
     const { ShellRuntime } = await importShellRuntimeForPlatform('win32', 'C:\\Users\\tester');
 
     const runtime = new ShellRuntime({});
-    runtime.startBackgroundCommand('Write-Output test', 'pwsh');
+    runtime.startBackgroundCommand('Write-Output test', {
+      shell: 'pwsh',
+    });
 
     expect(spawn).toHaveBeenCalledWith(
       'pwsh',

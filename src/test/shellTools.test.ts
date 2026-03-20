@@ -1077,6 +1077,44 @@ describe('shell tools', () => {
     await runPromise;
   });
 
+  it('falls back to the process shell when vscode has no default shell', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_sync_shell');
+    const previousShell = vscode.env.shell;
+    const expectedShell = process.env.SHELL ?? '/bin/bash';
+    vscode.env.shell = '   ';
+
+    try {
+      const runPromise = runTool.invoke({
+        input: {
+          command: 'echo process shell',
+          explanation: 'verify process shell fallback',
+          goal: 'fallback shell selection',
+          timeout: 0,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      expect(spawn).toHaveBeenCalledWith(
+        expectedShell,
+        [ ...expectedShellArgs(expectedShell), 'echo process shell' ],
+        expect.objectContaining({
+          cwd: '/workspace',
+        }),
+      );
+
+      fakeProcess.emit('close', 0, null);
+      await runPromise;
+    }
+    finally {
+      vscode.env.shell = previousShell;
+    }
+  });
+
   it('uses the home directory when no workspace folder is open', async () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
@@ -1153,6 +1191,41 @@ describe('shell tools', () => {
     await runPromise;
   });
 
+  it('marks sync shell runs as timed out after killing the still-running process', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fakeProcess = createFakeProcess();
+      spawn.mockReturnValue(fakeProcess);
+
+      registerShellTools();
+
+      const runTool = getRegisteredTool('run_in_sync_shell');
+      const runPromise = runTool.invoke({
+        input: {
+          command: 'sleep 10',
+          explanation: 'verify sync timeout handling',
+          goal: 'sync timeout recovery',
+          timeout: 5,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      await vi.advanceTimersByTimeAsync(5);
+
+      const runPayload = getResultPayload(await runPromise);
+      expect(fakeProcess.kill).toHaveBeenCalledWith('SIGTERM');
+      expect(runPayload.exitCode).toBeNull();
+      expect(runPayload.id).toMatch(SHELL_ID_REGEX);
+      expect(runPayload.shell).toBe('/bin/zsh');
+      expect(runPayload.terminationSignal).toBe('SIGTERM');
+      expect(runPayload.timedOut).toBe(true);
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('defaults spawned commands to color-capable shell env vars', async () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
@@ -1189,7 +1262,7 @@ describe('shell tools', () => {
       expect(invocation.options.env?.COLORTERM).toBe('truecolor');
       expect(invocation.options.env?.FORCE_COLOR).toBe('3');
       expect(invocation.options.env?.LINES).toBe('80');
-      expect(invocation.options.env?.NODE_OPTIONS).toContain(`--require ${JSON.stringify(path.join(process.cwd(), 'scripts', 'node-terminal-width-shim.cjs'))}`);
+      expect(invocation.options.env?.NODE_OPTIONS).toContain(`--require ${JSON.stringify(path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs'))}`);
       expect(invocation.options.env?.TERM).toBe('xterm-256color');
 
       fakeProcess.emit('close', 0, null);
@@ -1224,7 +1297,7 @@ describe('shell tools', () => {
 
       const invocation = getLastSpawnInvocation();
       expect(invocation.options.env?.NODE_OPTIONS).toContain('--trace-warnings');
-      expect(invocation.options.env?.NODE_OPTIONS).toContain(`--require ${JSON.stringify(path.join(process.cwd(), 'scripts', 'node-terminal-width-shim.cjs'))}`);
+      expect(invocation.options.env?.NODE_OPTIONS).toContain(`--require ${JSON.stringify(path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs'))}`);
 
       fakeProcess.emit('close', 0, null);
       await runPromise;
@@ -1238,7 +1311,7 @@ describe('shell tools', () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
 
-    const shimPath = path.join(process.cwd(), 'scripts', 'node-terminal-width-shim.cjs');
+    const shimPath = path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs');
     const restoreEnvironment = captureEnvironmentVariables([ 'NODE_OPTIONS' ]);
     process.env.NODE_OPTIONS = `--trace-warnings --require ${JSON.stringify(shimPath)}`;
 
@@ -1272,7 +1345,7 @@ describe('shell tools', () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
 
-    const shimPath = path.join(process.cwd(), 'scripts', 'node-terminal-width-shim.cjs');
+    const shimPath = path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs');
     const restoreEnvironment = captureEnvironmentVariables([ 'NODE_OPTIONS' ]);
     process.env.NODE_OPTIONS = `--title=${shimPath}-copy`;
 
@@ -1301,6 +1374,28 @@ describe('shell tools', () => {
     finally {
       restoreEnvironment();
     }
+  });
+
+  it('passes through a custom columns override for async shell runs', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_async_shell');
+
+    await runTool.invoke({
+      input: {
+        columns: 320,
+        command: 'printf hello',
+        explanation: 'verify custom columns override',
+        goal: 'wider terminal width',
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const invocation = getLastSpawnInvocation();
+    expect(invocation.options.env?.COLUMNS).toBe('320');
   });
 
   it('does not inject forced-color env vars when NO_COLOR is set', async () => {

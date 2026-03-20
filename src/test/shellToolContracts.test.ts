@@ -100,12 +100,14 @@ describe('shell tool contracts', () => {
     const { validateRunInAsyncShellInput } = await import('../shellToolContracts.js');
 
     expect(validateRunInAsyncShellInput({
+      columns: 320,
       command: 'echo ok',
       cwd: '/workspace',
       explanation: 'print ok',
       goal: 'test async validation',
       shell: '/bin/zsh',
     })).toEqual({
+      columns: 320,
       command: 'echo ok',
       cwd: '/workspace',
       explanation: 'print ok',
@@ -133,6 +135,14 @@ describe('shell tool contracts', () => {
     const { validateRunInSyncShellInput } = await import('../shellToolContracts.js');
 
     expect(() => validateRunInSyncShellInput({
+      columns: 0,
+      command: 'echo ok',
+      explanation: 'print ok',
+      goal: 'test sync validation',
+      timeout: 0,
+    })).toThrowError();
+
+    expect(() => validateRunInSyncShellInput({
       command: 'echo ok',
       explanation: 'print ok',
       full_output: true,
@@ -154,12 +164,14 @@ describe('shell tool contracts', () => {
     const { validateRunInSyncShellInput } = await import('../shellToolContracts.js');
 
     expect(validateRunInSyncShellInput({
+      columns: 320,
       command: 'echo ok',
       explanation: 'print ok',
       full_output: true,
       goal: 'test sync validation',
       timeout: 1000,
     })).toEqual({
+      columns: 320,
       command: 'echo ok',
       explanation: 'print ok',
       full_output: true,

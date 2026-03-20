@@ -254,11 +254,11 @@ const runInAsyncShellTool: vscode.LanguageModelTool<RunInAsyncShellInput> = {
   ): Promise<vscode.LanguageModelToolResult> {
     const input = validateRunInAsyncShellInput(options.input);
     const resolvedCwd = resolveCommandCwd(input.cwd);
-    const id = getShellRuntime().startBackgroundCommand(
-      input.command,
-      getRequestedOrDefaultShell(input.shell),
-      resolvedCwd,
-    );
+    const id = getShellRuntime().startBackgroundCommand(input.command, {
+      columns: input.columns,
+      cwd: resolvedCwd,
+      shell: getRequestedOrDefaultShell(input.shell),
+    });
 
     return buildYamlToolResult({ id: toPublicCommandId(id) });
   },
@@ -287,11 +287,11 @@ const runInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = {
     const resolvedCwd = resolveCommandCwd(input.cwd);
     const resolvedShell = getRequestedOrDefaultShell(input.shell);
 
-    const id = shellRuntimeInstance.startBackgroundCommand(
-      input.command,
-      resolvedShell,
-      resolvedCwd,
-    );
+    const id = shellRuntimeInstance.startBackgroundCommand(input.command, {
+      columns: input.columns,
+      cwd: resolvedCwd,
+      shell: resolvedShell,
+    });
     let result = await shellRuntimeInstance.awaitBackgroundCommand({
       id,
       timeout: input.timeout,

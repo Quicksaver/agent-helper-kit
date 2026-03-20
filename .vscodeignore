@@ -1,5 +1,7 @@
 node_modules/**
+coverage/**
 rules/**
+scripts/**
 src/**
 .*
 .*/

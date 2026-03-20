@@ -172,6 +172,7 @@ export const SHELL_TOOL_METADATA = {
 } as const;
 
 export interface RunInAsyncShellInput {
+  columns?: number;
   command: string;
   cwd?: string;
   explanation: string;
@@ -180,6 +181,7 @@ export interface RunInAsyncShellInput {
 }
 
 export interface RunInSyncShellInput {
+  columns?: number;
   command: string;
   cwd?: string;
   explanation: string;
@@ -216,6 +218,7 @@ export interface GetShellCommandInput {
 export type GetLastShellCommandInput = Record<string, never>;
 
 export const runInAsyncShellInputSchema = {
+  columns: z.number().int().positive().optional(),
   command: z.string(),
   cwd: z.string().optional(),
   explanation: z.string(),
@@ -224,6 +227,7 @@ export const runInAsyncShellInputSchema = {
 } satisfies z.ZodRawShape;
 
 export const runInSyncShellInputSchema = {
+  columns: z.number().int().positive().optional(),
   command: z.string(),
   cwd: z.string().optional(),
   explanation: z.string(),
