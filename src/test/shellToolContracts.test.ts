@@ -182,6 +182,7 @@ describe('shell tool contracts', () => {
       version: '1.1.0',
     });
 
+    expect(contracts.getPackageVersion()).toBe('1.1.0');
     expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.title).toBe('run_in_sync_shell');
     expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.description).toBe('');
   });
