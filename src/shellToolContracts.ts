@@ -21,6 +21,11 @@ interface ContributedLanguageModelTool {
   name: string;
 }
 
+interface ShellToolMetadataDescriptor {
+  description: string;
+  title: string;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -40,16 +45,7 @@ function readPackageJsonManifest(): unknown {
   return manifest;
 }
 
-export function getPackageVersion(): string {
-  let manifest: unknown;
-
-  try {
-    manifest = readPackageJsonManifest();
-  }
-  catch {
-    return '0.0.0';
-  }
-
+export function getPackageVersionFromManifest(manifest: unknown): string {
   if (
     isRecord(manifest)
     && typeof manifest.version === 'string'
@@ -60,9 +56,20 @@ export function getPackageVersion(): string {
   return '0.0.0';
 }
 
-function getContributedLanguageModelTools(): ContributedLanguageModelTool[] {
-  const manifest = readPackageJsonManifest();
+export function getPackageVersionFromReader(readManifest: () => unknown = readPackageJsonManifest): string {
+  try {
+    return getPackageVersionFromManifest(readManifest());
+  }
+  catch {
+    return '0.0.0';
+  }
+}
 
+export function getPackageVersion(): string {
+  return getPackageVersionFromReader();
+}
+
+export function getContributedLanguageModelToolsFromManifest(manifest: unknown): ContributedLanguageModelTool[] {
   if (!isRecord(manifest)) {
     throw new Error('package.json content must be a JSON object');
   }
@@ -106,21 +113,10 @@ function getContributedLanguageModelTools(): ContributedLanguageModelTool[] {
   });
 }
 
-function getContributedLanguageModelToolsSafely(): ContributedLanguageModelTool[] {
-  try {
-    return getContributedLanguageModelTools();
-  }
-  catch {
-    return [];
-  }
-}
-
-const contributedLanguageModelTools = getContributedLanguageModelToolsSafely();
-
-function getToolMetadata(name: string): {
-  description: string;
-  title: string;
-} {
+function getToolMetadata(
+  contributedLanguageModelTools: ContributedLanguageModelTool[],
+  name: string,
+): ShellToolMetadataDescriptor {
   const manifestTool = contributedLanguageModelTools.find(candidate => candidate.name === name);
 
   if (!manifestTool) {
@@ -136,42 +132,68 @@ function getToolMetadata(name: string): {
   };
 }
 
-export const SHELL_TOOL_METADATA = {
-  awaitShell: {
-    ...getToolMetadata(SHELL_TOOL_NAMES.awaitShell),
-    invocationMessage: (id: string) => `Waiting for shell command ${id}`,
-  },
-  getLastShellCommand: {
-    ...getToolMetadata(SHELL_TOOL_NAMES.getLastShellCommand),
-    invocationMessage: 'Reading most recent shell command',
-  },
-  getShellCommand: {
-    invocationMessage: (id: string) => `Reading shell command ${id}`,
-    ...getToolMetadata(SHELL_TOOL_NAMES.getShellCommand),
-  },
-  getShellOutput: {
-    ...getToolMetadata(SHELL_TOOL_NAMES.getShellOutput),
-    invocationMessage: (id: string) => `Reading output for shell command ${id}`,
-  },
-  killShell: {
-    confirmationMessage: (id: string) => `Stop shell command ${id}`,
-    confirmationTitle: 'Stop running shell command?',
-    ...getToolMetadata(SHELL_TOOL_NAMES.killShell),
-    invocationMessage: (id: string) => `Stopping shell command ${id}`,
-  },
-  runInAsyncShell: {
-    confirmationMessage: (commandPreview: string) => `Run shell command: ${commandPreview}`,
-    confirmationTitle: 'Run async shell command?',
-    ...getToolMetadata(SHELL_TOOL_NAMES.runInAsyncShell),
-    invocationMessage: (commandPreview: string) => `Running async shell command: ${commandPreview}`,
-  },
-  runInSyncShell: {
-    confirmationMessage: (commandPreview: string) => `Run shell command: ${commandPreview}`,
-    confirmationTitle: 'Run sync shell command?',
-    ...getToolMetadata(SHELL_TOOL_NAMES.runInSyncShell),
-    invocationMessage: (commandPreview: string) => `Running sync shell command: ${commandPreview}`,
-  },
-} as const;
+export function buildShellToolMetadata(manifest: unknown) {
+  const contributedLanguageModelTools = (() => {
+    try {
+      return getContributedLanguageModelToolsFromManifest(manifest);
+    }
+    catch {
+      return [];
+    }
+  })();
+
+  return {
+    awaitShell: {
+      ...getToolMetadata(contributedLanguageModelTools, SHELL_TOOL_NAMES.awaitShell),
+      invocationMessage: (id: string) => `Waiting for shell command ${id}`,
+    },
+    getLastShellCommand: {
+      ...getToolMetadata(contributedLanguageModelTools, SHELL_TOOL_NAMES.getLastShellCommand),
+      invocationMessage: 'Reading most recent shell command',
+    },
+    getShellCommand: {
+      invocationMessage: (id: string) => `Reading shell command ${id}`,
+      ...getToolMetadata(contributedLanguageModelTools, SHELL_TOOL_NAMES.getShellCommand),
+    },
+    getShellOutput: {
+      ...getToolMetadata(contributedLanguageModelTools, SHELL_TOOL_NAMES.getShellOutput),
+      invocationMessage: (id: string) => `Reading output for shell command ${id}`,
+    },
+    killShell: {
+      confirmationMessage: (id: string) => `Stop shell command ${id}`,
+      confirmationTitle: 'Stop running shell command?',
+      ...getToolMetadata(contributedLanguageModelTools, SHELL_TOOL_NAMES.killShell),
+      invocationMessage: (id: string) => `Stopping shell command ${id}`,
+    },
+    runInAsyncShell: {
+      confirmationMessage: (commandPreview: string) => `Run shell command: ${commandPreview}`,
+      confirmationTitle: 'Run async shell command?',
+      ...getToolMetadata(contributedLanguageModelTools, SHELL_TOOL_NAMES.runInAsyncShell),
+      invocationMessage: (commandPreview: string) => `Running async shell command: ${commandPreview}`,
+    },
+    runInSyncShell: {
+      confirmationMessage: (commandPreview: string) => `Run shell command: ${commandPreview}`,
+      confirmationTitle: 'Run sync shell command?',
+      ...getToolMetadata(contributedLanguageModelTools, SHELL_TOOL_NAMES.runInSyncShell),
+      invocationMessage: (commandPreview: string) => `Running sync shell command: ${commandPreview}`,
+    },
+  } as const;
+}
+
+export type ShellToolMetadata = ReturnType<typeof buildShellToolMetadata>;
+
+export function buildShellToolMetadataFromReader(
+  readManifest: () => unknown = readPackageJsonManifest,
+): ShellToolMetadata {
+  try {
+    return buildShellToolMetadata(readManifest());
+  }
+  catch {
+    return buildShellToolMetadata(undefined);
+  }
+}
+
+export const SHELL_TOOL_METADATA = buildShellToolMetadataFromReader();
 
 export interface RunInAsyncShellInput {
   columns?: number;

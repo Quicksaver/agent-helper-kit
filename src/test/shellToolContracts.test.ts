@@ -1,6 +1,3 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-
 import {
   afterEach,
   describe,
@@ -9,65 +6,24 @@ import {
   vi,
 } from 'vitest';
 
-type ShellToolContractsModule = typeof import('../shellToolContracts.js');
-
-const importShellToolContractsLoaders = [
-  () => import('../shellToolContracts.js?case=0'),
-  () => import('../shellToolContracts.js?case=1'),
-  () => import('../shellToolContracts.js?case=2'),
-  () => import('../shellToolContracts.js?case=3'),
-  () => import('../shellToolContracts.js?case=4'),
-  () => import('../shellToolContracts.js?case=5'),
-  () => import('../shellToolContracts.js?case=6'),
-  () => import('../shellToolContracts.js?case=7'),
-  () => import('../shellToolContracts.js?case=8'),
-  () => import('../shellToolContracts.js?case=9'),
-  () => import('../shellToolContracts.js?case=10'),
-  () => import('../shellToolContracts.js?case=11'),
-] as const;
-
-let importShellToolContractsLoaderIndex = 0;
-
-function importFreshShellToolContracts(): Promise<ShellToolContractsModule> {
-  const loader = importShellToolContractsLoaders[
-    importShellToolContractsLoaderIndex % importShellToolContractsLoaders.length
-  ];
-
-  importShellToolContractsLoaderIndex += 1;
-
-  return loader() as Promise<ShellToolContractsModule>;
-}
-
 afterEach(() => {
   vi.resetModules();
-  vi.doUnmock('node:fs');
-  vi.doUnmock('node:path');
 });
-
-async function importShellToolContractsWithPackageJson(packageJson: unknown): Promise<ShellToolContractsModule> {
-  vi.resetModules();
-  vi.doMock('node:fs', () => ({
-    readFileSync: vi.fn(() => JSON.stringify(packageJson)),
-  }));
-
-  return importFreshShellToolContracts();
-}
-
-async function importShellToolContractsWithReadError(message: string): Promise<ShellToolContractsModule> {
-  vi.resetModules();
-  vi.doMock('node:fs', () => ({
-    readFileSync: vi.fn(() => {
-      throw new Error(message);
-    }),
-  }));
-
-  return importFreshShellToolContracts();
-}
 
 describe('shell tool contracts', () => {
   it('reads package version and manifest-backed tool metadata', async () => {
-    const packageJsonPath = path.resolve(__dirname, '..', '..', 'package.json');
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as {
+    const {
+      buildShellToolMetadata,
+      getContributedLanguageModelToolsFromManifest,
+      getPackageVersion,
+      SHELL_TOOL_METADATA,
+      SHELL_TOOL_NAMES,
+    } = await import('../shellToolContracts.js');
+    const packageJson = (await import('../../package.json', {
+      with: {
+        type: 'json',
+      },
+    })).default as {
       contributes: {
         languageModelTools: {
           displayName: string;
@@ -77,100 +33,126 @@ describe('shell tool contracts', () => {
       };
       version: string;
     };
-
-    vi.resetModules();
-    vi.doUnmock('node:fs');
-
-    const contracts = await importFreshShellToolContracts();
+    const shellToolMetadata = buildShellToolMetadata(packageJson);
     const syncTool = packageJson.contributes.languageModelTools.find(
-      tool => tool.name === contracts.SHELL_TOOL_NAMES.runInSyncShell,
+      tool => tool.name === SHELL_TOOL_NAMES.runInSyncShell,
     );
+    const contributedLanguageModelTools = getContributedLanguageModelToolsFromManifest(packageJson);
 
-    expect(contracts.getPackageVersion()).toBe(packageJson.version);
-    expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.title).toBe(syncTool?.displayName);
-    expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.description).toBe(syncTool?.modelDescription);
-    expect(contracts.SHELL_TOOL_METADATA.awaitShell.invocationMessage('abcd1234')).toBe('Waiting for shell command abcd1234');
-    expect(contracts.SHELL_TOOL_METADATA.getLastShellCommand.invocationMessage).toBe('Reading most recent shell command');
-    expect(contracts.SHELL_TOOL_METADATA.getShellCommand.invocationMessage('abcd1234')).toBe('Reading shell command abcd1234');
-    expect(contracts.SHELL_TOOL_METADATA.getShellOutput.invocationMessage('abcd1234')).toBe('Reading output for shell command abcd1234');
-    expect(contracts.SHELL_TOOL_METADATA.killShell.confirmationMessage('abcd1234')).toBe('Stop shell command abcd1234');
-    expect(contracts.SHELL_TOOL_METADATA.killShell.confirmationTitle).toBe('Stop running shell command?');
-    expect(contracts.SHELL_TOOL_METADATA.killShell.invocationMessage('abcd1234')).toBe('Stopping shell command abcd1234');
-    expect(contracts.SHELL_TOOL_METADATA.runInAsyncShell.confirmationMessage('echo ok')).toBe('Run shell command: echo ok');
-    expect(contracts.SHELL_TOOL_METADATA.runInAsyncShell.confirmationTitle).toBe('Run async shell command?');
-    expect(contracts.SHELL_TOOL_METADATA.runInAsyncShell.invocationMessage('echo ok')).toBe('Running async shell command: echo ok');
-    expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.confirmationMessage('echo ok')).toBe('Run shell command: echo ok');
-    expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.confirmationTitle).toBe('Run sync shell command?');
-    expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.invocationMessage('echo ok')).toBe('Running sync shell command: echo ok');
+    expect(getPackageVersion()).toBe(packageJson.version);
+    expect(contributedLanguageModelTools).toContainEqual({
+      displayName: syncTool?.displayName,
+      modelDescription: syncTool?.modelDescription,
+      name: SHELL_TOOL_NAMES.runInSyncShell,
+    });
+    expect(shellToolMetadata.runInSyncShell.title).toBe(syncTool?.displayName);
+    expect(shellToolMetadata.runInSyncShell.description).toBe(syncTool?.modelDescription);
+    expect(SHELL_TOOL_METADATA.runInSyncShell.title).toBe(syncTool?.displayName);
+    expect(shellToolMetadata.awaitShell.invocationMessage('abcd1234')).toBe('Waiting for shell command abcd1234');
+    expect(shellToolMetadata.getLastShellCommand.invocationMessage).toBe('Reading most recent shell command');
+    expect(shellToolMetadata.getShellCommand.invocationMessage('abcd1234')).toBe('Reading shell command abcd1234');
+    expect(shellToolMetadata.getShellOutput.invocationMessage('abcd1234')).toBe('Reading output for shell command abcd1234');
+    expect(shellToolMetadata.killShell.confirmationMessage('abcd1234')).toBe('Stop shell command abcd1234');
+    expect(shellToolMetadata.killShell.confirmationTitle).toBe('Stop running shell command?');
+    expect(shellToolMetadata.killShell.invocationMessage('abcd1234')).toBe('Stopping shell command abcd1234');
+    expect(shellToolMetadata.runInAsyncShell.confirmationMessage('echo ok')).toBe('Run shell command: echo ok');
+    expect(shellToolMetadata.runInAsyncShell.confirmationTitle).toBe('Run async shell command?');
+    expect(shellToolMetadata.runInAsyncShell.invocationMessage('echo ok')).toBe('Running async shell command: echo ok');
+    expect(shellToolMetadata.runInSyncShell.confirmationMessage('echo ok')).toBe('Run shell command: echo ok');
+    expect(shellToolMetadata.runInSyncShell.confirmationTitle).toBe('Run sync shell command?');
+    expect(shellToolMetadata.runInSyncShell.invocationMessage('echo ok')).toBe('Running sync shell command: echo ok');
   });
 
   it('falls back cleanly when package.json cannot be read', async () => {
-    const contracts = await importShellToolContractsWithReadError('unreadable');
+    const {
+      buildShellToolMetadata,
+      buildShellToolMetadataFromReader,
+      getPackageVersionFromManifest,
+      getPackageVersionFromReader,
+    } = await import('../shellToolContracts.js');
+    const shellToolMetadata = buildShellToolMetadata(undefined);
+    const shellToolMetadataFromReader = buildShellToolMetadataFromReader(() => {
+      throw new Error('unreadable');
+    });
 
-    expect(contracts.getPackageVersion()).toBe('0.0.0');
-    expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.title).toBe('run_in_sync_shell');
-    expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.description).toBe('');
+    expect(getPackageVersionFromManifest(undefined)).toBe('0.0.0');
+    expect(getPackageVersionFromReader(() => {
+      throw new Error('unreadable');
+    })).toBe('0.0.0');
+    expect(shellToolMetadata.runInSyncShell.title).toBe('run_in_sync_shell');
+    expect(shellToolMetadata.runInSyncShell.description).toBe('');
+    expect(shellToolMetadataFromReader.runInSyncShell.title).toBe('run_in_sync_shell');
+    expect(shellToolMetadataFromReader.runInSyncShell.description).toBe('');
   });
 
   it('falls back cleanly when package.json is missing contributes metadata', async () => {
-    const contracts = await importShellToolContractsWithPackageJson({ version: '9.9.9' });
+    const { buildShellToolMetadata, getPackageVersionFromManifest } = await import('../shellToolContracts.js');
+    const shellToolMetadata = buildShellToolMetadata({ version: '9.9.9' });
 
-    expect(contracts.getPackageVersion()).toBe('9.9.9');
-    expect(contracts.SHELL_TOOL_METADATA.runInAsyncShell.title).toBe('run_in_async_shell');
-    expect(contracts.SHELL_TOOL_METADATA.runInAsyncShell.description).toBe('');
+    expect(getPackageVersionFromManifest({ version: '9.9.9' })).toBe('9.9.9');
+    expect(shellToolMetadata.runInAsyncShell.title).toBe('run_in_async_shell');
+    expect(shellToolMetadata.runInAsyncShell.description).toBe('');
   });
 
   it('falls back cleanly when package.json is valid JSON but not an object', async () => {
-    const contracts = await importShellToolContractsWithPackageJson('not-an-object');
+    const { buildShellToolMetadata, getPackageVersionFromManifest } = await import('../shellToolContracts.js');
+    const shellToolMetadata = buildShellToolMetadata('not-an-object');
 
-    expect(contracts.getPackageVersion()).toBe('0.0.0');
-    expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.title).toBe('run_in_sync_shell');
-    expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.description).toBe('');
+    expect(getPackageVersionFromManifest('not-an-object')).toBe('0.0.0');
+    expect(shellToolMetadata.runInSyncShell.title).toBe('run_in_sync_shell');
+    expect(shellToolMetadata.runInSyncShell.description).toBe('');
   });
 
   it('falls back cleanly when package.json contributes is not an object', async () => {
-    const contracts = await importShellToolContractsWithPackageJson({
+    const { buildShellToolMetadata, getPackageVersionFromManifest } = await import('../shellToolContracts.js');
+    const manifest = {
       contributes: 'invalid',
       version: '2.0.0',
-    });
+    };
+    const shellToolMetadata = buildShellToolMetadata(manifest);
 
-    expect(contracts.getPackageVersion()).toBe('2.0.0');
-    expect(contracts.SHELL_TOOL_METADATA.getShellOutput.title).toBe('get_shell_output');
-    expect(contracts.SHELL_TOOL_METADATA.getShellOutput.description).toBe('');
+    expect(getPackageVersionFromManifest(manifest)).toBe('2.0.0');
+    expect(shellToolMetadata.getShellOutput.title).toBe('get_shell_output');
+    expect(shellToolMetadata.getShellOutput.description).toBe('');
   });
 
   it('falls back cleanly when language model tools is not an array', async () => {
-    const contracts = await importShellToolContractsWithPackageJson({
+    const { buildShellToolMetadata, getPackageVersionFromManifest } = await import('../shellToolContracts.js');
+    const manifest = {
       contributes: {
         languageModelTools: {
           name: 'run_in_sync_shell',
         },
       },
       version: '3.0.0',
-    });
+    };
+    const shellToolMetadata = buildShellToolMetadata(manifest);
 
-    expect(contracts.getPackageVersion()).toBe('3.0.0');
-    expect(contracts.SHELL_TOOL_METADATA.awaitShell.title).toBe('await_shell');
-    expect(contracts.SHELL_TOOL_METADATA.awaitShell.description).toBe('');
+    expect(getPackageVersionFromManifest(manifest)).toBe('3.0.0');
+    expect(shellToolMetadata.awaitShell.title).toBe('await_shell');
+    expect(shellToolMetadata.awaitShell.description).toBe('');
   });
 
   it('falls back cleanly when language model tool entries are malformed', async () => {
-    const contracts = await importShellToolContractsWithPackageJson({
+    const { buildShellToolMetadata, getPackageVersionFromManifest } = await import('../shellToolContracts.js');
+    const manifest = {
       contributes: {
         languageModelTools: [
           null,
         ],
       },
       version: '1.0.0',
-    });
+    };
+    const shellToolMetadata = buildShellToolMetadata(manifest);
 
-    expect(contracts.getPackageVersion()).toBe('1.0.0');
-    expect(contracts.SHELL_TOOL_METADATA.killShell.title).toBe('kill_shell');
-    expect(contracts.SHELL_TOOL_METADATA.killShell.description).toBe('');
+    expect(getPackageVersionFromManifest(manifest)).toBe('1.0.0');
+    expect(shellToolMetadata.killShell.title).toBe('kill_shell');
+    expect(shellToolMetadata.killShell.description).toBe('');
   });
 
   it('falls back cleanly when a language model tool entry is missing required fields', async () => {
-    const contracts = await importShellToolContractsWithPackageJson({
+    const { buildShellToolMetadata, getPackageVersionFromManifest } = await import('../shellToolContracts.js');
+    const manifest = {
       contributes: {
         languageModelTools: [
           {
@@ -180,11 +162,12 @@ describe('shell tool contracts', () => {
         ],
       },
       version: '1.1.0',
-    });
+    };
+    const shellToolMetadata = buildShellToolMetadata(manifest);
 
-    expect(contracts.getPackageVersion()).toBe('1.1.0');
-    expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.title).toBe('run_in_sync_shell');
-    expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.description).toBe('');
+    expect(getPackageVersionFromManifest(manifest)).toBe('1.1.0');
+    expect(shellToolMetadata.runInSyncShell.title).toBe('run_in_sync_shell');
+    expect(shellToolMetadata.runInSyncShell.description).toBe('');
   });
 
   it('validates async shell inputs', async () => {
