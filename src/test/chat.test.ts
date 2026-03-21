@@ -34,7 +34,7 @@ const vscode = vi.hoisted(() => {
 
 vi.mock('vscode', () => vscode);
 
-// eslint-disable-next-line import/first -- must follow vi.mock
+// eslint-disable-next-line import-x/first -- must follow vi.mock
 import { buildComment } from '@/chat';
 
 describe('buildComment', () => {

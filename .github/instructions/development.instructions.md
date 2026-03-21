@@ -19,7 +19,7 @@ These are coding standards and guidelines that apply to all files in this projec
 
 **Troubleshooting**
 
-- **`import/no-extraneous-dependencies` after install** → Restart ESLint Server
+- **`import-x/no-extraneous-dependencies` after install** → Restart ESLint Server
 
 **Add any learnings to `AGENTS.md § Learnings`:**
 

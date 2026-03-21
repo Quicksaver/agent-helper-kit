@@ -16,6 +16,10 @@ import {
 } from '@/test/fakeShellProcess';
 
 const spawn = vi.hoisted(() => vi.fn());
+const runtimePlatformState = vi.hoisted(() => ({
+  homeDir: '',
+  platform: 'darwin' as NodeJS.Platform,
+}));
 
 const vscode = vi.hoisted(() => ({
   window: {
@@ -28,33 +32,38 @@ const vscode = vi.hoisted(() => ({
     })),
   },
 }));
+
+vi.mock('node:child_process', () => ({
+  spawn,
+}));
+
+vi.mock('node:os', async () => {
+  const actual = await vi.importActual<typeof import('node:os')>('node:os');
+
+  return {
+    ...actual,
+    homedir: () => runtimePlatformState.homeDir,
+    platform: () => runtimePlatformState.platform,
+  };
+});
+
+vi.mock('vscode', () => vscode);
+
 const shellOutputTestDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-helper-kit-shellRuntimePlatform-test-'));
 const previousShellOutputDirectory = process.env[SHELL_OUTPUT_DIR_ENV_VAR];
 
 async function importShellRuntimeForPlatform(platform: NodeJS.Platform, homeDir: string) {
   vi.resetModules();
 
-  vi.doMock('node:child_process', () => ({
-    spawn,
-  }));
-  vi.doMock('vscode', () => vscode);
-  vi.doMock('node:os', async () => {
-    const actual = await vi.importActual<typeof import('node:os')>('node:os');
-
-    return {
-      ...actual,
-      homedir: () => homeDir,
-      platform: () => platform,
-    };
-  });
+  runtimePlatformState.homeDir = homeDir;
+  runtimePlatformState.platform = platform;
 
   return import('../shellRuntime.js');
 }
 
 afterEach(() => {
-  vi.doUnmock('node:child_process');
-  vi.doUnmock('node:os');
-  vi.doUnmock('vscode');
+  runtimePlatformState.homeDir = '';
+  runtimePlatformState.platform = 'darwin';
   spawn.mockReset();
   vi.resetModules();
   vi.restoreAllMocks();

@@ -26,25 +26,36 @@ function createUri(fsPath: string, fragment?: string): UriLike {
   };
 }
 
+const vscodeMockState = vi.hoisted(() => ({
+  pickedFolder: undefined as undefined | WorkspaceFolderLike,
+  workspaceFolders: undefined as undefined | WorkspaceFolderLike[],
+}));
+
+const showWorkspaceFolderPick = vi.hoisted(() => vi.fn(async () => vscodeMockState.pickedFolder));
+
+vi.mock('vscode', () => ({
+  Uri: {
+    file: (fsPath: string) => createUri(fsPath),
+    joinPath: (base: UriLike, ...paths: string[]) => createUri([ base.fsPath, ...paths ].join('/')),
+  },
+  window: {
+    showWorkspaceFolderPick,
+  },
+  workspace: {
+    get workspaceFolders() {
+      return vscodeMockState.workspaceFolders;
+    },
+  },
+}));
+
 async function importUriModule(options: {
   pickedFolder?: WorkspaceFolderLike;
   workspaceFolders?: undefined | WorkspaceFolderLike[];
 } = {}) {
-  const showWorkspaceFolderPick = vi.fn(async () => options.pickedFolder);
-
   vi.resetModules();
-  vi.doMock('vscode', () => ({
-    Uri: {
-      file: (fsPath: string) => createUri(fsPath),
-      joinPath: (base: UriLike, ...paths: string[]) => createUri([ base.fsPath, ...paths ].join('/')),
-    },
-    window: {
-      showWorkspaceFolderPick,
-    },
-    workspace: {
-      workspaceFolders: options.workspaceFolders,
-    },
-  }));
+  vscodeMockState.pickedFolder = options.pickedFolder;
+  vscodeMockState.workspaceFolders = options.workspaceFolders;
+  showWorkspaceFolderPick.mockClear();
 
   const uriModule = await import('../uri.js');
 
@@ -55,8 +66,9 @@ async function importUriModule(options: {
 }
 
 afterEach(() => {
+  vscodeMockState.pickedFolder = undefined;
+  vscodeMockState.workspaceFolders = undefined;
   vi.resetModules();
-  vi.doUnmock('vscode');
 });
 
 describe('uri helpers', () => {
@@ -70,7 +82,7 @@ describe('uri helpers', () => {
     ];
     const {
       getWorkspaceRoot,
-      showWorkspaceFolderPick,
+      showWorkspaceFolderPick: showWorkspaceFolderPickSpy,
     } = await importUriModule({ workspaceFolders });
 
     await expect(getWorkspaceRoot()).resolves.toBe('/workspace/alpha');
@@ -82,13 +94,13 @@ describe('uri helpers', () => {
     };
 
     await expect(getWorkspaceRoot()).resolves.toBe('/workspace/alpha');
-    expect(showWorkspaceFolderPick).not.toHaveBeenCalled();
+    expect(showWorkspaceFolderPickSpy).not.toHaveBeenCalled();
   });
 
   it('asks the user to pick a workspace when multiple folders are open', async () => {
     const {
       getWorkspaceRoot,
-      showWorkspaceFolderPick,
+      showWorkspaceFolderPick: showWorkspaceFolderPickSpy,
     } = await importUriModule({
       pickedFolder: {
         uri: {
@@ -110,7 +122,7 @@ describe('uri helpers', () => {
     });
 
     await expect(getWorkspaceRoot()).resolves.toBe('/workspace/selected');
-    expect(showWorkspaceFolderPick).toHaveBeenCalledOnce();
+    expect(showWorkspaceFolderPickSpy).toHaveBeenCalledOnce();
   });
 
   it('throws when no workspace is available', async () => {

@@ -181,7 +181,7 @@ describe('shell tool contracts', () => {
       command: 'echo ok',
       explanation: 'print ok',
       goal: 'test async validation',
-    })).toThrowError(new RegExp(`columns must be less than or equal to ${MAX_SHELL_COLUMNS}`));
+    })).toThrow(new RegExp(`columns must be less than or equal to ${MAX_SHELL_COLUMNS}`));
   });
 
   it('rejects incompatible get shell output options', async () => {
@@ -191,12 +191,12 @@ describe('shell tool contracts', () => {
       id: 'abcd1234',
       last_lines: 5,
       regex: 'value',
-    })).toThrowError(/last_lines and regex are mutually exclusive/);
+    })).toThrow(/last_lines and regex are mutually exclusive/);
 
     expect(() => validateGetShellOutputInput({
       id: 'abcd1234',
       regex_flags: 'i',
-    })).toThrowError(/regex_flags requires regex/);
+    })).toThrow(/regex_flags requires regex/);
   });
 
   it('rejects incompatible sync shell output options', async () => {
@@ -208,7 +208,7 @@ describe('shell tool contracts', () => {
       explanation: 'print ok',
       goal: 'test sync validation',
       timeout: 0,
-    })).toThrowError(/columns must be greater than 0/);
+    })).toThrow(/columns must be greater than 0/);
 
     expect(() => validateRunInSyncShellInput({
       columns: 12.5,
@@ -216,7 +216,7 @@ describe('shell tool contracts', () => {
       explanation: 'print ok',
       goal: 'test sync validation',
       timeout: 0,
-    })).toThrowError(/columns must be a whole number/);
+    })).toThrow(/columns must be a whole number/);
 
     expect(() => validateRunInSyncShellInput({
       command: 'echo ok',
@@ -225,7 +225,7 @@ describe('shell tool contracts', () => {
       goal: 'test sync validation',
       last_lines: 5,
       timeout: 0,
-    })).toThrowError(/full_output, last_lines, and regex are mutually exclusive options/);
+    })).toThrow(/full_output, last_lines, and regex are mutually exclusive options/);
 
     expect(() => validateRunInSyncShellInput({
       command: 'echo ok',
@@ -233,7 +233,7 @@ describe('shell tool contracts', () => {
       goal: 'test sync validation',
       regex_flags: 'i',
       timeout: 0,
-    })).toThrowError(/regex_flags requires regex/);
+    })).toThrow(/regex_flags requires regex/);
   });
 
   it('accepts valid sync shell options', async () => {

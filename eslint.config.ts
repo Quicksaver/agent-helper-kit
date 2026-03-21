@@ -1,8 +1,8 @@
-import { FlatCompat } from '@eslint/eslintrc';
 import js from '@eslint/js';
 import stylistic from '@stylistic/eslint-plugin';
 import type { Linter } from 'eslint';
 import { defineConfig, globalIgnores } from 'eslint/config';
+import importX from 'eslint-plugin-import-x';
 import perfectionist from 'eslint-plugin-perfectionist';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
@@ -15,20 +15,12 @@ import rulesStrict from './rules/strict';
 import rulesStyle from './rules/style';
 import rulesVariables from './rules/variables';
 
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
 const tsFiles = [ '**/*.ts', '**/*.mts', '**/*.cts' ];
 
 export default defineConfig([
   js.configs.recommended,
-
-  ...compat.config({
-    extends: [
-      'plugin:import/recommended',
-    ],
-  }),
+  importX.flatConfigs.recommended,
+  importX.flatConfigs.typescript,
 
   // Default rules at:
   // https://github.com/eslint-stylistic/eslint-stylistic/blob/main/packages/eslint-plugin/configs/customize.ts
