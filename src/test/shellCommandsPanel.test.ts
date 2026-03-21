@@ -1143,6 +1143,54 @@ describe('ShellCommandsPanelProvider polling', () => {
     expect(html).toContain('class="ansi-fg-1 ansi-bg-4 ansi-bold ansi-dim ansi-italic ansi-underline ansi-strikethrough"');
   });
 
+  it('renders fallback labels for empty commands, unknown shells, invalid timestamps, and signal-only exits', async () => {
+    const selectedDetails = createDetails({
+      command: '   ',
+      completedAt: 'not-a-date',
+      exitCode: null,
+      id: 'shell-badf00d',
+      isRunning: false,
+      killedByUser: false,
+      shell: '   ',
+      signal: 'SIGINT',
+    });
+    const runtime = {
+      clearCompletedCommands: vi.fn(() => 0),
+      deleteCompletedCommand: vi.fn(() => false),
+      getCommandDetails: vi.fn(async () => selectedDetails),
+      killBackgroundCommand: vi.fn(() => true),
+      listCommands: vi.fn(() => [
+        createCommand({
+          command: '   ',
+          completedAt: 'not-a-date',
+          exitCode: null,
+          id: 'shell-badf00d',
+          isRunning: false,
+          killedByUser: false,
+          shell: '   ',
+          signal: 'SIGINT',
+        }),
+      ]),
+      onDidChangeCommands: vi.fn(() => () => undefined),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    const { html } = rawWebviewView.webview;
+    expect(html).toContain('(empty command)');
+    expect(html).toContain('>unknown<');
+    expect(html).toContain('>SIGINT<');
+    expect(html).toContain('>not-a-date<');
+  });
+
   it('copies the command text when copyField is omitted', async () => {
     const detailsRef = {
       current: createDetails({

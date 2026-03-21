@@ -398,4 +398,166 @@ describe('shellCommandsPanelWebview', () => {
     dom.window.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
     expect(api.postMessage).toHaveBeenCalledWith({ type: 'ready' });
   });
+
+  it('gracefully ignores missing structural nodes and document-level events with unusable targets', async () => {
+    const { api, dom, selection } = installDom({});
+
+    dom.window.document.getElementById('command-list')?.remove();
+    dom.window.document.getElementById('output-block')?.remove();
+
+    await importWebviewModule();
+
+    expect(api.postMessage).toHaveBeenCalledWith({ type: 'ready' });
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: {
+        commandId: 'shell-1',
+        isRunning: false,
+        outputHtml: 'ignored',
+        type: 'replaceOutput',
+      },
+    }));
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: {
+        commandItemsHtml: '<div>replacement</div>',
+        detailsHtml: '<div>details</div>',
+        type: 'replacePanelState',
+      },
+    }));
+    dom.window.dispatchEvent(new dom.window.MouseEvent('mouseup', { bubbles: true }));
+    dom.window.dispatchEvent(new dom.window.MouseEvent('mousemove', {
+      bubbles: true,
+      clientX: 50,
+    }));
+    dom.window.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      bubbles: true,
+      ctrlKey: true,
+      key: 'a',
+    }));
+    dom.window.document.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    dom.window.document.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      bubbles: true,
+      key: 'Enter',
+    }));
+
+    expect(selection.removeAllRanges).not.toHaveBeenCalled();
+    expect(selection.addRange).not.toHaveBeenCalled();
+    expect(api.postMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('covers ignored runtime branches while persisting scroll state and filter behavior', async () => {
+    const { api, dom } = installDom({
+      outputScrollState: {
+        atBottom: true,
+        commandId: 'shell-other',
+        scrollTop: 12,
+      },
+    });
+
+    await importWebviewModule();
+
+    const filterInput = dom.window.document.getElementById('command-filter');
+    const commandList = dom.window.document.getElementById('command-list');
+    const outputBlock = dom.window.document.getElementById('output-block');
+    const commandRows = dom.window.document.querySelectorAll('.command-item');
+
+    if (!(filterInput instanceof dom.window.HTMLInputElement)) {
+      throw new Error('missing filter input');
+    }
+
+    if (!(commandList instanceof dom.window.HTMLElement)) {
+      throw new Error('missing command list');
+    }
+
+    if (!(outputBlock instanceof dom.window.HTMLElement)) {
+      throw new Error('missing output block');
+    }
+
+    expect(outputBlock.scrollTop).toBe(600);
+
+    commandList.scrollTop = 27;
+    commandList.dispatchEvent(new dom.window.Event('scroll', { bubbles: true }));
+    outputBlock.scrollTop = 44;
+    outputBlock.dispatchEvent(new dom.window.Event('scroll', { bubbles: true }));
+
+    expect(api.getCurrentState().commandListScrollTop).toBe(27);
+    expect(api.getCurrentState().outputScrollState).toEqual(expect.objectContaining({
+      atBottom: false,
+      commandId: 'shell-1',
+      scrollTop: 44,
+    }));
+
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', { data: null }));
+    dom.window.dispatchEvent(new dom.window.MessageEvent('message', {
+      data: {
+        type: 'noop',
+      },
+    }));
+
+    filterInput.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      bubbles: true,
+      key: 'Tab',
+    }));
+    filterInput.value = '';
+    filterInput.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      bubbles: true,
+      key: 'Escape',
+    }));
+
+    const documentRecord = dom.window.document as unknown as Record<string, (...args: never[]) => unknown>;
+    const originalQuerySelectorAll = documentRecord.querySelectorAll
+      .bind(dom.window.document) as (selectors: string) => NodeListOf<Element>;
+    const fakeRow = {
+      style: {
+        display: '',
+      },
+    };
+    const querySelectorAllSpy = vi.spyOn(documentRecord, 'querySelectorAll').mockImplementation((selectors: string) => {
+      if (selectors !== '.command-item') {
+        return originalQuerySelectorAll(selectors);
+      }
+
+      return [ fakeRow, ...Array.from(originalQuerySelectorAll(selectors)) ] as unknown as NodeListOf<Element>;
+    });
+
+    filterInput.value = 'alpha';
+    filterInput.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    querySelectorAllSpy.mockRestore();
+
+    dom.window.document.body.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+
+    const emptyActionButton = dom.window.document.createElement('button');
+    emptyActionButton.setAttribute('data-action', '');
+    dom.window.document.body.append(emptyActionButton);
+    emptyActionButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+
+    const invalidCopyFieldButton = dom.window.document.createElement('button');
+    invalidCopyFieldButton.setAttribute('data-action', 'copy');
+    invalidCopyFieldButton.setAttribute('data-copy-field', 'invalid');
+    invalidCopyFieldButton.setAttribute('data-id', 'shell-1');
+    dom.window.document.body.append(invalidCopyFieldButton);
+    invalidCopyFieldButton.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+
+    (commandRows[0] as HTMLElement).dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      bubbles: true,
+      key: 'ArrowDown',
+    }));
+
+    Object.defineProperty(dom.window, 'getSelection', {
+      configurable: true,
+      value: vi.fn(() => null),
+    });
+    dom.window.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+      bubbles: true,
+      ctrlKey: true,
+      key: 'a',
+    }));
+
+    expect(api.postMessage).toHaveBeenCalledWith({
+      commandId: 'shell-1',
+      copyField: undefined,
+      type: 'copy',
+    });
+    expect(api.getCurrentState().filterText).toBe('alpha');
+  });
 });
