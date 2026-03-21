@@ -1,9 +1,13 @@
-import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 
 import ansiRegex from 'ansi-regex';
 
 import { logError } from '@/logging';
+import type {
+  CopyField,
+  ExtensionWebviewMessage,
+  WebviewMessage,
+} from '@/shellCommandsPanelWebviewContracts';
 import {
   type ShellCommandDetails,
   type ShellCommandListItem,
@@ -14,6 +18,9 @@ import {
 const SHELL_COMMANDS_VIEW_ID = 'agent-helper-kit.shellCommandsView';
 const SHELL_COMMANDS_PANEL_CONTAINER_ID = 'agent-helper-kit-shellCommandsPanel';
 const RUNNING_POLL_MS = 1000;
+const WEBVIEW_ASSET_DIRECTORY = [ 'dist', 'webviews' ] as const;
+const WEBVIEW_SCRIPT_FILE = 'shellCommandsPanelWebview.js';
+const WEBVIEW_STYLE_FILE = 'shellCommandsPanelWebview.css';
 
 const ANSI_STANDARD_COLORS = [
   '#000000',
@@ -37,34 +44,11 @@ const ANSI_BRIGHT_COLORS = [
   '#ffffff',
 ];
 
-type CopyField = 'command' | 'cwd' | 'id';
-
 type ShellCommandTreeItem = {
   commandRun: {
     id: string;
   };
 };
-
-type WebviewMessage = {
-  commandId?: string;
-  copyField?: CopyField;
-  type: 'clear' | 'copy' | 'delete' | 'kill' | 'ready' | 'select';
-};
-
-type ReplaceOutputWebviewMessage = {
-  commandId: string;
-  isRunning: boolean;
-  outputHtml: string;
-  type: 'replaceOutput';
-};
-
-type ReplacePanelStateWebviewMessage = {
-  commandItemsHtml: string;
-  detailsHtml: string;
-  type: 'replacePanelState';
-};
-
-type ExtensionWebviewMessage = ReplaceOutputWebviewMessage | ReplacePanelStateWebviewMessage;
 
 interface AnsiRenderState {
   backgroundColor?: string;
@@ -716,287 +700,41 @@ function getCopyValue(details: ShellCommandDetails, copyField: CopyField | undef
   return details.command;
 }
 
+function getWebviewAssetUri(
+  webview: vscode.Webview,
+  extensionUri: undefined | vscode.Uri,
+  filename: string,
+): string {
+  if (!extensionUri || typeof webview.asWebviewUri !== 'function') {
+    return filename;
+  }
+
+  return webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, ...WEBVIEW_ASSET_DIRECTORY, filename)).toString();
+}
+
 function getWebviewHtml(
   webview: vscode.Webview,
+  extensionUri: undefined | vscode.Uri,
   commands: ShellCommandListItem[],
   selectedCommandId: string | undefined,
   selectedDetails: ShellCommandDetails | undefined,
 ): string {
-  const scriptNonce = randomBytes(16).toString('hex');
-  const styleNonce = randomBytes(16).toString('hex');
   const commandItems = buildCommandItemsMarkup(commands, selectedCommandId);
   const detailsMarkup = buildDetailsMarkup(selectedDetails);
+  const cspSource = typeof webview.cspSource === 'string' && webview.cspSource.length > 0
+    ? webview.cspSource
+    : '\'self\'';
+  const scriptUri = getWebviewAssetUri(webview, extensionUri, WEBVIEW_SCRIPT_FILE);
+  const styleUri = getWebviewAssetUri(webview, extensionUri, WEBVIEW_STYLE_FILE);
 
   return `
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${styleNonce}' 'unsafe-inline'; script-src 'nonce-${scriptNonce}';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource}; script-src ${cspSource};" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <style nonce="${styleNonce}">
-      :root { color-scheme: light dark; }
-      html, body { height: 100%; margin: 0; padding: 0; }
-      body {
-        font-family: var(--vscode-font-family);
-        font-size: var(--vscode-font-size);
-        color: var(--vscode-foreground);
-        background: var(--vscode-sideBar-background);
-        user-select: none;
-      }
-      .layout {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 1px var(--sidebar-width, 340px);
-        height: 100%;
-      }
-      .sidebar {
-        background: var(--vscode-sideBar-background);
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-      }
-      .sidebar-toolbar {
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        gap: 6px;
-        min-height: 26px;
-        padding: 4px 6px;
-      }
-      .filter-input {
-        min-width: 0;
-        flex: 1 1 auto;
-        border: none;
-        background: transparent;
-        color: var(--vscode-foreground);
-        padding: 0;
-        user-select: text;
-      }
-      .filter-input:focus {
-        outline: none;
-      }
-      .command-list {
-        overflow: auto;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-      }
-      .command-item {
-        outline: none;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 2px 8px;
-        cursor: pointer;
-        position: relative;
-      }
-      .command-item:hover { background: var(--vscode-list-hoverBackground); }
-      .command-item.selected {
-        background: var(--vscode-list-activeSelectionBackground);
-        color: var(--vscode-list-activeSelectionForeground);
-      }
-      .status-indicator {
-        flex: 0 0 auto;
-        width: 16px;
-        text-align: center;
-        font-size: 12px;
-        line-height: 1;
-      }
-      .status-indicator.running { color: var(--vscode-terminal-ansiYellow); }
-      .status-indicator.success { color: var(--vscode-terminal-ansiGreen); }
-      .status-indicator.error { color: var(--vscode-terminal-ansiRed); }
-      .status-indicator.killed { color: var(--vscode-terminal-ansiRed); }
-      .command-preview {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        flex: 1 1 auto;
-      }
-      .command-shell {
-        margin-left: auto;
-        color: var(--vscode-descriptionForeground);
-        font-size: 11px;
-        white-space: nowrap;
-      }
-      .icon-action {
-        border: none;
-        background: transparent;
-        color: var(--vscode-descriptionForeground);
-        cursor: pointer;
-        padding: 0 4px;
-        font-size: 13px;
-        line-height: 1;
-        opacity: 0.9;
-      }
-      .icon-action:hover {
-        color: var(--vscode-foreground);
-        opacity: 1;
-      }
-      .row-action {
-        position: absolute;
-        right: 8px;
-        top: 50%;
-        transform: translateY(-50%);
-        opacity: 0;
-        pointer-events: none;
-        background: var(--vscode-sideBar-background);
-      }
-      .command-item:hover .row-action,
-      .command-item:focus-within .row-action {
-        opacity: 1;
-        pointer-events: auto;
-      }
-      .resizer {
-        cursor: col-resize;
-        background: var(--vscode-editorWidget-border);
-        position: relative;
-      }
-      .resizer::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        right: -3px;
-        bottom: 0;
-        left: -3px;
-      }
-      .main-pane {
-        min-height: 0;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-      }
-      .details-pane {
-        min-height: 0;
-        height: 100%;
-        display: flex;
-        flex: 1 1 auto;
-        flex-direction: column;
-        overflow: hidden;
-      }
-      .command-header {
-        display: flex;
-        align-items: stretch;
-        max-height: 25%;
-        border-bottom: 1px solid var(--vscode-editorWidget-border);
-        background: var(--vscode-editor-background);
-      }
-      .command-block {
-        margin: 0;
-        padding: 8px;
-        white-space: pre-wrap;
-        word-break: break-word;
-        overflow: auto;
-        flex: 1 1 auto;
-      }
-      .command-actions {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        padding: 6px;
-        border-left: 1px solid var(--vscode-editorWidget-border);
-      }
-      .metadata-block {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        align-items: center;
-        gap: 0;
-        padding: 4px 6px;
-        border-bottom: 1px solid var(--vscode-editorWidget-border);
-        background:
-          linear-gradient(rgba(127, 127, 127, 0.12), rgba(127, 127, 127, 0.12)),
-          var(--vscode-editor-background);
-      }
-      .metadata-item {
-        min-width: 0;
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        align-items: baseline;
-        gap: 6px;
-        padding: 2px 0;
-      }
-      .metadata-item-emphasized {
-        font-weight: 600;
-      }
-      .metadata-item-running .metadata-value {
-        color: var(--vscode-terminal-ansiYellow);
-      }
-      .metadata-item-success .metadata-value {
-        color: var(--vscode-terminal-ansiGreen);
-      }
-      .metadata-item-error .metadata-value {
-        color: var(--vscode-terminal-ansiRed);
-      }
-      .metadata-label {
-        color: var(--vscode-descriptionForeground);
-        font-size: 10px;
-        white-space: nowrap;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-      }
-      .metadata-value {
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        user-select: text;
-      }
-      .metadata-value-truncate-start {
-        direction: rtl;
-        text-align: left;
-      }
-      .metadata-copy {
-        padding-right: 0;
-      }
-      .output-block {
-        padding: 8px;
-        margin: 0;
-        white-space: pre-wrap;
-        word-break: break-word;
-        font-family: var(--vscode-editor-font-family, var(--vscode-font-family));
-        flex: 1 1 auto;
-        min-height: 0;
-        overflow: auto;
-        user-select: text;
-      }
-      .output-block .ansi-fg-0 { color: #000000; }
-      .output-block .ansi-fg-1 { color: #cd3131; }
-      .output-block .ansi-fg-2 { color: #0dbc79; }
-      .output-block .ansi-fg-3 { color: #e5e510; }
-      .output-block .ansi-fg-4 { color: #2472c8; }
-      .output-block .ansi-fg-5 { color: #bc3fbc; }
-      .output-block .ansi-fg-6 { color: #11a8cd; }
-      .output-block .ansi-fg-7 { color: #e5e5e5; }
-      .output-block .ansi-fg-8 { color: #666666; }
-      .output-block .ansi-fg-9 { color: #f14c4c; }
-      .output-block .ansi-fg-10 { color: #23d18b; }
-      .output-block .ansi-fg-11 { color: #f5f543; }
-      .output-block .ansi-fg-12 { color: #3b8eea; }
-      .output-block .ansi-fg-13 { color: #d670d6; }
-      .output-block .ansi-fg-14 { color: #29b8db; }
-      .output-block .ansi-fg-15 { color: #ffffff; }
-      .output-block .ansi-bg-0 { background-color: #000000; }
-      .output-block .ansi-bg-1 { background-color: #cd3131; }
-      .output-block .ansi-bg-2 { background-color: #0dbc79; }
-      .output-block .ansi-bg-3 { background-color: #e5e510; }
-      .output-block .ansi-bg-4 { background-color: #2472c8; }
-      .output-block .ansi-bg-5 { background-color: #bc3fbc; }
-      .output-block .ansi-bg-6 { background-color: #11a8cd; }
-      .output-block .ansi-bg-7 { background-color: #e5e5e5; }
-      .output-block .ansi-bg-8 { background-color: #666666; }
-      .output-block .ansi-bg-9 { background-color: #f14c4c; }
-      .output-block .ansi-bg-10 { background-color: #23d18b; }
-      .output-block .ansi-bg-11 { background-color: #f5f543; }
-      .output-block .ansi-bg-12 { background-color: #3b8eea; }
-      .output-block .ansi-bg-13 { background-color: #d670d6; }
-      .output-block .ansi-bg-14 { background-color: #29b8db; }
-      .output-block .ansi-bg-15 { background-color: #ffffff; }
-      .output-block .ansi-bold { font-weight: 700; }
-      .output-block .ansi-dim { opacity: 0.7; }
-      .output-block .ansi-italic { font-style: italic; }
-      .output-block .ansi-underline { text-decoration: underline; }
-      .output-block .ansi-strikethrough { text-decoration: line-through; }
-    </style>
+    <link rel="stylesheet" href="${escapeHtml(styleUri)}" />
   </head>
   <body>
     <div class="layout" id="layout">
@@ -1017,385 +755,7 @@ function getWebviewHtml(
         <div id="command-list" class="command-list">${commandItems}</div>
       </aside>
     </div>
-    <script nonce="${scriptNonce}">
-      const vscodeApi = acquireVsCodeApi();
-      const root = document.documentElement;
-      const layout = document.getElementById('layout');
-      const resizer = document.getElementById('resizer');
-      const filterInput = document.getElementById('command-filter');
-      const getCommandList = () => document.getElementById('command-list');
-      const getDetailsPane = () => document.getElementById('details-pane');
-      const getOutputBlock = () => document.getElementById('output-block');
-      const outputEndThreshold = 4;
-      const getCurrentState = () => vscodeApi.getState() || {};
-      const previousState = getCurrentState();
-      let currentState = { ...previousState };
-
-      const persistState = updates => {
-        currentState = {
-          ...currentState,
-          ...updates,
-        };
-        vscodeApi.setState(currentState);
-      };
-
-      const getSidebarWidth = () => {
-        const width = Number.parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width'), 10);
-
-        return Number.isFinite(width) ? width : 340;
-      };
-
-      const isNearOutputEnd = element => (element.scrollTop + element.clientHeight) >= (element.scrollHeight - outputEndThreshold);
-
-      const syncCommandListScrollState = () => {
-        const commandList = getCommandList();
-
-        if (!(commandList instanceof HTMLElement)) {
-          return;
-        }
-
-        persistState({
-          commandListScrollTop: commandList.scrollTop,
-        });
-      };
-
-      const restoreCommandListScrollState = () => {
-        const commandList = getCommandList();
-
-        if (!(commandList instanceof HTMLElement)) {
-          return;
-        }
-
-        const savedCommandListScrollTop = getCurrentState().commandListScrollTop;
-
-        if (typeof savedCommandListScrollTop === 'number') {
-          commandList.scrollTop = savedCommandListScrollTop;
-        }
-      };
-
-      const syncOutputScrollState = () => {
-        const outputBlock = getOutputBlock();
-
-        if (!(outputBlock instanceof HTMLElement)) {
-          return;
-        }
-
-        persistState({
-          outputScrollState: {
-            atBottom: isNearOutputEnd(outputBlock),
-            commandId: outputBlock.dataset.commandId ?? '',
-            scrollTop: outputBlock.scrollTop,
-          },
-        });
-      };
-
-      const restoreOutputScroll = () => {
-        const outputBlock = getOutputBlock();
-
-        if (!(outputBlock instanceof HTMLElement)) {
-          return;
-        }
-
-        const savedOutputScrollState = getCurrentState().outputScrollState;
-        const commandId = outputBlock.dataset.commandId ?? '';
-        const shouldScrollToEnd = !savedOutputScrollState
-          || typeof savedOutputScrollState !== 'object'
-          || savedOutputScrollState === null
-          || savedOutputScrollState.commandId !== commandId
-          || savedOutputScrollState.atBottom === true;
-
-        if (shouldScrollToEnd) {
-          outputBlock.scrollTop = outputBlock.scrollHeight;
-        }
-        else if (typeof savedOutputScrollState.scrollTop === 'number') {
-          outputBlock.scrollTop = savedOutputScrollState.scrollTop;
-        }
-
-        syncOutputScrollState();
-      };
-
-      const bindOutputBlock = () => {
-        const outputBlock = getOutputBlock();
-
-        if (!(outputBlock instanceof HTMLElement) || outputBlock.dataset.scrollBound === 'true') {
-          return;
-        }
-
-        outputBlock.dataset.scrollBound = 'true';
-        outputBlock.addEventListener('scroll', () => {
-          syncOutputScrollState();
-        });
-
-        requestAnimationFrame(() => {
-          restoreOutputScroll();
-        });
-      };
-
-      const replaceOutput = message => {
-        const outputBlock = getOutputBlock();
-
-        if (!(outputBlock instanceof HTMLElement)) {
-          return;
-        }
-
-        if ((outputBlock.dataset.commandId ?? '') !== message.commandId) {
-          return;
-        }
-
-        syncOutputScrollState();
-        outputBlock.innerHTML = message.outputHtml;
-        outputBlock.dataset.commandRunning = message.isRunning ? 'true' : 'false';
-        restoreOutputScroll();
-      };
-
-      const replacePanelState = message => {
-        const commandList = getCommandList();
-        const detailsPane = getDetailsPane();
-
-        if (!(commandList instanceof HTMLElement) || !(detailsPane instanceof HTMLElement)) {
-          return;
-        }
-
-        syncCommandListScrollState();
-        syncOutputScrollState();
-        commandList.innerHTML = message.commandItemsHtml;
-        detailsPane.innerHTML = message.detailsHtml;
-
-        if (filterInput instanceof HTMLInputElement) {
-          applyFilter(filterInput.value);
-        }
-
-        restoreCommandListScrollState();
-        bindOutputBlock();
-      };
-
-      if (typeof previousState.sidebarWidth === 'number') {
-        root.style.setProperty('--sidebar-width', String(previousState.sidebarWidth) + 'px');
-      }
-
-      const normalizeFilterValue = value => value.trim().toLowerCase();
-
-      const applyFilter = value => {
-        const normalized = normalizeFilterValue(value);
-        const rows = document.querySelectorAll('.command-item');
-
-        for (const row of rows) {
-          if (!(row instanceof HTMLElement)) {
-            continue;
-          }
-
-          if (normalized.length < 1) {
-            row.style.display = '';
-            continue;
-          }
-
-          const commandText = row.getAttribute('data-filter-command') ?? '';
-          const idText = row.getAttribute('data-filter-id') ?? '';
-          const shellText = row.getAttribute('data-filter-shell') ?? '';
-          const matches = commandText.includes(normalized) || idText.includes(normalized) || shellText.includes(normalized);
-
-          row.style.display = matches ? '' : 'none';
-        }
-      };
-
-      if (filterInput instanceof HTMLInputElement) {
-        const initialFilter = typeof previousState.filterText === 'string' ? previousState.filterText : '';
-        filterInput.value = initialFilter;
-        applyFilter(initialFilter);
-
-        filterInput.addEventListener('input', () => {
-          const filterText = filterInput.value;
-
-          applyFilter(filterText);
-          persistState({
-            filterText,
-            sidebarWidth: getSidebarWidth(),
-          });
-        });
-
-        filterInput.addEventListener('keydown', event => {
-          if (event.key !== 'Escape') {
-            return;
-          }
-
-          event.preventDefault();
-
-          if (filterInput.value.length === 0) {
-            return;
-          }
-
-          filterInput.value = '';
-          applyFilter('');
-          persistState({
-            filterText: '',
-            sidebarWidth: getSidebarWidth(),
-          });
-        });
-      }
-
-      const commandList = getCommandList();
-
-      if (commandList instanceof HTMLElement) {
-        commandList.addEventListener('scroll', () => {
-          syncCommandListScrollState();
-        });
-
-        requestAnimationFrame(() => {
-          restoreCommandListScrollState();
-        });
-      }
-
-      bindOutputBlock();
-
-      window.addEventListener('message', event => {
-        const message = event.data;
-
-        if (!message || typeof message !== 'object') {
-          return;
-        }
-
-        if (message.type === 'replaceOutput') {
-          replaceOutput(message);
-          return;
-        }
-
-        if (message.type === 'replacePanelState') {
-          replacePanelState(message);
-        }
-      });
-
-      let isResizing = false;
-
-      resizer?.addEventListener('mousedown', event => {
-        event.preventDefault();
-        isResizing = true;
-      });
-
-      window.addEventListener('mouseup', () => {
-        if (!isResizing) {
-          return;
-        }
-
-        isResizing = false;
-
-        const width = getSidebarWidth();
-
-        if (Number.isFinite(width)) {
-          persistState({
-            filterText: filterInput instanceof HTMLInputElement ? filterInput.value : '',
-            sidebarWidth: width,
-          });
-        }
-      });
-
-      window.addEventListener('mousemove', event => {
-        if (!isResizing || !layout) {
-          return;
-        }
-
-        const bounds = layout.getBoundingClientRect();
-        const nextWidth = Math.min(620, Math.max(180, bounds.right - event.clientX));
-        root.style.setProperty('--sidebar-width', String(nextWidth) + 'px');
-      });
-
-      document.addEventListener('click', event => {
-        const target = event.target;
-
-        if (!(target instanceof Element)) {
-          return;
-        }
-
-        const actionable = target.closest('[data-action]');
-
-        if (!(actionable instanceof Element)) {
-          return;
-        }
-
-        const action = actionable.getAttribute('data-action');
-
-        if (!action) {
-          return;
-        }
-
-        const commandId = actionable.getAttribute('data-id') ?? undefined;
-        const copyField = actionable.getAttribute('data-copy-field');
-
-        vscodeApi.postMessage({
-          commandId,
-          copyField: copyField === 'command' || copyField === 'cwd' || copyField === 'id'
-            ? copyField
-            : undefined,
-          type: action,
-        });
-      });
-
-      document.addEventListener('keydown', event => {
-        const target = event.target;
-
-        if (!(target instanceof HTMLElement)) {
-          return;
-        }
-
-        if (!target.classList.contains('command-item')) {
-          return;
-        }
-
-        if (event.key !== 'Enter' && event.key !== ' ') {
-          return;
-        }
-
-        event.preventDefault();
-
-        const commandId = target.getAttribute('data-id') ?? undefined;
-
-        vscodeApi.postMessage({
-          commandId,
-          type: 'select',
-        });
-      });
-
-      const selectOutputContents = () => {
-        const outputBlock = getOutputBlock();
-
-        if (!(outputBlock instanceof HTMLElement)) {
-          return;
-        }
-
-        const selection = window.getSelection();
-
-        if (!selection) {
-          return;
-        }
-
-        const range = document.createRange();
-        range.selectNodeContents(outputBlock);
-        selection.removeAllRanges();
-        selection.addRange(range);
-      };
-
-      window.addEventListener('keydown', event => {
-        const isSelectAll = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a';
-
-        if (!isSelectAll) {
-          return;
-        }
-
-        if (filterInput instanceof HTMLInputElement && document.activeElement === filterInput) {
-          event.preventDefault();
-          event.stopPropagation();
-          filterInput.select();
-          return;
-        }
-
-        event.preventDefault();
-        event.stopPropagation();
-        selectOutputContents();
-      }, true);
-
-      vscodeApi.postMessage({
-        type: 'ready',
-      });
-    </script>
+    <script src="${escapeHtml(scriptUri)}" defer></script>
   </body>
 </html>
   `;
@@ -1412,7 +772,10 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
   private selectedCommandId: string | undefined;
   private view: undefined | vscode.WebviewView;
 
-  constructor(private readonly runtime: ShellRuntime) {
+  constructor(
+    private readonly runtime: ShellRuntime,
+    private readonly extensionUri?: vscode.Uri,
+  ) {
     this.disposeRuntimeListener = this.runtime.onDidChangeCommands(() => {
       void this.refresh().catch((error: unknown) => {
         logError(`Failed to refresh shell commands panel after runtime update: ${String(error)}`);
@@ -1464,6 +827,7 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     if (!this.hasRenderedWebview) {
       view.webview.html = getWebviewHtml(
         view.webview,
+        this.extensionUri,
         commands,
         this.selectedCommandId,
         selectedDetails,
@@ -1490,6 +854,9 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     this.view = webviewView;
     webviewView.webview.options = {
       enableScripts: true,
+      localResourceRoots: this.extensionUri
+        ? [ vscode.Uri.joinPath(this.extensionUri, ...WEBVIEW_ASSET_DIRECTORY) ]
+        : undefined,
     };
 
     webviewView.onDidDispose(() => {
@@ -1661,9 +1028,12 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
   }
 }
 
-export function registerShellCommandsPanel(getRuntime: () => ShellRuntime): vscode.Disposable {
+export function registerShellCommandsPanel(
+  getRuntime: () => ShellRuntime,
+  extensionUri?: vscode.Uri,
+): vscode.Disposable {
   const runtime = getRuntime();
-  const provider = new ShellCommandsPanelProvider(runtime);
+  const provider = new ShellCommandsPanelProvider(runtime, extensionUri);
   const webviewViewRegistration = vscode.window.registerWebviewViewProvider(
     SHELL_COMMANDS_VIEW_ID,
     provider,

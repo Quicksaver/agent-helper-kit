@@ -3,7 +3,7 @@ import * as esbuild from 'esbuild';
 const isWatch = process.argv.includes('--watch');
 
 /** @type {import('esbuild').BuildOptions} */
-const buildOptions = {
+const extensionBuildOptions = {
   bundle: true,
   entryPoints: [ './src/extension.ts' ],
   external: [ 'vscode' ],
@@ -15,15 +15,37 @@ const buildOptions = {
   target: 'node22',
 };
 
+/** @type {import('esbuild').BuildOptions} */
+const webviewBuildOptions = {
+  bundle: true,
+  entryPoints: [ './src/webviews/shellCommandsPanelWebview.ts' ],
+  format: 'iife',
+  minify: !isWatch,
+  outdir: 'dist/webviews',
+  platform: 'browser',
+  sourcemap: isWatch,
+  target: 'es2023',
+};
+
 if (isWatch) {
-  const ctx = await esbuild.context(buildOptions);
-  await ctx.watch();
+  const [ extensionContext, webviewContext ] = await Promise.all([
+    esbuild.context(extensionBuildOptions),
+    esbuild.context(webviewBuildOptions),
+  ]);
+
+  await Promise.all([
+    extensionContext.watch(),
+    webviewContext.watch(),
+  ]);
 
   // eslint-disable-next-line no-console
   console.log('Watching for changes...');
 }
 else {
-  await esbuild.build(buildOptions);
+  await Promise.all([
+    esbuild.build(extensionBuildOptions),
+    esbuild.build(webviewBuildOptions),
+  ]);
 
   // eslint-disable-next-line no-console
   console.log('Build complete.');

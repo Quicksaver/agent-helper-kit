@@ -1,3 +1,6 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import {
   afterEach,
   beforeEach,
@@ -17,6 +20,14 @@ import type {
 type MessageHandler = (message: unknown) => Promise<void> | void;
 
 const capturedProviders: unknown[] = [];
+const shellCommandsPanelWebviewScriptSource = fs.readFileSync(
+  path.resolve(__dirname, '..', 'webviews', 'shellCommandsPanelWebview.ts'),
+  'utf8',
+);
+const shellCommandsPanelWebviewStylesSource = fs.readFileSync(
+  path.resolve(__dirname, '..', 'webviews', 'shellCommandsPanelWebview.css'),
+  'utf8',
+);
 
 const vscode = vi.hoisted(() => ({
   commands: {
@@ -874,7 +885,7 @@ describe('ShellCommandsPanelProvider polling', () => {
     }));
   });
 
-  it('re-reads persisted scroll state inside the webview restore hooks', async () => {
+  it('loads external webview assets and keeps the scroll restore logic in the extracted script', async () => {
     const detailsRef = {
       current: createDetails(),
     };
@@ -890,12 +901,16 @@ describe('ShellCommandsPanelProvider polling', () => {
 
     await provider.resolveWebviewView(webviewView);
 
-    expect(rawWebviewView.webview.html).toContain('const getCurrentState = () => vscodeApi.getState() || {};');
-    expect(rawWebviewView.webview.html).toContain('const savedCommandListScrollTop = getCurrentState().commandListScrollTop;');
-    expect(rawWebviewView.webview.html).toContain('const savedOutputScrollState = getCurrentState().outputScrollState;');
+    expect(rawWebviewView.webview.html).toContain('href="shellCommandsPanelWebview.css"');
+    expect(rawWebviewView.webview.html).toContain('src="shellCommandsPanelWebview.js" defer');
+    expect(rawWebviewView.webview.html).not.toContain('<style');
+    expect(rawWebviewView.webview.html).not.toContain('const getCurrentState = () => vscodeApi.getState() || {};');
+    expect(shellCommandsPanelWebviewScriptSource).toContain('const getCurrentState = (): PersistedWebviewState => vscodeApi.getState() ?? {};');
+    expect(shellCommandsPanelWebviewScriptSource).toContain('const savedCommandListScrollTop = getCurrentState().commandListScrollTop;');
+    expect(shellCommandsPanelWebviewScriptSource).toContain('const savedOutputScrollState = getCurrentState().outputScrollState;');
   });
 
-  it('keeps the details wrapper as a constrained flex column so output stays scrollable after panel updates', async () => {
+  it('keeps the details wrapper as a constrained flex column in the extracted stylesheet', async () => {
     const detailsRef = {
       current: createDetails({
         output: Array.from({ length: 200 }, (_, index) => `line ${String(index)}`).join('\n'),
@@ -914,10 +929,11 @@ describe('ShellCommandsPanelProvider polling', () => {
     await provider.resolveWebviewView(webviewView);
 
     expect(rawWebviewView.webview.html).toContain('<div id="details-pane" class="details-pane">');
-    expect(rawWebviewView.webview.html).toContain('.details-pane {');
-    expect(rawWebviewView.webview.html).toContain('display: flex;');
-    expect(rawWebviewView.webview.html).toContain('flex-direction: column;');
-    expect(rawWebviewView.webview.html).toContain('overflow: hidden;');
+    expect(rawWebviewView.webview.html).toContain('href="shellCommandsPanelWebview.css"');
+    expect(shellCommandsPanelWebviewStylesSource).toContain('.details-pane {');
+    expect(shellCommandsPanelWebviewStylesSource).toContain('display: flex;');
+    expect(shellCommandsPanelWebviewStylesSource).toContain('flex-direction: column;');
+    expect(shellCommandsPanelWebviewStylesSource).toContain('overflow: hidden;');
   });
 
   it('renders the empty details state when command details cannot be resolved', async () => {

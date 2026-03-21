@@ -483,7 +483,7 @@ const getLastShellCommandTool: vscode.LanguageModelTool<GetLastShellCommandInput
   },
 };
 
-export function registerShellTools(): vscode.Disposable {
+export function registerShellTools(extensionUri?: vscode.Uri): vscode.Disposable {
   const registrations = [
     vscode.lm.registerTool(SHELL_TOOL_NAMES.runInSyncShell, runInSyncShellTool),
     vscode.lm.registerTool(SHELL_TOOL_NAMES.runInAsyncShell, runInAsyncShellTool),
@@ -492,7 +492,7 @@ export function registerShellTools(): vscode.Disposable {
     vscode.lm.registerTool(SHELL_TOOL_NAMES.getShellCommand, getShellCommandTool),
     vscode.lm.registerTool(SHELL_TOOL_NAMES.getLastShellCommand, getLastShellCommandTool),
     vscode.lm.registerTool(SHELL_TOOL_NAMES.killShell, killShellTool),
-    registerShellCommandsPanel(getShellRuntime),
+    registerShellCommandsPanel(getShellRuntime, extensionUri),
   ];
 
   return vscode.Disposable.from(...registrations);

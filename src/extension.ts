@@ -48,7 +48,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     if (isShellToolsEnabled && !shellToolsRegistration) {
-      shellToolsRegistration = registerShellTools();
+      shellToolsRegistration = registerShellTools(context.extensionUri);
       context.subscriptions.push(shellToolsRegistration);
     }
     else if (!isShellToolsEnabled && shellToolsRegistration) {

@@ -18,6 +18,7 @@ afterEach(() => {
 type ShellToolContractsModule = typeof import('../shellToolContracts.js');
 
 async function importShellToolContractsWithPackageJson(packageJson: unknown): Promise<ShellToolContractsModule> {
+  vi.resetModules();
   vi.doMock('node:fs', () => ({
     readFileSync: vi.fn(() => JSON.stringify(packageJson)),
   }));
@@ -26,6 +27,7 @@ async function importShellToolContractsWithPackageJson(packageJson: unknown): Pr
 }
 
 async function importShellToolContractsWithReadError(message: string): Promise<ShellToolContractsModule> {
+  vi.resetModules();
   vi.doMock('node:fs', () => ({
     readFileSync: vi.fn(() => {
       throw new Error(message);
