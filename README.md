@@ -54,6 +54,7 @@ Compared with built-in terminal tools, these extension tools are optimized for a
 
 ## Contributing
 
+- Use Node.js 22.13+ or 24+ for local development.
 - Open a ticket for bug reports, questions, and feature suggestions.
 - Pull requests are welcome for fixes and improvements.
 - Before opening a PR, run `yarn lint:check` and `yarn test`.
