@@ -1,8 +1,24 @@
+import os from 'node:os';
+
 import {
   afterAll,
   afterEach,
   beforeEach,
 } from 'vitest';
+
+function getDefaultTestShell(): string {
+  if (os.platform() === 'win32') {
+    return 'pwsh.exe';
+  }
+
+  if (os.platform() === 'darwin') {
+    return '/bin/zsh';
+  }
+
+  return '/bin/bash';
+}
+
+const DEFAULT_TEST_SHELL = getDefaultTestShell();
 
 const CONTROLLED_TEST_ENV = {
   CLICOLOR: '1',
@@ -11,32 +27,33 @@ const CONTROLLED_TEST_ENV = {
   COLUMNS: '240',
   FORCE_COLOR: '3',
   LINES: '80',
-  SHELL: '/bin/zsh',
+  SHELL: DEFAULT_TEST_SHELL,
   TERM: 'xterm-256color',
 } as const;
 
-const CLEARED_TEST_ENV_VARS = [
-  'NO_COLOR',
-  'NODE_OPTIONS',
-] as const;
+const originalEnvironmentEntries = Object.entries(process.env);
 
-const trackedEnvVarNames = [
-  ...Object.keys(CONTROLLED_TEST_ENV),
-  ...CLEARED_TEST_ENV_VARS,
-] as const;
+function restoreEnvironment(entries: [ string, string | undefined ][]): void {
+  for (const variableName of Object.keys(process.env)) {
+    Reflect.deleteProperty(process.env, variableName);
+  }
 
-const originalEnvironment = new Map(
-  trackedEnvVarNames.map(variableName => [ variableName, process.env[variableName] ]),
-);
+  for (const [ variableName, value ] of entries) {
+    if (value !== undefined) {
+      process.env[variableName] = value;
+    }
+  }
+}
 
 function applyControlledTestEnvironment(): void {
+  restoreEnvironment(originalEnvironmentEntries);
+
   for (const [ variableName, value ] of Object.entries(CONTROLLED_TEST_ENV)) {
     process.env[variableName] = value;
   }
 
-  for (const variableName of CLEARED_TEST_ENV_VARS) {
-    Reflect.deleteProperty(process.env, variableName);
-  }
+  Reflect.deleteProperty(process.env, 'NO_COLOR');
+  Reflect.deleteProperty(process.env, 'NODE_OPTIONS');
 }
 
 beforeEach(() => {
@@ -44,16 +61,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  applyControlledTestEnvironment();
+  restoreEnvironment(originalEnvironmentEntries);
 });
 
 afterAll(() => {
-  for (const [ variableName, value ] of originalEnvironment) {
-    if (value === undefined) {
-      Reflect.deleteProperty(process.env, variableName);
-    }
-    else {
-      process.env[variableName] = value;
-    }
-  }
+  restoreEnvironment(originalEnvironmentEntries);
 });

@@ -25,6 +25,21 @@ import {
 const SHELL_ID_REGEX = /^[a-f0-9]{8}$/;
 const temporaryDirectories = new Set<string>();
 const previousShellOutputDirectory = process.env[SHELL_OUTPUT_DIR_ENV_VAR];
+const terminalWidthShimPath = path.resolve(__dirname, '..', '..', 'resources', 'node-terminal-width-shim.cjs');
+
+function getDefaultTestShell(): string {
+  if (os.platform() === 'win32') {
+    return 'pwsh.exe';
+  }
+
+  if (os.platform() === 'darwin') {
+    return '/bin/zsh';
+  }
+
+  return '/bin/bash';
+}
+
+const TEST_DEFAULT_SHELL = getDefaultTestShell();
 
 function createFakeProcess(): FakeProcess {
   return createBaseFakeProcess({ emitCloseOnKill: true });
@@ -446,7 +461,7 @@ describe('shell tools', () => {
     expect(outputPayload).not.toHaveProperty('exitCode');
     expect(outputPayload.isRunning).toBe(true);
     expect(outputPayload.output).toBe('hello\n');
-    expect(outputPayload.shell).toBe('/bin/zsh');
+    expect(outputPayload.shell).toBe(TEST_DEFAULT_SHELL);
     expect(outputPayload).not.toHaveProperty('terminationSignal');
 
     const noNewOutputResult = await getOutputTool.invoke({
@@ -457,7 +472,7 @@ describe('shell tools', () => {
     const noNewOutputPayload = getResultPayload(noNewOutputResult);
     expect(noNewOutputPayload).not.toHaveProperty('exitCode');
     expect(noNewOutputPayload.output).toBe('');
-    expect(noNewOutputPayload.shell).toBe('/bin/zsh');
+    expect(noNewOutputPayload.shell).toBe(TEST_DEFAULT_SHELL);
     expect(noNewOutputPayload).not.toHaveProperty('terminationSignal');
 
     fakeProcess.stdout.emit('data', 'world\n\t\nmatch-line\n');
@@ -567,7 +582,7 @@ describe('shell tools', () => {
     expect(firstCompletedReadPayload).not.toHaveProperty('exitCode');
     expect(firstCompletedReadPayload).not.toHaveProperty('isRunning');
     expect(firstCompletedReadPayload.output).toBe('');
-    expect(firstCompletedReadPayload.shell).toBe('/bin/zsh');
+    expect(firstCompletedReadPayload.shell).toBe(TEST_DEFAULT_SHELL);
     expect(firstCompletedReadPayload.terminationSignal).toBe('SIGTERM');
 
     const secondCompletedRead = await getOutputTool.invoke({
@@ -578,7 +593,7 @@ describe('shell tools', () => {
     const secondCompletedReadPayload = getResultPayload(secondCompletedRead);
     expect(secondCompletedReadPayload).not.toHaveProperty('exitCode');
     expect(secondCompletedReadPayload.output).toBe('hello\nworld\nmatch-line\nnomatch\nonly-match\nCaseSensitive\n');
-    expect(secondCompletedReadPayload.shell).toBe('/bin/zsh');
+    expect(secondCompletedReadPayload.shell).toBe(TEST_DEFAULT_SHELL);
     expect(secondCompletedReadPayload.terminationSignal).toBe('SIGTERM');
 
     const lastResult = await getLastShellCommandTool.invoke({
@@ -892,7 +907,7 @@ describe('shell tools', () => {
     expect(runPayload).toEqual({
       exitCode: 0,
       id: shellId,
-      shell: '/bin/zsh',
+      shell: TEST_DEFAULT_SHELL,
     });
     expect(runPayload).not.toHaveProperty('output');
 
@@ -905,7 +920,7 @@ describe('shell tools', () => {
     expect(outputPayload).not.toHaveProperty('isRunning');
     expect(outputPayload.output).toBe('hello\nworld\n');
     expect(outputPayload.exitCode).toBe(0);
-    expect(outputPayload.shell).toBe('/bin/zsh');
+    expect(outputPayload.shell).toBe(TEST_DEFAULT_SHELL);
     expect(outputPayload).not.toHaveProperty('terminationSignal');
   });
 
@@ -1090,7 +1105,7 @@ describe('shell tools', () => {
     registerShellTools();
 
     const runTool = getRegisteredTool('run_in_sync_shell');
-    const defaultShell = os.platform() === 'win32' ? 'pwsh.exe' : '/bin/zsh';
+    const defaultShell = TEST_DEFAULT_SHELL;
     vscode.env.shell = defaultShell;
 
     const runPromise = runTool.invoke({
@@ -1184,8 +1199,8 @@ describe('shell tools', () => {
       }, {});
 
       expect(spawn).toHaveBeenCalledWith(
-        '/bin/zsh',
-        [ ...expectedShellArgs('/bin/zsh'), 'echo home cwd' ],
+        TEST_DEFAULT_SHELL,
+        [ ...expectedShellArgs(TEST_DEFAULT_SHELL), 'echo home cwd' ],
         expect.objectContaining({
           cwd: os.homedir(),
         }),
@@ -1220,8 +1235,8 @@ describe('shell tools', () => {
     }, {});
 
     expect(spawn).toHaveBeenCalledWith(
-      '/bin/zsh',
-      [ ...expectedShellArgs('/bin/zsh'), 'echo custom cwd' ],
+      TEST_DEFAULT_SHELL,
+      [ ...expectedShellArgs(TEST_DEFAULT_SHELL), 'echo custom cwd' ],
       expect.objectContaining({
         cwd: customCwd,
       }),
@@ -1257,7 +1272,7 @@ describe('shell tools', () => {
       expect(fakeProcess.kill).toHaveBeenCalledWith('SIGTERM');
       expect(runPayload.exitCode).toBeNull();
       expect(runPayload.id).toMatch(SHELL_ID_REGEX);
-      expect(runPayload.shell).toBe('/bin/zsh');
+      expect(runPayload.shell).toBe(TEST_DEFAULT_SHELL);
       expect(runPayload.terminationSignal).toBe('SIGTERM');
       expect(runPayload.timedOut).toBe(true);
     }
@@ -1294,15 +1309,15 @@ describe('shell tools', () => {
       }, {});
 
       const invocation = getLastSpawnInvocation();
-      expect(invocation.command).toBe('/bin/zsh');
-      expect(invocation.args).toEqual([ ...expectedShellArgs('/bin/zsh'), 'printf hello' ]);
+      expect(invocation.command).toBe(TEST_DEFAULT_SHELL);
+      expect(invocation.args).toEqual([ ...expectedShellArgs(TEST_DEFAULT_SHELL), 'printf hello' ]);
       expect(invocation.options.env?.CLICOLOR).toBe('1');
       expect(invocation.options.env?.CLICOLOR_FORCE).toBe('1');
       expect(invocation.options.env?.COLUMNS).toBe('240');
       expect(invocation.options.env?.COLORTERM).toBe('truecolor');
       expect(invocation.options.env?.FORCE_COLOR).toBe('3');
       expect(invocation.options.env?.LINES).toBe('80');
-      expect(invocation.options.env?.NODE_OPTIONS).toContain(`--require ${JSON.stringify(path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs'))}`);
+      expect(invocation.options.env?.NODE_OPTIONS).toContain(`--require ${JSON.stringify(terminalWidthShimPath)}`);
       expect(invocation.options.env?.TERM).toBe('xterm-256color');
 
       fakeProcess.emit('close', 0, null);
@@ -1337,7 +1352,7 @@ describe('shell tools', () => {
 
       const invocation = getLastSpawnInvocation();
       expect(invocation.options.env?.NODE_OPTIONS).toContain('--trace-warnings');
-      expect(invocation.options.env?.NODE_OPTIONS).toContain(`--require ${JSON.stringify(path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs'))}`);
+      expect(invocation.options.env?.NODE_OPTIONS).toContain(`--require ${JSON.stringify(terminalWidthShimPath)}`);
 
       fakeProcess.emit('close', 0, null);
       await runPromise;
@@ -1348,7 +1363,7 @@ describe('shell tools', () => {
   });
 
   it('does not append the terminal width shim when NODE_OPTIONS already requires it', async () => {
-    const shimPath = path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs');
+    const shimPath = terminalWidthShimPath;
     const nodeOptions = `--trace-warnings --require ${JSON.stringify(shimPath)}`;
 
     await expectSyncRunNodeOptions({
@@ -1360,7 +1375,7 @@ describe('shell tools', () => {
   });
 
   it('does not append the terminal width shim when NODE_OPTIONS uses the short -r form', async () => {
-    const shimPath = path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs');
+    const shimPath = terminalWidthShimPath;
     const nodeOptions = `--trace-warnings -r ${JSON.stringify(shimPath)}`;
 
     await expectSyncRunNodeOptions({
@@ -1372,7 +1387,7 @@ describe('shell tools', () => {
   });
 
   it('does not append the terminal width shim when NODE_OPTIONS uses the equals require form', async () => {
-    const shimPath = path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs');
+    const shimPath = terminalWidthShimPath;
     const nodeOptions = `--trace-warnings --require=${JSON.stringify(shimPath)}`;
 
     await expectSyncRunNodeOptions({
@@ -1384,7 +1399,7 @@ describe('shell tools', () => {
   });
 
   it('preserves trailing escape characters in NODE_OPTIONS while appending the terminal width shim', async () => {
-    const shimPath = path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs');
+    const shimPath = terminalWidthShimPath;
     // Preserve a pasted continuation fragment before appending the shim requirement.
     await expectSyncRunNodeOptions({
       expectedNodeOptions: `--trace-warnings\\ --require ${JSON.stringify(shimPath)}`,
@@ -1398,7 +1413,7 @@ describe('shell tools', () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
 
-    const shimPath = path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs');
+    const shimPath = terminalWidthShimPath;
     const restoreEnvironment = captureEnvironmentVariables([ 'NODE_OPTIONS' ]);
     process.env.NODE_OPTIONS = `--title=${shimPath}-copy`;
 
@@ -1477,8 +1492,8 @@ describe('shell tools', () => {
       }, {});
 
       const invocation = getLastSpawnInvocation();
-      expect(invocation.command).toBe('/bin/zsh');
-      expect(invocation.args).toEqual([ ...expectedShellArgs('/bin/zsh'), 'printf hello' ]);
+      expect(invocation.command).toBe(TEST_DEFAULT_SHELL);
+      expect(invocation.args).toEqual([ ...expectedShellArgs(TEST_DEFAULT_SHELL), 'printf hello' ]);
       expect(invocation.options.env?.CLICOLOR).toBe('1');
       expect(invocation.options.env?.COLORTERM).toBe('truecolor');
       expect(invocation.options.env?.NO_COLOR).toBe('1');

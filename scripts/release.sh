@@ -23,6 +23,7 @@ ui_set_render_mode "task_only"
 ui_init
 
 release_notes_file=""
+current_branch=""
 
 cleanup() {
     if [[ -n "$release_notes_file" && -f "$release_notes_file" ]]; then
@@ -105,8 +106,8 @@ const fs = require('fs');
 const changelogPath = process.argv[2];
 const nextVersion = process.argv[3];
 const releaseDate = process.argv[4];
-const unreleasedHeadingPattern = /^## \[Unreleased\][ \t]*$/m;
-const releaseHeadingPattern = /^## \[(?!Unreleased\])[^\]]+\][^\n]*$/m;
+const unreleasedHeadingPattern = /^ {0,3}## \[Unreleased\][ \t]*$/m;
+const releaseHeadingPattern = /^ {0,3}## \[(?!Unreleased\])[^\]]+\][^\n]*$/m;
 
 function trimSurroundingNewlineRuns(value) {
   return value.replace(/^\n+|\n+$/g, '');
@@ -157,8 +158,8 @@ const version = process.argv[3];
 const outputPath = process.argv[4];
 const changelog = fs.readFileSync(changelogPath, 'utf8').replace(/\r\n?/g, '\n');
 const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const releaseHeadingPattern = new RegExp(`^## \\[${escapedVersion}\\][^\\n]*$`, 'm');
-const nextReleaseHeadingPattern = /^## \[(?!Unreleased\])[^\]]+\][^\n]*$/m;
+const releaseHeadingPattern = new RegExp(`^ {0,3}## \\[${escapedVersion}\\][^\\n]*$`, 'm');
+const nextReleaseHeadingPattern = /^ {0,3}## \[(?!Unreleased\])[^\]]+\][^\n]*$/m;
 const releaseHeadingMatch = releaseHeadingPattern.exec(changelog);
 
 if (releaseHeadingMatch === null || releaseHeadingMatch.index === undefined) {
@@ -241,12 +242,34 @@ ensure_clean_working_tree() {
     if ! git -C "$project_root" diff --cached --quiet; then
         die "Uncommitted staged changes detected. Commit or stash them first."
     fi
-    if [[ -n "$(git -C "$project_root" status --porcelain --untracked-files=all 2>/dev/null | grep -E '^\?\?' || true)" ]]; then
+    if [[ -n "$(git -C "$project_root" ls-files --others --exclude-standard)" ]]; then
         die "Untracked files detected. Commit, clean, or stash them first."
     fi
     ui_set_live_task_state "pass" "Verify working tree is clean"
     ui_clear_live_state
     pass "Verify working tree is clean"
+}
+
+ensure_expected_release_changes() {
+    local expected_vsix_path="$1"
+    local status_output
+
+    status_output="$(git -C "$project_root" status --porcelain --untracked-files=all)"
+
+    while IFS= read -r status_line; do
+        [[ -z "$status_line" ]] && continue
+
+        local status_code="${status_line:0:2}"
+        local changed_path="${status_line:3}"
+
+        case "$status_code:$changed_path" in
+            " M:CHANGELOG.md"|" M:package.json"|"??:$expected_vsix_path")
+                ;;
+            *)
+                die "Release build produced unexpected working tree changes: $changed_path ($status_code)."
+                ;;
+        esac
+    done <<< "$status_output"
 }
 
 ensure_github_cli_authenticated() {
@@ -332,6 +355,7 @@ run_step \
     yarn package:build || exit 1
 
 resolve_built_vsix_path "$package_name" "$next_version"
+ensure_expected_release_changes "$(basename "$built_vsix_path")"
 
 run_step \
     "Stage release changes for $release_tag" \
@@ -362,7 +386,7 @@ run_step \
 
 run_step \
     "Create GitHub release $release_tag" \
-    "Failed to create the GitHub release for $release_tag." \
+    "Failed to create the GitHub release for $release_tag. The release commit and tag were already pushed; retry the GitHub release manually or clean up the remote tag before rerunning." \
     gh release create "$release_tag" "$built_vsix_path" --title "$next_version" --notes-file "$release_notes_file" || exit 1
 
 run_step \

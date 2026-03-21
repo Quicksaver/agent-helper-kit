@@ -29,7 +29,7 @@ import {
 } from '@/test/fakeShellProcess';
 
 const spawn = vi.hoisted(() => vi.fn());
-const terminalWidthShimPath = path.join(process.cwd(), 'resources', 'node-terminal-width-shim.cjs');
+const terminalWidthShimPath = path.resolve(__dirname, '..', '..', 'resources', 'node-terminal-width-shim.cjs');
 
 vi.mock('node:child_process', () => ({
   spawn,
