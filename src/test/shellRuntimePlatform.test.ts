@@ -16,10 +16,20 @@ import {
 } from '@/test/fakeShellProcess';
 
 const spawn = vi.hoisted(() => vi.fn());
-const runtimePlatformState = vi.hoisted(() => ({
-  homeDir: '',
-  platform: 'darwin' as NodeJS.Platform,
-}));
+const {
+  defaultRuntimePlatformState,
+  runtimePlatformState,
+} = vi.hoisted(() => {
+  const defaultState = {
+    homeDir: '',
+    platform: 'darwin' as NodeJS.Platform,
+  };
+
+  return {
+    defaultRuntimePlatformState: defaultState,
+    runtimePlatformState: { ...defaultState },
+  };
+});
 
 const vscode = vi.hoisted(() => ({
   window: {
@@ -62,8 +72,7 @@ async function importShellRuntimeForPlatform(platform: NodeJS.Platform, homeDir:
 }
 
 afterEach(() => {
-  runtimePlatformState.homeDir = '';
-  runtimePlatformState.platform = 'darwin';
+  Object.assign(runtimePlatformState, defaultRuntimePlatformState);
   spawn.mockReset();
   vi.resetModules();
   vi.restoreAllMocks();
