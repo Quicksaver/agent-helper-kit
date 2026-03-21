@@ -3,7 +3,7 @@ import type {
   CopyField,
   ExtensionWebviewMessage,
   WebviewMessage,
-} from '@/shellCommandsPanelWebviewContracts';
+} from '@/types/shellCommandsPanelWebviewContracts';
 
 import './shellCommandsPanelWebview.css';
 

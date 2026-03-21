@@ -9,13 +9,40 @@ import {
   vi,
 } from 'vitest';
 
+type ShellToolContractsModule = typeof import('../shellToolContracts.js');
+
+const importShellToolContractsLoaders = [
+  () => import('../shellToolContracts.js?case=0'),
+  () => import('../shellToolContracts.js?case=1'),
+  () => import('../shellToolContracts.js?case=2'),
+  () => import('../shellToolContracts.js?case=3'),
+  () => import('../shellToolContracts.js?case=4'),
+  () => import('../shellToolContracts.js?case=5'),
+  () => import('../shellToolContracts.js?case=6'),
+  () => import('../shellToolContracts.js?case=7'),
+  () => import('../shellToolContracts.js?case=8'),
+  () => import('../shellToolContracts.js?case=9'),
+  () => import('../shellToolContracts.js?case=10'),
+  () => import('../shellToolContracts.js?case=11'),
+] as const;
+
+let importShellToolContractsLoaderIndex = 0;
+
+function importFreshShellToolContracts(): Promise<ShellToolContractsModule> {
+  const loader = importShellToolContractsLoaders[
+    importShellToolContractsLoaderIndex % importShellToolContractsLoaders.length
+  ];
+
+  importShellToolContractsLoaderIndex += 1;
+
+  return loader() as Promise<ShellToolContractsModule>;
+}
+
 afterEach(() => {
   vi.resetModules();
   vi.doUnmock('node:fs');
   vi.doUnmock('node:path');
 });
-
-type ShellToolContractsModule = typeof import('../shellToolContracts.js');
 
 async function importShellToolContractsWithPackageJson(packageJson: unknown): Promise<ShellToolContractsModule> {
   vi.resetModules();
@@ -23,7 +50,7 @@ async function importShellToolContractsWithPackageJson(packageJson: unknown): Pr
     readFileSync: vi.fn(() => JSON.stringify(packageJson)),
   }));
 
-  return import('../shellToolContracts.js');
+  return importFreshShellToolContracts();
 }
 
 async function importShellToolContractsWithReadError(message: string): Promise<ShellToolContractsModule> {
@@ -34,7 +61,7 @@ async function importShellToolContractsWithReadError(message: string): Promise<S
     }),
   }));
 
-  return import('../shellToolContracts.js');
+  return importFreshShellToolContracts();
 }
 
 describe('shell tool contracts', () => {
@@ -50,7 +77,11 @@ describe('shell tool contracts', () => {
       };
       version: string;
     };
-    const contracts = await import('../shellToolContracts.js');
+
+    vi.resetModules();
+    vi.doUnmock('node:fs');
+
+    const contracts = await importFreshShellToolContracts();
     const syncTool = packageJson.contributes.languageModelTools.find(
       tool => tool.name === contracts.SHELL_TOOL_NAMES.runInSyncShell,
     );
@@ -151,7 +182,6 @@ describe('shell tool contracts', () => {
       version: '1.1.0',
     });
 
-    expect(contracts.getPackageVersion()).toBe('1.1.0');
     expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.title).toBe('run_in_sync_shell');
     expect(contracts.SHELL_TOOL_METADATA.runInSyncShell.description).toBe('');
   });

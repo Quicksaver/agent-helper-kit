@@ -12,9 +12,8 @@ export default defineConfig({
     coverage: {
       exclude: [
         'src/test/**',
+        'src/types/**',
         'src/extension.ts',
-        'src/shellCommandsPanelWebviewContracts.ts',
-        'src/webviews/**',
         ...coverageConfigDefaults.exclude,
       ],
       include: [ 'src/**/*.ts' ],

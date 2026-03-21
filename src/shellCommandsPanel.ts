@@ -3,17 +3,17 @@ import * as vscode from 'vscode';
 import ansiRegex from 'ansi-regex';
 
 import { logError } from '@/logging';
-import type {
-  CopyField,
-  ExtensionWebviewMessage,
-  WebviewMessage,
-} from '@/shellCommandsPanelWebviewContracts';
 import {
   type ShellCommandDetails,
   type ShellCommandListItem,
   type ShellRuntime,
   toPublicCommandId,
 } from '@/shellRuntime';
+import type {
+  CopyField,
+  ExtensionWebviewMessage,
+  WebviewMessage,
+} from '@/types/shellCommandsPanelWebviewContracts';
 
 const SHELL_COMMANDS_VIEW_ID = 'agent-helper-kit.shellCommandsView';
 const SHELL_COMMANDS_PANEL_CONTAINER_ID = 'agent-helper-kit-shellCommandsPanel';
