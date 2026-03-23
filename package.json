@@ -183,7 +183,8 @@
           "required": [
             "command",
             "explanation",
-            "goal"
+            "goal",
+            "timeout"
           ],
           "properties": {
             "command": {

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed `run_in_sync_shell` tool metadata that did not mark `timeout` as required, which could advertise an input shape that the implementation would reject.
+
 ## [1.2.1] - 2026-03-21
 
 ### Fixed
