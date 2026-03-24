@@ -48,6 +48,9 @@ Compared with built-in terminal tools, these extension tools are optimized for a
 - `agent-helper-kit.bringToChat.enabled`: enable or disable bring-to-chat actions.
 - `agent-helper-kit.bringToChat.queueBeforeSend`: queue comments and bring-all-to-chat flow instead of immediate send on each click.
 - `agent-helper-kit.shellTools.enabled`: enable or disable shell tool registration.
+- `agent-helper-kit.shellTools.autoApprove.enabled`: allow shell tools to skip confirmation only for commands that pass the built-in and user-configured auto-approval policy.
+- `agent-helper-kit.shellTools.autoApprove.warningAccepted`: second opt-in gate for shell tool auto-approval after you review the risk of model-triggered shell execution.
+- `agent-helper-kit.shellTools.autoApprove.rules`: override shell tool auto-approval rules with per-command or regex-based allow and deny entries.
 - `agent-helper-kit.shellOutput.inMemoryOutputLimitKiB`: KiB of shell output to keep in memory before immediately spilling to a temp file. Set to `0` to disable the size-based spill threshold.
 - `agent-helper-kit.shellOutput.memoryToFileSpillMinutes`: minutes to keep output in memory before spilling to file.
 - `agent-helper-kit.shellOutput.startupPurgeMaxAgeHours`: startup cleanup threshold for old persisted output.

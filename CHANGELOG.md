@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Added shell tool approval gating so commands now require confirmation by default instead of running unchecked.
+- Added opt-in shell tool auto-approval settings and rule overrides so trusted allowlisted commands can skip repeated confirmation.
+
+### Fixed
+
+- Fixed shell tool approval checks to fail closed so risky or ambiguous commands stay blocked pending approval.
+
 ## [1.2.2] - 2026-03-23
 
 ### Fixed
