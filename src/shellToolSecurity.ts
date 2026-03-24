@@ -372,13 +372,22 @@ function getNamedRule(rules: ApprovalRuleMap, commandName: string): boolean | un
     return rules[lowerCaseCommandName];
   }
 
+  let matchedRuleValue: boolean | undefined;
+
   for (const [ ruleKey, ruleValue ] of Object.entries(rules)) {
     if (!ruleKey.startsWith('/') && ruleKey.toLowerCase() === lowerCaseCommandName) {
-      return ruleValue;
+      if (matchedRuleValue === undefined) {
+        matchedRuleValue = ruleValue;
+        continue;
+      }
+
+      if (matchedRuleValue !== ruleValue) {
+        return undefined;
+      }
     }
   }
 
-  return undefined;
+  return matchedRuleValue;
 }
 
 /**

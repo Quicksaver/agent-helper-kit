@@ -302,6 +302,49 @@ describe('shell tool security', () => {
     });
   });
 
+  it('fails closed on conflicting case-insensitive named rule variants', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
+        return true;
+      }
+
+      if (key === 'shellTools.autoApprove.rules') {
+        return {
+          CustomTool: true,
+          cUSTOMtOOL: false,
+        };
+      }
+
+      return undefined;
+    }));
+
+    expect(analyzeShellRunAutoApproval('CUSTOMTOOL README.md')).toEqual({
+      autoApprove: false,
+      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
+    });
+  });
+
+  it('accepts matching case-insensitive named rule variants when they agree', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
+        return true;
+      }
+
+      if (key === 'shellTools.autoApprove.rules') {
+        return {
+          CustomTool: true,
+          cUSTOMtOOL: true,
+        };
+      }
+
+      return undefined;
+    }));
+
+    expect(analyzeShellRunAutoApproval('CUSTOMTOOL README.md')).toEqual({
+      autoApprove: true,
+    });
+  });
+
   it('rejects vulnerable user-configured regex rules and falls back to manual approval', () => {
     getConfiguration.mockReturnValue(createConfiguration(key => {
       if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
