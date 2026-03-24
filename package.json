@@ -161,7 +161,7 @@
         },
         "agent-helper-kit.shellTools.autoApprove.rules": {
           "default": {},
-          "description": "Override shell tool auto-approval rules. Keys are command names like 'pwd' or regex literals like '/^git\\s+status\\b/'. Values are booleans where true allows auto-approval and false denies it.",
+          "description": "Override shell tool auto-approval rules. Keys are command names like 'pwd' or regex literals like '/^git\\s+status\\b/i'. Values are booleans where true allows auto-approval and false denies it. Invalid or vulnerable regex literals are ignored.",
           "additionalProperties": {
             "type": "boolean"
           },

@@ -9,8 +9,10 @@ import { activate } from '@/extension';
 import { resetExtensionOutputChannelForTest } from '@/logging';
 import { reviewCommentToChat } from '@/reviewComments';
 import { SHELL_TOOL_NAMES } from '@/shellToolContracts';
+import * as shellToolSecurity from '@/shellToolSecurity';
 import {
   SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY,
+  SHELL_TOOLS_AUTO_APPROVE_RULES_KEY,
   SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY,
 } from '@/shellToolSecurity';
 
@@ -157,6 +159,22 @@ describe('Extension', () => {
 
   it('clears auto-approve warning acceptance when auto-approval is disabled', async () => {
     const context = createMockContext();
+    const getConfigurationMock = vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>;
+
+    getConfigurationMock.mockReturnValue({
+      get: vi.fn((key: string, defaultValue: boolean) => {
+        if (key === SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY) {
+          return false;
+        }
+
+        if (key === SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY) {
+          return true;
+        }
+
+        return defaultValue;
+      }),
+      update: vscode.updateConfiguration,
+    });
 
     activate(context);
     await Promise.resolve();
@@ -309,6 +327,10 @@ describe('Extension', () => {
           return autoApproveEnabled;
         }
 
+        if (key === SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY) {
+          return true;
+        }
+
         return defaultValue;
       }),
       update: vscode.updateConfiguration,
@@ -331,5 +353,45 @@ describe('Extension', () => {
       false,
       vscode.ConfigurationTarget.Global,
     );
+  });
+
+  it('does not rewrite auto-approve warning acceptance when it is already false', async () => {
+    const context = createMockContext();
+    const getConfigurationMock = vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>;
+
+    getConfigurationMock.mockReturnValue({
+      get: vi.fn((key: string, defaultValue: boolean) => {
+        if (key === SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY) {
+          return false;
+        }
+
+        if (key === SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY) {
+          return false;
+        }
+
+        return defaultValue;
+      }),
+      update: vscode.updateConfiguration,
+    });
+
+    activate(context);
+    await Promise.resolve();
+
+    expect(vscode.updateConfiguration).not.toHaveBeenCalled();
+  });
+
+  it('clears cached shell security rules when auto-approve rules change', () => {
+    const context = createMockContext();
+    const resetShellToolSecurityCachesSpy = vi.spyOn(shellToolSecurity, 'resetShellToolSecurityCaches');
+
+    activate(context);
+
+    const handlers = vscode.changeHandlers as ((event: ConfigurationChangeEventLike) => void)[];
+
+    handlers[0]?.({
+      affectsConfiguration: (section: string) => section === `agent-helper-kit.${SHELL_TOOLS_AUTO_APPROVE_RULES_KEY}`,
+    });
+
+    expect(resetShellToolSecurityCachesSpy).toHaveBeenCalledTimes(1);
   });
 });

@@ -50,6 +50,7 @@ vi.mock('vscode', () => ({
 describe('shell tool security', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    shellToolSecurityInternals.resetShellToolSecurityCaches();
     workspaceFoldersState.value = [
       {
         uri: {
@@ -61,8 +62,7 @@ describe('shell tool security', () => {
   });
 
   afterEach(() => {
-    vi.doUnmock('recheck');
-    vi.resetModules();
+    shellToolSecurityInternals.resetShellToolSecurityCaches();
   });
 
   it('builds a detailed confirmation message with workspace-relative cwd preview and approval note', () => {
@@ -267,6 +267,7 @@ describe('shell tool security', () => {
       reason: 'The command matched denied rule /^pwd && which node$/.',
     });
   });
+
   it('applies user-configured rule overrides after the built-in defaults', () => {
     getConfiguration.mockReturnValue(createConfiguration(key => {
       if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
@@ -349,7 +350,15 @@ describe('shell tool security', () => {
       autoApprove: false,
       reason: 'The command line could not be parsed safely for subcommand analysis.',
     });
+    expect(analyzeShellRunAutoApproval('echo "$(pwd)"')).toEqual({
+      autoApprove: false,
+      reason: 'The command line could not be parsed safely for subcommand analysis.',
+    });
     expect(analyzeShellRunAutoApproval('echo `pwd`')).toEqual({
+      autoApprove: false,
+      reason: 'The command line could not be parsed safely for subcommand analysis.',
+    });
+    expect(analyzeShellRunAutoApproval('echo "`pwd`"')).toEqual({
       autoApprove: false,
       reason: 'The command line could not be parsed safely for subcommand analysis.',
     });
@@ -383,6 +392,26 @@ describe('shell tool security', () => {
     expect(shellToolSecurityInternals.extractFirstToken('   ')).toBeUndefined();
     expect(shellToolSecurityInternals.extractFirstToken('"git status" --short')).toBe('"git status"');
     expect(shellToolSecurityInternals.extractFirstToken('\'custom tool\' --help')).toBe('\'custom tool\'');
+  });
+
+  it('parses approval regex literals conservatively', () => {
+    expect(shellToolSecurityInternals.parseApprovalRegexRule('pwd')).toEqual({
+      kind: 'non-literal',
+    });
+    expect(shellToolSecurityInternals.parseApprovalRegexRule('/[invalid')).toEqual({
+      kind: 'invalid',
+    });
+    expect(shellToolSecurityInternals.parseApprovalRegexRule('/^pwd$/ii')).toEqual({
+      kind: 'invalid',
+    });
+    expect(shellToolSecurityInternals.parseApprovalRegexRule('/^pwd$/y')).toEqual({
+      kind: 'invalid',
+    });
+    expect(shellToolSecurityInternals.parseApprovalRegexRule('/^pwd$/i')).toEqual({
+      flags: 'iu',
+      kind: 'literal',
+      pattern: '^pwd$',
+    });
   });
 
   it('splits safe compound command lines and preserves quoted separators', () => {
@@ -419,6 +448,8 @@ describe('shell tool security', () => {
   it('rejects subcommand splitting when the syntax is ambiguous or unsafe', () => {
     expect(shellToolSecurityInternals.splitShellSubcommands('echo `pwd`')).toBeUndefined();
     expect(shellToolSecurityInternals.splitShellSubcommands('echo $(pwd)')).toBeUndefined();
+    expect(shellToolSecurityInternals.splitShellSubcommands('echo "$(pwd)"')).toBeUndefined();
+    expect(shellToolSecurityInternals.splitShellSubcommands('echo "`pwd`"')).toBeUndefined();
     expect(shellToolSecurityInternals.splitShellSubcommands('echo ok > out.txt')).toBeUndefined();
     expect(shellToolSecurityInternals.splitShellSubcommands('echo ok < in.txt')).toBeUndefined();
     expect(shellToolSecurityInternals.splitShellSubcommands('echo "unterminated')).toBeUndefined();
@@ -453,9 +484,97 @@ describe('shell tool security', () => {
 
   it('parses regex rules safely and resolves cwd previews from the workspace', () => {
     expect(shellToolSecurityInternals.parseRegexRule('/^pwd$/')?.test('pwd')).toBe(true);
+    expect(shellToolSecurityInternals.parseRegexRule('/^pwd$/i')?.test('PWD')).toBe(true);
+    expect(shellToolSecurityInternals.parseRegexRule('/^pwd$/g')).toBeUndefined();
     expect(shellToolSecurityInternals.parseRegexRule('/[invalid/')).toBeUndefined();
+    expect(shellToolSecurityInternals.parseRegexRule('/[/')).toBeUndefined();
     expect(shellToolSecurityInternals.getPreviewCwd(undefined)).toBe('/workspace');
     expect(shellToolSecurityInternals.getPreviewCwd('packages/core')).toBe('/workspace/packages/core');
+  });
+
+  it('reuses merged rule snapshots until caches are reset', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.autoApprove.rules') {
+        return {
+          customcmd: true,
+        };
+      }
+
+      return undefined;
+    }));
+
+    const firstRules = shellToolSecurityInternals.getMergedAutoApproveRules();
+    const secondRules = shellToolSecurityInternals.getMergedAutoApproveRules();
+
+    expect(firstRules).toBe(secondRules);
+
+    shellToolSecurityInternals.resetShellToolSecurityCaches();
+
+    const thirdRules = shellToolSecurityInternals.getMergedAutoApproveRules();
+
+    expect(thirdRules).not.toBe(firstRules);
+    expect(thirdRules.customcmd).toBe(true);
+  });
+
+  it('rejects invalid configured regex literals before evaluating approval rules', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
+        return true;
+      }
+
+      if (key === 'shellTools.autoApprove.rules') {
+        return {
+          '/^customcmd$/g': true,
+        };
+      }
+
+      return undefined;
+    }));
+
+    expect(analyzeShellRunAutoApproval('customcmd')).toEqual({
+      autoApprove: false,
+      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
+    });
+    expect(logWarn).toHaveBeenCalledWith(
+      'Ignoring configured auto-approve regex rule /^customcmd$/g because it is not a valid regex literal or uses unsupported flags.',
+    );
+  });
+
+  it('reuses cached invalid regex validation results across configuration snapshots', () => {
+    let configVersion = 1;
+
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
+        return true;
+      }
+
+      if (key === 'shellTools.autoApprove.rules') {
+        return configVersion === 1
+          ? {
+            '/^customcmd$/g': true,
+          }
+          : {
+            '/^customcmd$/g': true,
+            pwd: true,
+          };
+      }
+
+      return undefined;
+    }));
+
+    expect(analyzeShellRunAutoApproval('customcmd')).toEqual({
+      autoApprove: false,
+      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
+    });
+    expect(logWarn).toHaveBeenCalledTimes(1);
+
+    configVersion = 2;
+
+    expect(analyzeShellRunAutoApproval('customcmd')).toEqual({
+      autoApprove: false,
+      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
+    });
+    expect(logWarn).toHaveBeenCalledTimes(1);
   });
 
   it('caches unsafe configured regex validation failures by rule key', () => {
@@ -484,14 +603,32 @@ describe('shell tool security', () => {
     expect(logWarn).toHaveBeenCalledTimes(1);
   });
 
-  it('fails closed when regex validation throws unexpectedly', async () => {
-    vi.doMock('recheck', () => ({
-      checkSync: vi.fn(() => {
-        throw new Error('boom');
-      }),
+  it('reuses configured and parsed regex caches when inputs stay stable', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.autoApprove.rules') {
+        return {
+          customcmd: true,
+        };
+      }
+
+      return undefined;
     }));
 
-    const freshModule = await import('../shellToolSecurity.js');
+    const firstConfiguredRules = shellToolSecurityInternals.getConfiguredAutoApproveRules();
+    const secondConfiguredRules = shellToolSecurityInternals.getConfiguredAutoApproveRules();
+
+    expect(firstConfiguredRules).toBe(secondConfiguredRules);
+
+    expect(shellToolSecurityInternals.parseRegexRule('/[/')).toBeUndefined();
+    expect(shellToolSecurityInternals.parseRegexRule('/[/')).toBeUndefined();
+  });
+
+  it('fails closed when regex validation throws unexpectedly', async () => {
+    shellToolSecurityInternals.setRegexRuleValidatorForTest(
+      vi.fn(() => {
+        throw new Error('boom');
+      }),
+    );
 
     getConfiguration.mockReturnValue(createConfiguration(key => {
       if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
@@ -507,12 +644,42 @@ describe('shell tool security', () => {
       return undefined;
     }));
 
-    expect(freshModule.analyzeShellRunAutoApproval('customcmd')).toEqual({
+    expect(analyzeShellRunAutoApproval('customcmd')).toEqual({
       autoApprove: false,
       reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
     });
     expect(logWarn).toHaveBeenCalledWith(
       'Ignoring configured auto-approve regex rule /^customcmd$/ because validation failed: boom.',
     );
+  });
+
+  it('clears cached rule validation state when requested', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
+        return true;
+      }
+
+      if (key === 'shellTools.autoApprove.rules') {
+        return {
+          '/(a+)+b$/': true,
+        };
+      }
+
+      return undefined;
+    }));
+
+    expect(analyzeShellRunAutoApproval('aaaa')).toEqual({
+      autoApprove: false,
+      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
+    });
+    expect(logWarn).toHaveBeenCalledTimes(1);
+
+    shellToolSecurityInternals.resetShellToolSecurityCaches();
+    expect(analyzeShellRunAutoApproval('aaaa')).toEqual({
+      autoApprove: false,
+      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
+    });
+
+    expect(logWarn).toHaveBeenCalledTimes(2);
   });
 });

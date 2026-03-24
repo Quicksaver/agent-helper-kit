@@ -13,6 +13,19 @@ export const SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY = 'shellTools.autoApp
 
 type ApprovalRuleMap = Record<string, boolean>;
 
+type ApprovalRegexRuleParseResult
+  = | {
+    flags: string;
+    kind: 'literal';
+    pattern: string;
+  }
+  | {
+    kind: 'invalid';
+  }
+  | {
+    kind: 'non-literal';
+  };
+
 type ApprovalState = 'allowed' | 'denied' | 'pending';
 
 type CompiledRegexRule = {
@@ -83,10 +96,21 @@ const DEFAULT_AUTO_APPROVE_RULES: ApprovalRuleMap = {
   xargs: false,
 };
 
+const APPROVAL_REGEX_LITERAL_PATTERN = /^\/((?:\\.|[^/])*)\/([a-z]*)$/u;
+const APPROVAL_REGEX_SUPPORTED_FLAGS = new Set([ 'd', 'g', 'i', 'm', 's', 'u', 'v', 'y' ]);
 const compiledRegexRulesCache = new WeakMap<ApprovalRuleMap, CompiledRegexRule[]>();
 const parsedRegexRuleCache = new Map<string, null | RegExp>();
 const safeConfiguredRegexRuleCache = new Map<string, boolean>();
 const REGEX_RULE_VALIDATION_TIMEOUT_MS = 250;
+let regexRuleValidator: typeof checkSync = checkSync;
+let configuredAutoApproveRulesCache: undefined | {
+  cacheKey: string;
+  rules: ApprovalRuleMap;
+};
+let mergedAutoApproveRulesCache: undefined | {
+  cacheKey: string;
+  rules: ApprovalRuleMap;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -122,8 +146,68 @@ function getConfiguration(): vscode.WorkspaceConfiguration {
   return vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
 }
 
+function parseApprovalRegexRule(ruleKey: string): ApprovalRegexRuleParseResult {
+  if (!ruleKey.startsWith('/')) {
+    return { kind: 'non-literal' };
+  }
+
+  const match = APPROVAL_REGEX_LITERAL_PATTERN.exec(ruleKey);
+
+  if (!match) {
+    return { kind: 'invalid' };
+  }
+
+  const pattern = match[1];
+  const rawFlags = match[2];
+  const seenFlags = new Set<string>();
+
+  for (const flag of rawFlags) {
+    if (!APPROVAL_REGEX_SUPPORTED_FLAGS.has(flag) || seenFlags.has(flag)) {
+      return { kind: 'invalid' };
+    }
+
+    seenFlags.add(flag);
+  }
+
+  if (seenFlags.has('g') || seenFlags.has('y')) {
+    return { kind: 'invalid' };
+  }
+
+  return {
+    flags: seenFlags.has('u') || seenFlags.has('v') ? rawFlags : `${rawFlags}u`,
+    kind: 'literal',
+    pattern,
+  };
+}
+
+function getConfiguredRulesCacheKey(configuredRules: unknown): string {
+  if (!isRecord(configuredRules)) {
+    return `__non-record__:${String(configuredRules)}`;
+  }
+
+  const sortedEntries = Object.entries(configuredRules).sort(
+    ([ leftKey ], [ rightKey ]) => leftKey.localeCompare(rightKey),
+  );
+
+  return JSON.stringify(sortedEntries);
+}
+
+export function resetShellToolSecurityCaches(): void {
+  configuredAutoApproveRulesCache = undefined;
+  mergedAutoApproveRulesCache = undefined;
+  parsedRegexRuleCache.clear();
+  regexRuleValidator = checkSync;
+  safeConfiguredRegexRuleCache.clear();
+}
+
+function setRegexRuleValidatorForTest(validator: typeof checkSync): void {
+  regexRuleValidator = validator;
+}
+
 function isSafeConfiguredRegexRule(ruleKey: string): boolean {
-  if (!ruleKey.startsWith('/') || !ruleKey.endsWith('/')) {
+  const parsedRule = parseApprovalRegexRule(ruleKey);
+
+  if (parsedRule.kind === 'non-literal') {
     return true;
   }
 
@@ -133,10 +217,16 @@ function isSafeConfiguredRegexRule(ruleKey: string): boolean {
     return cachedResult;
   }
 
-  const pattern = ruleKey.slice(1, -1);
+  if (parsedRule.kind === 'invalid') {
+    logWarn(
+      `Ignoring configured auto-approve regex rule ${ruleKey} because it is not a valid regex literal or uses unsupported flags.`,
+    );
+    safeConfiguredRegexRuleCache.set(ruleKey, false);
+    return false;
+  }
 
   try {
-    const diagnostics = checkSync(pattern, 'u', {
+    const diagnostics = regexRuleValidator(parsedRule.pattern, parsedRule.flags, {
       timeout: REGEX_RULE_VALIDATION_TIMEOUT_MS,
     });
 
@@ -170,12 +260,23 @@ function isSafeConfiguredRegexRule(ruleKey: string): boolean {
 
 function getConfiguredAutoApproveRules(): ApprovalRuleMap {
   const configuredRules = getConfiguration().get<unknown>(SHELL_TOOLS_AUTO_APPROVE_RULES_KEY);
+  const cacheKey = getConfiguredRulesCacheKey(configuredRules);
 
-  if (!isRecord(configuredRules)) {
-    return {};
+  if (configuredAutoApproveRulesCache?.cacheKey === cacheKey) {
+    return configuredAutoApproveRulesCache.rules;
   }
 
-  return Object.fromEntries(
+  if (!isRecord(configuredRules)) {
+    const emptyRules = {};
+
+    configuredAutoApproveRulesCache = {
+      cacheKey,
+      rules: emptyRules,
+    };
+    return emptyRules;
+  }
+
+  const filteredRules = Object.fromEntries(
     Object.entries(configuredRules).filter(([ ruleKey, value ]) => {
       if (typeof value !== 'boolean') {
         return false;
@@ -184,17 +285,40 @@ function getConfiguredAutoApproveRules(): ApprovalRuleMap {
       return isSafeConfiguredRegexRule(ruleKey);
     }),
   ) as ApprovalRuleMap;
+
+  configuredAutoApproveRulesCache = {
+    cacheKey,
+    rules: filteredRules,
+  };
+
+  return filteredRules;
 }
 
 function getMergedAutoApproveRules(): ApprovalRuleMap {
-  return {
+  const configuredRules = getConfiguration().get<unknown>(SHELL_TOOLS_AUTO_APPROVE_RULES_KEY);
+  const cacheKey = getConfiguredRulesCacheKey(configuredRules);
+
+  if (mergedAutoApproveRulesCache?.cacheKey === cacheKey) {
+    return mergedAutoApproveRulesCache.rules;
+  }
+
+  const mergedRules = {
     ...DEFAULT_AUTO_APPROVE_RULES,
     ...getConfiguredAutoApproveRules(),
   };
+
+  mergedAutoApproveRulesCache = {
+    cacheKey,
+    rules: mergedRules,
+  };
+
+  return mergedRules;
 }
 
 function parseRegexRule(ruleKey: string): RegExp | undefined {
-  if (!ruleKey.startsWith('/') || !ruleKey.endsWith('/')) {
+  const parsedRule = parseApprovalRegexRule(ruleKey);
+
+  if (parsedRule.kind !== 'literal') {
     return undefined;
   }
 
@@ -204,10 +328,8 @@ function parseRegexRule(ruleKey: string): RegExp | undefined {
     return cachedRule ?? undefined;
   }
 
-  const pattern = ruleKey.slice(1, -1);
-
   try {
-    const compiledRule = new RegExp(pattern, 'u');
+    const compiledRule = new RegExp(parsedRule.pattern, parsedRule.flags);
 
     parsedRegexRuleCache.set(ruleKey, compiledRule);
     return compiledRule;
@@ -345,6 +467,14 @@ function splitShellSubcommands(commandLine: string): string[] | undefined {
     }
 
     if (quote === 'double') {
+      if (character === '`') {
+        return undefined;
+      }
+
+      if (character === '$' && nextCharacter === '(') {
+        return undefined;
+      }
+
       current += character;
 
       if (character === '"') {
@@ -549,8 +679,12 @@ export function buildShellRunConfirmationMessage(options: BuildConfirmationOptio
 export const shellToolSecurityInternals = {
   evaluateSingleCommand,
   extractFirstToken,
+  getConfiguredAutoApproveRules,
   getMergedAutoApproveRules,
   getPreviewCwd,
+  parseApprovalRegexRule,
   parseRegexRule,
+  resetShellToolSecurityCaches,
+  setRegexRuleValidatorForTest,
   splitShellSubcommands,
 };
