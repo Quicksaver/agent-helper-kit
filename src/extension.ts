@@ -9,7 +9,7 @@ const BRING_TO_CHAT_ENABLED_KEY = 'bringToChat.enabled';
 const SHELL_TOOLS_ENABLED_KEY = 'shellTools.enabled';
 
 function isFeatureEnabled(key: string): boolean {
-  return vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get<boolean>(key, true);
+  return vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get(key, true);
 }
 
 function disposeAndRemoveSubscription(

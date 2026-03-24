@@ -53,7 +53,7 @@ export function clearQueuedPendingComments(): void {
 
 function shouldQueueBeforeSend(): boolean {
   const configuration = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
-  return configuration.get<boolean>(QUEUE_BEFORE_SEND_SETTING, false);
+  return configuration.get(QUEUE_BEFORE_SEND_SETTING, false);
 }
 
 /** Checks whether a comment with the same body, file, and line is already queued. */

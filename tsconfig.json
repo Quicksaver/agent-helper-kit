@@ -1,22 +1,21 @@
 {
   "compilerOptions": {
-    "baseUrl": "./",
     "declaration": true,
     "declarationMap": true,
-    "esModuleInterop": true,
-    "lib": ["ES2023"],
-    "module": "node20",
+    "lib": ["ESNext"],
+    "module": "nodenext",
     "moduleResolution": "nodenext",
     "noEmit": true,
     "outDir": "./dist",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     },
     "resolveJsonModule": true,
+    "rootDir": "./",
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
-    "target": "ES2023"
+    "types": []
   },
   "exclude": ["node_modules", "dist"],
   "include": ["**/*.ts"]
