@@ -27,6 +27,10 @@ import {
   validateRunInAsyncShellInput,
   validateRunInSyncShellInput,
 } from '@/shellToolContracts';
+import {
+  analyzeShellRunAutoApproval,
+  buildShellRunConfirmationMessage,
+} from '@/shellToolSecurity';
 
 const DEFAULT_MEMORY_OUTPUT_LIMIT_KIB = 512;
 const DEFAULT_MEMORY_TO_FILE_SPILL_MINUTES = 2;
@@ -266,12 +270,21 @@ const runInAsyncShellTool: vscode.LanguageModelTool<RunInAsyncShellInput> = {
     options: vscode.LanguageModelToolInvocationPrepareOptions<RunInAsyncShellInput>,
   ): vscode.PreparedToolInvocation {
     const commandPreview = options.input.command.split('\n')[0]?.trim() || '(empty command)';
+    const autoApprovalDecision = analyzeShellRunAutoApproval(options.input.command);
 
     return {
-      confirmationMessages: {
-        message: SHELL_TOOL_METADATA.runInAsyncShell.confirmationMessage(commandPreview),
-        title: SHELL_TOOL_METADATA.runInAsyncShell.confirmationTitle,
-      },
+      confirmationMessages: autoApprovalDecision.autoApprove
+        ? undefined
+        : {
+          message: buildShellRunConfirmationMessage({
+            autoApprovalDecision,
+            command: options.input.command,
+            cwd: options.input.cwd,
+            explanation: options.input.explanation,
+            goal: options.input.goal,
+          }),
+          title: SHELL_TOOL_METADATA.runInAsyncShell.confirmationTitle,
+        },
       invocationMessage: SHELL_TOOL_METADATA.runInAsyncShell.invocationMessage(commandPreview),
     };
   },
@@ -350,12 +363,21 @@ const runInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = {
     options: vscode.LanguageModelToolInvocationPrepareOptions<RunInSyncShellInput>,
   ): vscode.PreparedToolInvocation {
     const commandPreview = options.input.command.split('\n')[0]?.trim() || '(empty command)';
+    const autoApprovalDecision = analyzeShellRunAutoApproval(options.input.command);
 
     return {
-      confirmationMessages: {
-        message: SHELL_TOOL_METADATA.runInSyncShell.confirmationMessage(commandPreview),
-        title: SHELL_TOOL_METADATA.runInSyncShell.confirmationTitle,
-      },
+      confirmationMessages: autoApprovalDecision.autoApprove
+        ? undefined
+        : {
+          message: buildShellRunConfirmationMessage({
+            autoApprovalDecision,
+            command: options.input.command,
+            cwd: options.input.cwd,
+            explanation: options.input.explanation,
+            goal: options.input.goal,
+          }),
+          title: SHELL_TOOL_METADATA.runInSyncShell.confirmationTitle,
+        },
       invocationMessage: SHELL_TOOL_METADATA.runInSyncShell.invocationMessage(commandPreview),
     };
   },

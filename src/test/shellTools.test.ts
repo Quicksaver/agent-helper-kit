@@ -1591,16 +1591,28 @@ describe('shell tools', () => {
     const getLastShellCommandTool = getRegisteredToolWithPrepare('get_last_shell_command');
     const killTool = getRegisteredToolWithPrepare('kill_shell');
 
-    expect(runAsyncTool.prepareInvocation({ input: { command: '\nsecond line' } })).toEqual({
+    expect(runAsyncTool.prepareInvocation({
+      input: {
+        command: '\nsecond line',
+        explanation: 'describe empty command preview',
+        goal: 'show confirmation details',
+      },
+    })).toEqual({
       confirmationMessages: {
-        message: 'Run shell command: (empty command)',
+        message: 'Command: \nsecond line\n\nCwd: /workspace\n\nExplanation: describe empty command preview\n\nGoal: show confirmation details\n\nApproval note: Auto-approval is disabled in settings.',
         title: 'Run async shell command?',
       },
       invocationMessage: 'Running async shell command: (empty command)',
     });
-    expect(runSyncTool.prepareInvocation({ input: { command: 'echo ok\nnext' } })).toEqual({
+    expect(runSyncTool.prepareInvocation({
+      input: {
+        command: 'echo ok\nnext',
+        explanation: 'run a multi-line command preview',
+        goal: 'show sync confirmation details',
+      },
+    })).toEqual({
       confirmationMessages: {
-        message: 'Run shell command: echo ok',
+        message: 'Command: echo ok\nnext\n\nCwd: /workspace\n\nExplanation: run a multi-line command preview\n\nGoal: show sync confirmation details\n\nApproval note: Auto-approval is disabled in settings.',
         title: 'Run sync shell command?',
       },
       invocationMessage: 'Running sync shell command: echo ok',
@@ -1623,6 +1635,164 @@ describe('shell tools', () => {
         title: 'Stop running shell command?',
       },
       invocationMessage: 'Stopping shell command abcd1234',
+    });
+  });
+
+  it('auto-approves explicitly allowlisted commands only when both config gates are enabled', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.autoApprove.enabled') {
+        return true;
+      }
+
+      if (key === 'shellTools.autoApprove.warningAccepted') {
+        return true;
+      }
+
+      return undefined;
+    }));
+
+    registerShellTools();
+
+    const runAsyncTool = getRegisteredToolWithPrepare('run_in_async_shell');
+    const runSyncTool = getRegisteredToolWithPrepare('run_in_sync_shell');
+
+    expect(runAsyncTool.prepareInvocation({
+      input: {
+        command: 'pwd && wc -l README.md',
+        explanation: 'inspect workspace files',
+        goal: 'count lines',
+      },
+    })).toEqual({
+      confirmationMessages: undefined,
+      invocationMessage: 'Running async shell command: pwd && wc -l README.md',
+    });
+    expect(runSyncTool.prepareInvocation({
+      input: {
+        command: 'git status',
+        explanation: 'inspect repository status',
+        goal: 'read git state',
+      },
+    })).toEqual({
+      confirmationMessages: undefined,
+      invocationMessage: 'Running sync shell command: git status',
+    });
+  });
+
+  it('keeps confirmation when the warning acceptance gate is not set', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.autoApprove.enabled') {
+        return true;
+      }
+
+      return undefined;
+    }));
+
+    registerShellTools();
+
+    const runSyncTool = getRegisteredToolWithPrepare('run_in_sync_shell');
+
+    expect(runSyncTool.prepareInvocation({
+      input: {
+        command: 'pwd',
+        explanation: 'print cwd',
+        goal: 'read current directory',
+      },
+    })).toEqual({
+      confirmationMessages: {
+        message: 'Command: pwd\n\nCwd: /workspace\n\nExplanation: print cwd\n\nGoal: read current directory\n\nApproval note: Auto-approval warning has not been accepted in settings.',
+        title: 'Run sync shell command?',
+      },
+      invocationMessage: 'Running sync shell command: pwd',
+    });
+  });
+
+  it('keeps confirmation when any parsed subcommand is denied', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
+        return true;
+      }
+
+      return undefined;
+    }));
+
+    registerShellTools();
+
+    const runAsyncTool = getRegisteredToolWithPrepare('run_in_async_shell');
+
+    expect(runAsyncTool.prepareInvocation({
+      input: {
+        command: 'pwd && rm -rf build',
+        explanation: 'print cwd and delete build output',
+        goal: 'mix safe and unsafe work',
+      },
+    })).toEqual({
+      confirmationMessages: {
+        message: 'Command: pwd && rm -rf build\n\nCwd: /workspace\n\nExplanation: print cwd and delete build output\n\nGoal: mix safe and unsafe work\n\nApproval note: The command `rm` is denied by the shell security policy.',
+        title: 'Run async shell command?',
+      },
+      invocationMessage: 'Running async shell command: pwd && rm -rf build',
+    });
+  });
+
+  it('keeps confirmation when user-configured overrides deny an otherwise safe command', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
+        return true;
+      }
+
+      if (key === 'shellTools.autoApprove.rules') {
+        return {
+          pwd: false,
+        };
+      }
+
+      return undefined;
+    }));
+
+    registerShellTools();
+
+    const runSyncTool = getRegisteredToolWithPrepare('run_in_sync_shell');
+
+    expect(runSyncTool.prepareInvocation({
+      input: {
+        command: 'pwd',
+        explanation: 'print cwd',
+        goal: 'exercise deny override',
+      },
+    })).toEqual({
+      confirmationMessages: {
+        message: 'Command: pwd\n\nCwd: /workspace\n\nExplanation: print cwd\n\nGoal: exercise deny override\n\nApproval note: The command `pwd` is denied by the shell security policy.',
+        title: 'Run sync shell command?',
+      },
+      invocationMessage: 'Running sync shell command: pwd',
+    });
+  });
+
+  it('keeps confirmation when command parsing is ambiguous for auto-approval', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
+        return true;
+      }
+
+      return undefined;
+    }));
+
+    registerShellTools();
+
+    const runSyncTool = getRegisteredToolWithPrepare('run_in_sync_shell');
+
+    expect(runSyncTool.prepareInvocation({
+      input: {
+        command: 'echo $(pwd)',
+        explanation: 'exercise ambiguous parsing path',
+        goal: 'block auto-approval',
+      },
+    })).toEqual({
+      confirmationMessages: {
+        message: 'Command: echo $(pwd)\n\nCwd: /workspace\n\nExplanation: exercise ambiguous parsing path\n\nGoal: block auto-approval\n\nApproval note: The command line could not be parsed safely for subcommand analysis.',
+        title: 'Run sync shell command?',
+      },
+      invocationMessage: 'Running sync shell command: echo $(pwd)',
     });
   });
 

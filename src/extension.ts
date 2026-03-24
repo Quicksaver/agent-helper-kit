@@ -4,12 +4,29 @@ import { getExtensionOutputChannel } from '@/logging';
 import { EXTENSION_CONFIG_SECTION } from '@/reviewCommentConfig';
 import { registerReviewParticipant, reviewCommentToChat } from '@/reviewComments';
 import { registerShellTools } from '@/shellTools';
+import {
+  SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY,
+  SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY,
+} from '@/shellToolSecurity';
 
 const BRING_TO_CHAT_ENABLED_KEY = 'bringToChat.enabled';
 const SHELL_TOOLS_ENABLED_KEY = 'shellTools.enabled';
 
 function isFeatureEnabled(key: string): boolean {
   return vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get(key, true);
+}
+
+async function resetAutoApproveWarningIfDisabled(): Promise<void> {
+  const configuration = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
+  const isAutoApproveEnabled = configuration.get(SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY);
+
+  if (isAutoApproveEnabled !== true) {
+    await configuration.update(
+      SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY,
+      false,
+      vscode.ConfigurationTarget.Global,
+    );
+  }
 }
 
 function disposeAndRemoveSubscription(
@@ -58,6 +75,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   applyFeatureConfiguration();
+  void resetAutoApproveWarningIfDisabled();
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(event => {
@@ -66,6 +84,10 @@ export function activate(context: vscode.ExtensionContext): void {
         || event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${SHELL_TOOLS_ENABLED_KEY}`)
       ) {
         applyFeatureConfiguration();
+      }
+
+      if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY}`)) {
+        void resetAutoApproveWarningIfDisabled();
       }
     }),
   );

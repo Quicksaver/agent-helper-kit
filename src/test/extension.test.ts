@@ -9,6 +9,10 @@ import { activate } from '@/extension';
 import { resetExtensionOutputChannelForTest } from '@/logging';
 import { reviewCommentToChat } from '@/reviewComments';
 import { SHELL_TOOL_NAMES } from '@/shellToolContracts';
+import {
+  SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY,
+  SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY,
+} from '@/shellToolSecurity';
 
 type ConfigurationChangeEventLike = {
   affectsConfiguration: (section: string) => boolean;
@@ -43,18 +47,28 @@ const vscode = vi.hoisted(() => {
   }
 
   const commandDisposable = { dispose: vi.fn() };
+  const configurationTarget = {
+    Global: 1,
+  };
   const participantDisposable = { dispose: vi.fn() };
   const toolDisposable = { dispose: vi.fn() };
   const onDidChangeDisposable = { dispose: vi.fn() };
   const changeHandlers: ((event: { affectsConfiguration: (section: string) => boolean }) => void)[] = [];
+  const updateConfiguration = vi.fn(() => Promise.resolve());
   const getConfiguration = vi.fn(() => ({
     get: vi.fn((key: string, defaultValue: boolean) => {
-      if (key === 'bringToChat.enabled' || key === 'shellTools.enabled') {
+      if (
+        key === 'bringToChat.enabled'
+        || key === 'shellTools.enabled'
+        || key === SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY
+        || key === SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY
+      ) {
         return defaultValue;
       }
 
       return defaultValue;
     }),
+    update: updateConfiguration,
   }));
 
   return {
@@ -68,6 +82,7 @@ const vscode = vi.hoisted(() => {
     commands: {
       registerCommand: vi.fn(() => commandDisposable),
     },
+    ConfigurationTarget: configurationTarget,
     Disposable: {
       from: vi.fn((...disposables: { dispose: () => void }[]) => ({
         dispose: () => {
@@ -87,6 +102,7 @@ const vscode = vi.hoisted(() => {
     TreeItemCollapsibleState: {
       None: 0,
     },
+    updateConfiguration,
     window: {
       createOutputChannel: vi.fn(() => ({
         append: vi.fn(),
@@ -137,6 +153,19 @@ describe('Extension', () => {
       reviewCommentToChat,
     );
     expect(vscode.window.createOutputChannel).toHaveBeenCalledWith('Agent Helper Kit');
+  });
+
+  it('clears auto-approve warning acceptance when auto-approval is disabled', async () => {
+    const context = createMockContext();
+
+    activate(context);
+    await Promise.resolve();
+
+    expect(vscode.updateConfiguration).toHaveBeenCalledWith(
+      SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY,
+      false,
+      vscode.ConfigurationTarget.Global,
+    );
   });
 
   it('should register the chat participant on activation', () => {
@@ -197,6 +226,7 @@ describe('Extension', () => {
 
         return defaultValue;
       }),
+      update: vscode.updateConfiguration,
     });
 
     activate(context);
@@ -224,6 +254,7 @@ describe('Extension', () => {
 
         return defaultValue;
       }),
+      update: vscode.updateConfiguration,
     });
 
     activate(context);
@@ -265,5 +296,40 @@ describe('Extension', () => {
 
     expect(vscode.lm.registerTool).toHaveBeenCalled();
     expect(vscode.toolDisposable.dispose).toHaveBeenCalled();
+  });
+
+  it('clears accepted auto-approve warning when auto-approve is turned off later', async () => {
+    const context = createMockContext();
+    const getConfigurationMock = vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>;
+    let autoApproveEnabled = true;
+
+    getConfigurationMock.mockReturnValue({
+      get: vi.fn((key: string, defaultValue: boolean) => {
+        if (key === SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY) {
+          return autoApproveEnabled;
+        }
+
+        return defaultValue;
+      }),
+      update: vscode.updateConfiguration,
+    });
+
+    activate(context);
+    vscode.updateConfiguration.mockClear();
+
+    autoApproveEnabled = false;
+
+    const handlers = vscode.changeHandlers as ((event: ConfigurationChangeEventLike) => void)[];
+
+    handlers[0]?.({
+      affectsConfiguration: (section: string) => section === 'agent-helper-kit.shellTools.autoApprove.enabled',
+    });
+    await Promise.resolve();
+
+    expect(vscode.updateConfiguration).toHaveBeenCalledWith(
+      SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY,
+      false,
+      vscode.ConfigurationTarget.Global,
+    );
   });
 });

@@ -149,6 +149,24 @@
           "description": "Enable shell command language model tools.",
           "type": "boolean"
         },
+        "agent-helper-kit.shellTools.autoApprove.enabled": {
+          "default": false,
+          "description": "Allow shell tools to skip confirmation only for commands that pass the built-in and user-configured auto-approval policy.",
+          "type": "boolean"
+        },
+        "agent-helper-kit.shellTools.autoApprove.warningAccepted": {
+          "default": false,
+          "description": "Second gate for shell tool auto-approval. This must remain false until you have reviewed and accepted the risk of model-triggered shell execution.",
+          "type": "boolean"
+        },
+        "agent-helper-kit.shellTools.autoApprove.rules": {
+          "default": {},
+          "description": "Override shell tool auto-approval rules. Keys are command names like 'pwd' or regex literals like '/^git\\s+status\\b/'. Values are booleans where true allows auto-approval and false denies it.",
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": "object"
+        },
         "agent-helper-kit.shellOutput.inMemoryOutputLimitKiB": {
           "default": 512,
           "description": "KiB of shell output to retain in memory before immediately spilling to a temp file. Set to 0 to disable the size-based spill threshold.",
