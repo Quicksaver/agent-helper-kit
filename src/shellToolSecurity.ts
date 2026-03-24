@@ -2,6 +2,9 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
+import { checkSync } from 'recheck';
+
+import { logWarn } from '@/logging';
 import { EXTENSION_CONFIG_SECTION } from '@/reviewCommentConfig';
 
 export const SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY = 'shellTools.autoApprove.enabled';
@@ -81,6 +84,9 @@ const DEFAULT_AUTO_APPROVE_RULES: ApprovalRuleMap = {
 };
 
 const compiledRegexRulesCache = new WeakMap<ApprovalRuleMap, CompiledRegexRule[]>();
+const parsedRegexRuleCache = new Map<string, null | RegExp>();
+const safeConfiguredRegexRuleCache = new Map<string, boolean>();
+const REGEX_RULE_VALIDATION_TIMEOUT_MS = 250;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -116,6 +122,52 @@ function getConfiguration(): vscode.WorkspaceConfiguration {
   return vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
 }
 
+function isSafeConfiguredRegexRule(ruleKey: string): boolean {
+  if (!ruleKey.startsWith('/') || !ruleKey.endsWith('/')) {
+    return true;
+  }
+
+  const cachedResult = safeConfiguredRegexRuleCache.get(ruleKey);
+
+  if (cachedResult !== undefined) {
+    return cachedResult;
+  }
+
+  const pattern = ruleKey.slice(1, -1);
+
+  try {
+    const diagnostics = checkSync(pattern, 'u', {
+      timeout: REGEX_RULE_VALIDATION_TIMEOUT_MS,
+    });
+
+    if (diagnostics.status === 'vulnerable') {
+      logWarn(
+        `Ignoring configured auto-approve regex rule ${ruleKey} because recheck marked it as potentially vulnerable (${diagnostics.complexity.summary}).`,
+      );
+      safeConfiguredRegexRuleCache.set(ruleKey, false);
+      return false;
+    }
+
+    if (diagnostics.status === 'unknown') {
+      logWarn(
+        `Ignoring configured auto-approve regex rule ${ruleKey} because recheck could not validate it (${diagnostics.error.kind}).`,
+      );
+      safeConfiguredRegexRuleCache.set(ruleKey, false);
+      return false;
+    }
+
+    safeConfiguredRegexRuleCache.set(ruleKey, true);
+    return true;
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown error';
+
+    logWarn(`Ignoring configured auto-approve regex rule ${ruleKey} because validation failed: ${message}.`);
+    safeConfiguredRegexRuleCache.set(ruleKey, false);
+    return false;
+  }
+}
+
 function getConfiguredAutoApproveRules(): ApprovalRuleMap {
   const configuredRules = getConfiguration().get<unknown>(SHELL_TOOLS_AUTO_APPROVE_RULES_KEY);
 
@@ -124,7 +176,13 @@ function getConfiguredAutoApproveRules(): ApprovalRuleMap {
   }
 
   return Object.fromEntries(
-    Object.entries(configuredRules).filter(([ , value ]) => typeof value === 'boolean'),
+    Object.entries(configuredRules).filter(([ ruleKey, value ]) => {
+      if (typeof value !== 'boolean') {
+        return false;
+      }
+
+      return isSafeConfiguredRegexRule(ruleKey);
+    }),
   ) as ApprovalRuleMap;
 }
 
@@ -140,12 +198,22 @@ function parseRegexRule(ruleKey: string): RegExp | undefined {
     return undefined;
   }
 
+  const cachedRule = parsedRegexRuleCache.get(ruleKey);
+
+  if (cachedRule !== undefined) {
+    return cachedRule ?? undefined;
+  }
+
   const pattern = ruleKey.slice(1, -1);
 
   try {
-    return new RegExp(pattern, 'u');
+    const compiledRule = new RegExp(pattern, 'u');
+
+    parsedRegexRuleCache.set(ruleKey, compiledRule);
+    return compiledRule;
   }
   catch {
+    parsedRegexRuleCache.set(ruleKey, null);
     return undefined;
   }
 }
@@ -356,14 +424,7 @@ function evaluateSingleCommand(command: string, rules: ApprovalRuleMap): Command
     return { state: 'pending' };
   }
 
-  const commandName = extractFirstToken(trimmedCommand);
-
-  if (!commandName) {
-    return {
-      reason: 'The command name could not be determined safely.',
-      state: 'pending',
-    };
-  }
+  const commandName = extractFirstToken(trimmedCommand) ?? trimmedCommand;
 
   const namedRule = getNamedRule(rules, commandName);
 

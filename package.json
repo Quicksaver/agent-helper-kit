@@ -525,6 +525,7 @@
   },
   "dependencies": {
     "ansi-regex": "^6.2.2",
+    "recheck": "^4.5.0",
     "zod": "^4.3.6"
   }
 }

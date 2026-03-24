@@ -6,7 +6,7 @@ const isWatch = process.argv.includes('--watch');
 const extensionBuildOptions = {
   bundle: true,
   entryPoints: [ './src/extension.ts' ],
-  external: [ 'vscode' ],
+  external: [ 'recheck', 'vscode' ],
   format: 'cjs',
   minify: !isWatch,
   outdir: 'dist',
