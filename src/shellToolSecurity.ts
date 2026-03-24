@@ -97,7 +97,8 @@ const DEFAULT_AUTO_APPROVE_RULES: ApprovalRuleMap = {
 };
 
 const APPROVAL_REGEX_LITERAL_PATTERN = /^\/((?:\\.|[^/])*)\/([a-z]*)$/u;
-const APPROVAL_REGEX_SUPPORTED_FLAGS = new Set([ 'd', 'g', 'i', 'm', 's', 'u', 'v', 'y' ]);
+// Recognize all valid JS literal flags, then fail closed on stateful flags below.
+const APPROVAL_REGEX_RECOGNIZED_FLAGS = new Set([ 'd', 'g', 'i', 'm', 's', 'u', 'v', 'y' ]);
 const compiledRegexRulesCache = new WeakMap<ApprovalRuleMap, CompiledRegexRule[]>();
 const parsedRegexRuleCache = new Map<string, null | RegExp>();
 const safeConfiguredRegexRuleCache = new Map<string, boolean>();
@@ -162,7 +163,7 @@ function parseApprovalRegexRule(ruleKey: string): ApprovalRegexRuleParseResult {
   const seenFlags = new Set<string>();
 
   for (const flag of rawFlags) {
-    if (!APPROVAL_REGEX_SUPPORTED_FLAGS.has(flag) || seenFlags.has(flag)) {
+    if (!APPROVAL_REGEX_RECOGNIZED_FLAGS.has(flag) || seenFlags.has(flag)) {
       return { kind: 'invalid' };
     }
 
@@ -373,6 +374,14 @@ function getNamedRule(rules: ApprovalRuleMap, commandName: string): boolean | un
   return undefined;
 }
 
+/**
+ * Extract the first whitespace-delimited token from a shell command string.
+ *
+ * This preserves quote characters so callers can make conservative decisions,
+ * but it intentionally does not interpret escape sequences outside quotes.
+ * Command names that rely on escaped whitespace therefore fail closed and
+ * require manual approval instead of matching a named auto-approve rule.
+ */
 function extractFirstToken(command: string): string | undefined {
   const trimmedCommand = command.trim();
 

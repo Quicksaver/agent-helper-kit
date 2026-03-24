@@ -623,7 +623,7 @@ describe('shell tool security', () => {
     expect(shellToolSecurityInternals.parseRegexRule('/[/')).toBeUndefined();
   });
 
-  it('fails closed when regex validation throws unexpectedly', async () => {
+  it('fails closed when regex validation throws unexpectedly', () => {
     shellToolSecurityInternals.setRegexRuleValidatorForTest(
       vi.fn(() => {
         throw new Error('boom');
