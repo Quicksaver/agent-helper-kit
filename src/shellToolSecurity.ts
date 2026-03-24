@@ -12,6 +12,12 @@ type ApprovalRuleMap = Record<string, boolean>;
 
 type ApprovalState = 'allowed' | 'denied' | 'pending';
 
+type CompiledRegexRule = {
+  regex: RegExp;
+  ruleKey: string;
+  ruleValue: boolean;
+};
+
 type CommandApprovalResult = {
   reason?: string;
   state: ApprovalState;
@@ -73,6 +79,8 @@ const DEFAULT_AUTO_APPROVE_RULES: ApprovalRuleMap = {
   which: true,
   xargs: false,
 };
+
+const compiledRegexRulesCache = new WeakMap<ApprovalRuleMap, CompiledRegexRule[]>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -140,6 +148,25 @@ function parseRegexRule(ruleKey: string): RegExp | undefined {
   catch {
     return undefined;
   }
+}
+
+function getCompiledRegexRules(rules: ApprovalRuleMap): CompiledRegexRule[] {
+  const cachedRules = compiledRegexRulesCache.get(rules);
+
+  if (cachedRules) {
+    return cachedRules;
+  }
+
+  const compiledRules = Object.entries(rules)
+    .map(([ ruleKey, ruleValue ]) => ({
+      regex: parseRegexRule(ruleKey),
+      ruleKey,
+      ruleValue,
+    }))
+    .filter((rule): rule is CompiledRegexRule => rule.regex !== undefined);
+
+  compiledRegexRulesCache.set(rules, compiledRules);
+  return compiledRules;
 }
 
 function getNamedRule(rules: ApprovalRuleMap, commandName: string): boolean | undefined {
@@ -233,12 +260,6 @@ function splitShellSubcommands(commandLine: string): string[] | undefined {
       continue;
     }
 
-    if (character === '\\') {
-      current += character;
-      escapeNext = true;
-      continue;
-    }
-
     if (quote === 'single') {
       current += character;
 
@@ -246,6 +267,12 @@ function splitShellSubcommands(commandLine: string): string[] | undefined {
         quote = undefined;
       }
 
+      continue;
+    }
+
+    if (character === '\\') {
+      current += character;
+      escapeNext = true;
       continue;
     }
 
@@ -347,13 +374,7 @@ function evaluateSingleCommand(command: string, rules: ApprovalRuleMap): Command
     };
   }
 
-  const regexRules = Object.entries(rules)
-    .map(([ ruleKey, ruleValue ]) => ({
-      regex: parseRegexRule(ruleKey),
-      ruleKey,
-      ruleValue,
-    }))
-    .filter((rule): rule is { regex: RegExp; ruleKey: string; ruleValue: boolean } => rule.regex !== undefined);
+  const regexRules = getCompiledRegexRules(rules);
 
   const deniedRegexRule = regexRules.find(rule => !rule.ruleValue && rule.regex.test(trimmedCommand));
 

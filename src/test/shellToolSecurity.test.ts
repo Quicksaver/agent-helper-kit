@@ -119,6 +119,9 @@ describe('shell tool security', () => {
     expect(analyzeShellRunAutoApproval('echo "a|b" && echo c\\;d')).toEqual({
       autoApprove: true,
     });
+    expect(analyzeShellRunAutoApproval('echo \'a\\\' && pwd')).toEqual({
+      autoApprove: true,
+    });
   });
 
   it('allows regex-backed safe commands such as git status and git show', () => {
@@ -319,6 +322,10 @@ describe('shell tool security', () => {
     ]);
     expect(shellToolSecurityInternals.splitShellSubcommands('echo a\\;b && pwd')).toEqual([
       'echo a\\;b',
+      'pwd',
+    ]);
+    expect(shellToolSecurityInternals.splitShellSubcommands('echo \'a\\\' ; pwd')).toEqual([
+      'echo \'a\\\'',
       'pwd',
     ]);
     expect(shellToolSecurityInternals.splitShellSubcommands('pwd & which node')).toEqual([
