@@ -166,6 +166,10 @@ describe('shell tool security', () => {
       autoApprove: false,
       reason: 'The command `RM` is denied by the shell security policy.',
     });
+    expect(analyzeShellRunAutoApproval('invoke-expression whoami')).toEqual({
+      autoApprove: false,
+      reason: 'The command `invoke-expression` is denied by the shell security policy.',
+    });
   });
 
   it('denies dangerous variants of otherwise safe commands through regex rules', () => {
@@ -188,6 +192,10 @@ describe('shell tool security', () => {
     expect(analyzeShellRunAutoApproval('sed -i "" file.txt')).toEqual({
       autoApprove: false,
       reason: 'The command matched denied rule /^sed\\b.*\\s(-[a-zA-Z]*(e|f|i)[a-zA-Z]*|--expression|--file|--in-place)\\b/.',
+    });
+    expect(analyzeShellRunAutoApproval('sed \'s/a/b/;w out.txt\' file.txt')).toEqual({
+      autoApprove: false,
+      reason: 'The command matched denied rule /^sed\\b.*;\\s*[wW]\\b/.',
     });
   });
 
@@ -325,13 +333,13 @@ describe('shell tool security', () => {
       }
 
       if (key === 'shellTools.autoApprove.rules') {
-        return 'not-an-object';
+        return [ true ];
       }
 
       return undefined;
     }));
 
-    expect(analyzeShellRunAutoApproval('customcmd')).toEqual({
+    expect(analyzeShellRunAutoApproval('0')).toEqual({
       autoApprove: false,
       reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
     });
@@ -369,6 +377,24 @@ describe('shell tool security', () => {
     expect(analyzeShellRunAutoApproval('echo "unterminated')).toEqual({
       autoApprove: false,
       reason: 'The command line could not be parsed safely for subcommand analysis.',
+    });
+  });
+
+  it('treats line breaks as command separators during auto-approval analysis', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
+        return true;
+      }
+
+      return undefined;
+    }));
+
+    expect(analyzeShellRunAutoApproval('pwd\nrm -rf build')).toEqual({
+      autoApprove: false,
+      reason: 'The command `rm` is denied by the shell security policy.',
+    });
+    expect(analyzeShellRunAutoApproval('pwd\r\nwhich node')).toEqual({
+      autoApprove: true,
     });
   });
 
@@ -440,6 +466,14 @@ describe('shell tool security', () => {
       'which node',
     ]);
     expect(shellToolSecurityInternals.splitShellSubcommands('pwd || which node')).toEqual([
+      'pwd',
+      'which node',
+    ]);
+    expect(shellToolSecurityInternals.splitShellSubcommands('pwd\nwhich node')).toEqual([
+      'pwd',
+      'which node',
+    ]);
+    expect(shellToolSecurityInternals.splitShellSubcommands('pwd\r\nwhich node')).toEqual([
       'pwd',
       'which node',
     ]);

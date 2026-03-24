@@ -48,7 +48,7 @@ const DEFAULT_AUTO_APPROVE_RULES: ApprovalRuleMap = {
   '/^find\\b.*\\s-(delete|exec|execdir|fprint|fprintf|fls|ok|okdir)\\b/': false,
   '/^git\\s+(branch|diff|log|show|status)\\b/': true,
   '/^rg\\b.*\\s(--hostname-bin|--pre)\\b/': false,
-  '/^sed\\b.*;W/': false,
+  '/^sed\\b.*;\\s*[wW]\\b/': false,
   '/^sed\\b.*\\s(-[a-zA-Z]*(e|f|i)[a-zA-Z]*|--expression|--file|--in-place)\\b/': false,
   '/^sed\\b.*s\\/.*\\/.*\\/[ew]/': false,
   cat: true,
@@ -103,6 +103,7 @@ const compiledRegexRulesCache = new WeakMap<ApprovalRuleMap, CompiledRegexRule[]
 const parsedRegexRuleCache = new Map<string, null | RegExp>();
 const safeConfiguredRegexRuleCache = new Map<string, boolean>();
 const REGEX_RULE_VALIDATION_TIMEOUT_MS = 250;
+const WHITESPACE_CHARACTER_REGEX = /\s/u;
 let regexRuleValidator: typeof checkSync = checkSync;
 let configuredAutoApproveRulesCache: undefined | {
   cacheKey: string;
@@ -114,7 +115,7 @@ let mergedAutoApproveRulesCache: undefined | {
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function getWorkspaceCwd(): string {
@@ -371,6 +372,12 @@ function getNamedRule(rules: ApprovalRuleMap, commandName: string): boolean | un
     return rules[lowerCaseCommandName];
   }
 
+  for (const [ ruleKey, ruleValue ] of Object.entries(rules)) {
+    if (!ruleKey.startsWith('/') && ruleKey.toLowerCase() === lowerCaseCommandName) {
+      return ruleValue;
+    }
+  }
+
   return undefined;
 }
 
@@ -425,7 +432,7 @@ function extractFirstToken(command: string): string | undefined {
       continue;
     }
 
-    if (/\s/u.test(character)) {
+    if (WHITESPACE_CHARACTER_REGEX.test(character)) {
       break;
     }
 
@@ -542,6 +549,17 @@ function splitShellSubcommands(commandLine: string): string[] | undefined {
     if (character === ';') {
       pushSubcommand(subcommands, current);
       current = '';
+      continue;
+    }
+
+    if (character === '\n' || character === '\r') {
+      pushSubcommand(subcommands, current);
+      current = '';
+
+      if (character === '\r' && nextCharacter === '\n') {
+        index += 1;
+      }
+
       continue;
     }
 

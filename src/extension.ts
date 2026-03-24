@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { getExtensionOutputChannel } from '@/logging';
+import { getExtensionOutputChannel, logError } from '@/logging';
 import { EXTENSION_CONFIG_SECTION } from '@/reviewCommentConfig';
 import { registerReviewParticipant, reviewCommentToChat } from '@/reviewComments';
 import { registerShellTools } from '@/shellTools';
@@ -30,6 +30,14 @@ async function resetAutoApproveWarningIfDisabled(): Promise<void> {
       vscode.ConfigurationTarget.Global,
     );
   }
+}
+
+function queueAutoApproveWarningReset(): void {
+  void resetAutoApproveWarningIfDisabled().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+
+    logError(`Failed to reset shell auto-approve warning acceptance: ${message}`);
+  });
 }
 
 function disposeAndRemoveSubscription(
@@ -78,7 +86,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   applyFeatureConfiguration();
-  void resetAutoApproveWarningIfDisabled();
+  queueAutoApproveWarningReset();
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(event => {
@@ -89,8 +97,11 @@ export function activate(context: vscode.ExtensionContext): void {
         applyFeatureConfiguration();
       }
 
-      if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY}`)) {
-        void resetAutoApproveWarningIfDisabled();
+      if (
+        event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY}`)
+        || event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY}`)
+      ) {
+        queueAutoApproveWarningReset();
       }
 
       if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${SHELL_TOOLS_AUTO_APPROVE_RULES_KEY}`)) {

@@ -355,6 +355,42 @@ describe('Extension', () => {
     );
   });
 
+  it('clears accepted auto-approve warning when the accepted flag changes while auto-approve is disabled', async () => {
+    const context = createMockContext();
+    const getConfigurationMock = vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>;
+
+    getConfigurationMock.mockReturnValue({
+      get: vi.fn((key: string, defaultValue: boolean) => {
+        if (key === SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY) {
+          return false;
+        }
+
+        if (key === SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY) {
+          return true;
+        }
+
+        return defaultValue;
+      }),
+      update: vscode.updateConfiguration,
+    });
+
+    activate(context);
+    vscode.updateConfiguration.mockClear();
+
+    const handlers = vscode.changeHandlers as ((event: ConfigurationChangeEventLike) => void)[];
+
+    handlers[0]?.({
+      affectsConfiguration: (section: string) => section === `agent-helper-kit.${SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY}`,
+    });
+    await Promise.resolve();
+
+    expect(vscode.updateConfiguration).toHaveBeenCalledWith(
+      SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY,
+      false,
+      vscode.ConfigurationTarget.Global,
+    );
+  });
+
   it('does not rewrite auto-approve warning acceptance when it is already false', async () => {
     const context = createMockContext();
     const getConfigurationMock = vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>;
