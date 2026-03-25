@@ -103,6 +103,7 @@ const compiledRegexRulesCache = new WeakMap<ApprovalRuleMap, CompiledRegexRule[]
 const parsedRegexRuleCache = new Map<string, null | RegExp>();
 const safeConfiguredRegexRuleCache = new Map<string, boolean>();
 const REGEX_RULE_VALIDATION_TIMEOUT_MS = 250;
+const REGEX_RULE_VALIDATION_RETRY_TIMEOUT_MS = 1000;
 const WHITESPACE_CHARACTER_REGEX = /\s/u;
 let regexRuleValidator: typeof checkSync = checkSync;
 let configuredAutoApproveRulesCache: undefined | {
@@ -206,6 +207,20 @@ function setRegexRuleValidatorForTest(validator: typeof checkSync): void {
   regexRuleValidator = validator;
 }
 
+function validateConfiguredRegexRule(pattern: string, flags: string) {
+  const firstDiagnostics = regexRuleValidator(pattern, flags, {
+    timeout: REGEX_RULE_VALIDATION_TIMEOUT_MS,
+  });
+
+  if (firstDiagnostics.status === 'unknown' && firstDiagnostics.error.kind === 'timeout') {
+    return regexRuleValidator(pattern, flags, {
+      timeout: REGEX_RULE_VALIDATION_RETRY_TIMEOUT_MS,
+    });
+  }
+
+  return firstDiagnostics;
+}
+
 function isSafeConfiguredRegexRule(ruleKey: string): boolean {
   const parsedRule = parseApprovalRegexRule(ruleKey);
 
@@ -228,9 +243,7 @@ function isSafeConfiguredRegexRule(ruleKey: string): boolean {
   }
 
   try {
-    const diagnostics = regexRuleValidator(parsedRule.pattern, parsedRule.flags, {
-      timeout: REGEX_RULE_VALIDATION_TIMEOUT_MS,
-    });
+    const diagnostics = validateConfiguredRegexRule(parsedRule.pattern, parsedRule.flags);
 
     if (diagnostics.status === 'vulnerable') {
       logWarn(

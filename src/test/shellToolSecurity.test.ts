@@ -730,6 +730,49 @@ describe('shell tool security', () => {
     );
   });
 
+  it('retries regex validation once when the initial recheck pass times out', () => {
+    const validator = vi.fn()
+      .mockReturnValueOnce({
+        error: {
+          kind: 'timeout',
+        },
+        status: 'unknown',
+      })
+      .mockReturnValueOnce({
+        checker: 'automaton',
+        complexity: {
+          isFuzz: false,
+          summary: 'safe',
+          type: 'safe',
+        },
+        flags: 'u',
+        source: '^customcmd$',
+        status: 'safe',
+      });
+
+    shellToolSecurityInternals.setRegexRuleValidatorForTest(validator);
+
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
+        return true;
+      }
+
+      if (key === 'shellTools.autoApprove.rules') {
+        return {
+          '/^customcmd$/': true,
+        };
+      }
+
+      return undefined;
+    }));
+
+    expect(analyzeShellRunAutoApproval('customcmd')).toEqual({
+      autoApprove: true,
+    });
+    expect(validator).toHaveBeenCalledTimes(2);
+    expect(logWarn).not.toHaveBeenCalled();
+  });
+
   it('clears cached rule validation state when requested', () => {
     getConfiguration.mockReturnValue(createConfiguration(key => {
       if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
