@@ -2,7 +2,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
-import { checkSync } from 'recheck';
+import { checkSync } from 'recheck/lib/browser';
 
 import { logWarn } from '@/logging';
 import { EXTENSION_CONFIG_SECTION } from '@/reviewCommentConfig';
