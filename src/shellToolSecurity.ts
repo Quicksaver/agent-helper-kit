@@ -42,6 +42,31 @@ type CommandRuleDecision = {
   reason?: string;
 };
 
+type ShellQuote = 'double' | 'single';
+
+type ShellScannerState = {
+  escapeNext: boolean;
+  quote: ShellQuote | undefined;
+};
+
+type ShellScannerStep
+  = | {
+    kind: 'consume' | 'whitespace';
+    state: ShellScannerState;
+    text: string;
+  }
+  | {
+    kind: 'redirection';
+  }
+  | {
+    kind: 'reject';
+  }
+  | {
+    kind: 'separator';
+    skip: number;
+    text: string;
+  };
+
 export type ShellRunApprovalDecision = {
   decision: 'allow' | 'ask' | 'deny';
   modelAssessment?: string;
@@ -116,6 +141,8 @@ const parsedRegexRuleCache = new Map<string, null | RegExp>();
 const safeConfiguredRegexRuleCache = new Map<string, boolean>();
 const REGEX_RULE_VALIDATION_TIMEOUT_MS = 250;
 const REGEX_RULE_VALIDATION_RETRY_TIMEOUT_MS = 1000;
+const AMBIGUOUS_TRANSIENT_ENVIRONMENT_ASSIGNMENTS_REASON = 'Transient environment variable parsing was ambiguous, so the command must be risk-assessed before it can run without confirmation.';
+const TRANSIENT_ENVIRONMENT_ASSIGNMENTS_SUPPRESS_ALLOW_REASON = 'Transient environment variable assignments suppress automatic allow rules, so the command must be risk-assessed before it can run without confirmation.';
 const WHITESPACE_CHARACTER_REGEX = /\s/u;
 const TRANSIENT_ENVIRONMENT_VARIABLE_NAME_CHARACTER_REGEX = /[a-zA-Z0-9_]/u;
 let regexRuleValidator: typeof checkSync = checkSync;
@@ -500,6 +527,160 @@ function pushSubcommand(subcommands: string[], current: string): void {
   }
 }
 
+function createShellScannerState(): ShellScannerState {
+  return {
+    escapeNext: false,
+    quote: undefined,
+  };
+}
+
+function isShellScannerComplete(state: ShellScannerState): boolean {
+  return !state.escapeNext && state.quote === undefined;
+}
+
+function scanShellCharacter(command: string, index: number, state: ShellScannerState): ShellScannerStep {
+  const character = command[index];
+  const nextCharacter = command[index + 1];
+
+  if (state.escapeNext) {
+    return {
+      kind: 'consume',
+      state: {
+        escapeNext: false,
+        quote: state.quote,
+      },
+      text: character,
+    };
+  }
+
+  if (state.quote === 'single') {
+    return {
+      kind: 'consume',
+      state: {
+        escapeNext: false,
+        quote: character === '\'' ? undefined : 'single',
+      },
+      text: character,
+    };
+  }
+
+  if (character === '\\') {
+    return {
+      kind: 'consume',
+      state: {
+        escapeNext: true,
+        quote: state.quote,
+      },
+      text: character,
+    };
+  }
+
+  if (state.quote === 'double') {
+    if (character === '`' || (character === '$' && nextCharacter === '(')) {
+      return { kind: 'reject' };
+    }
+
+    return {
+      kind: 'consume',
+      state: {
+        escapeNext: false,
+        quote: character === '"' ? undefined : 'double',
+      },
+      text: character,
+    };
+  }
+
+  if (character === '`' || (character === '$' && nextCharacter === '(')) {
+    return { kind: 'reject' };
+  }
+
+  if (character === '\'') {
+    return {
+      kind: 'consume',
+      state: {
+        escapeNext: false,
+        quote: 'single',
+      },
+      text: character,
+    };
+  }
+
+  if (character === '"') {
+    return {
+      kind: 'consume',
+      state: {
+        escapeNext: false,
+        quote: 'double',
+      },
+      text: character,
+    };
+  }
+
+  if (character === '&') {
+    return {
+      kind: 'separator',
+      skip: nextCharacter === '&' ? 1 : 0,
+      text: nextCharacter === '&' ? '&&' : '&',
+    };
+  }
+
+  if (character === '|') {
+    return {
+      kind: 'separator',
+      skip: nextCharacter === '|' ? 1 : 0,
+      text: nextCharacter === '|' ? '||' : '|',
+    };
+  }
+
+  if (character === ';') {
+    return {
+      kind: 'separator',
+      skip: 0,
+      text: character,
+    };
+  }
+
+  if (character === '\r' || character === '\n') {
+    return {
+      kind: 'separator',
+      skip: character === '\r' && nextCharacter === '\n' ? 1 : 0,
+      text: character === '\r' && nextCharacter === '\n' ? '\r\n' : character,
+    };
+  }
+
+  if (character === '>' || character === '<') {
+    return { kind: 'redirection' };
+  }
+
+  if (WHITESPACE_CHARACTER_REGEX.test(character)) {
+    return {
+      kind: 'whitespace',
+      state: {
+        escapeNext: false,
+        quote: state.quote,
+      },
+      text: character,
+    };
+  }
+
+  return {
+    kind: 'consume',
+    state: {
+      escapeNext: false,
+      quote: state.quote,
+    },
+    text: character,
+  };
+}
+
+function joinUniqueReasons(reasons: readonly (string | undefined)[]): string | undefined {
+  const uniqueReasons = Array.from(
+    new Set(reasons.filter((reason): reason is string => reason !== undefined && reason.length > 0)),
+  );
+
+  return uniqueReasons.length > 0 ? uniqueReasons.join(' ') : undefined;
+}
+
 function parseLeadingTransientEnvironmentAssignment(command: string, startIndex: number): number | undefined {
   if (startIndex >= command.length) {
     return undefined;
@@ -515,7 +696,7 @@ function parseLeadingTransientEnvironmentAssignment(command: string, startIndex:
 
   while (
     index < command.length
-    && TRANSIENT_ENVIRONMENT_VARIABLE_NAME_CHARACTER_REGEX.test(command[index] ?? '')
+    && TRANSIENT_ENVIRONMENT_VARIABLE_NAME_CHARACTER_REGEX.test(command[index])
   ) {
     index += 1;
   }
@@ -525,72 +706,24 @@ function parseLeadingTransientEnvironmentAssignment(command: string, startIndex:
   }
 
   index += 1;
-
-  let escapeNext = false;
-  let quote: 'double' | 'single' | undefined;
+  let state = createShellScannerState();
 
   for (; index < command.length; index += 1) {
-    const character = command[index];
-    const nextCharacter = command[index + 1];
+    const step = scanShellCharacter(command, index, state);
 
-    if (escapeNext) {
-      escapeNext = false;
+    if (step.kind === 'consume') {
+      state = step.state;
       continue;
     }
 
-    if (quote === 'single') {
-      if (character === '\'') {
-        quote = undefined;
-      }
-
-      continue;
-    }
-
-    if (character === '\\') {
-      escapeNext = true;
-      continue;
-    }
-
-    if (quote === 'double') {
-      if (character === '`') {
-        return undefined;
-      }
-
-      if (character === '$' && nextCharacter === '(') {
-        return undefined;
-      }
-
-      if (character === '"') {
-        quote = undefined;
-      }
-
-      continue;
-    }
-
-    if (character === '`') {
-      return undefined;
-    }
-
-    if (character === '$' && nextCharacter === '(') {
-      return undefined;
-    }
-
-    if (character === '\'') {
-      quote = 'single';
-      continue;
-    }
-
-    if (character === '"') {
-      quote = 'double';
-      continue;
-    }
-
-    if (WHITESPACE_CHARACTER_REGEX.test(character)) {
+    if (step.kind === 'whitespace') {
       return index;
     }
+
+    return undefined;
   }
 
-  if (escapeNext || quote !== undefined) {
+  if (!isShellScannerComplete(state)) {
     return undefined;
   }
 
@@ -603,7 +736,7 @@ function stripLeadingTransientEnvironmentAssignments(command: string): {
 } {
   let index = 0;
 
-  while (index < command.length && WHITESPACE_CHARACTER_REGEX.test(command[index] ?? '')) {
+  while (index < command.length && WHITESPACE_CHARACTER_REGEX.test(command[index])) {
     index += 1;
   }
 
@@ -621,7 +754,7 @@ function stripLeadingTransientEnvironmentAssignments(command: string): {
     hadTransientEnvironmentAssignments = true;
     scanIndex = assignmentEndIndex;
 
-    while (scanIndex < command.length && WHITESPACE_CHARACTER_REGEX.test(command[scanIndex] ?? '')) {
+    while (scanIndex < command.length && WHITESPACE_CHARACTER_REGEX.test(command[scanIndex])) {
       scanIndex += 1;
     }
   }
@@ -644,8 +777,7 @@ function stripTransientEnvironmentAssignmentsFromCommandLine(commandLine: string
   strippedCommandLine: string;
 } {
   let current = '';
-  let escapeNext = false;
-  let quote: 'double' | 'single' | undefined;
+  let state = createShellScannerState();
   let hadTransientEnvironmentAssignments = false;
   let strippedCommandLine = '';
 
@@ -658,117 +790,25 @@ function stripTransientEnvironmentAssignmentsFromCommandLine(commandLine: string
   };
 
   for (let index = 0; index < commandLine.length; index += 1) {
-    const character = commandLine[index];
-    const nextCharacter = commandLine[index + 1];
+    const step = scanShellCharacter(commandLine, index, state);
 
-    if (escapeNext) {
-      current += character;
-      escapeNext = false;
-      continue;
-    }
-
-    if (quote === 'single') {
-      current += character;
-
-      if (character === '\'') {
-        quote = undefined;
-      }
-
-      continue;
-    }
-
-    if (character === '\\') {
-      current += character;
-      escapeNext = true;
-      continue;
-    }
-
-    if (quote === 'double') {
-      if (character === '`') {
-        return undefined;
-      }
-
-      if (character === '$' && nextCharacter === '(') {
-        return undefined;
-      }
-
-      current += character;
-
-      if (character === '"') {
-        quote = undefined;
-      }
-
-      continue;
-    }
-
-    if (character === '`') {
+    if (step.kind === 'reject' || step.kind === 'redirection') {
       return undefined;
     }
 
-    if (character === '$' && nextCharacter === '(') {
-      return undefined;
-    }
-
-    if (character === '\'') {
-      current += character;
-      quote = 'single';
-      continue;
-    }
-
-    if (character === '"') {
-      current += character;
-      quote = 'double';
-      continue;
-    }
-
-    if (character === '>' || character === '<') {
-      return undefined;
-    }
-
-    if (character === '&') {
+    if (step.kind === 'separator') {
       flushCurrent();
-      strippedCommandLine += nextCharacter === '&' ? '&&' : '&';
-
-      if (nextCharacter === '&') {
-        index += 1;
-      }
+      strippedCommandLine += step.text;
+      index += step.skip;
 
       continue;
     }
 
-    if (character === '|') {
-      flushCurrent();
-      strippedCommandLine += nextCharacter === '|' ? '||' : '|';
-
-      if (nextCharacter === '|') {
-        index += 1;
-      }
-
-      continue;
-    }
-
-    if (character === ';') {
-      flushCurrent();
-      strippedCommandLine += character;
-      continue;
-    }
-
-    if (character === '\n' || character === '\r') {
-      flushCurrent();
-      strippedCommandLine += character;
-
-      if (character === '\r' && nextCharacter === '\n') {
-        strippedCommandLine += nextCharacter;
-        index += 1;
-      }
-
-      continue;
-    }
-
-    current += character;
+    current += step.text;
+    state = step.state;
   }
 
-  if (escapeNext || quote !== undefined) {
+  if (!isShellScannerComplete(state)) {
     return undefined;
   }
 
@@ -900,120 +940,28 @@ function evaluateFullCommandLineAgainstRules(command: string, rules: ApprovalRul
 function splitShellSubcommands(commandLine: string): string[] | undefined {
   const subcommands: string[] = [];
   let current = '';
-  let escapeNext = false;
-  let quote: 'double' | 'single' | undefined;
+  let state = createShellScannerState();
 
   for (let index = 0; index < commandLine.length; index += 1) {
-    const character = commandLine[index];
-    const nextCharacter = commandLine[index + 1];
+    const step = scanShellCharacter(commandLine, index, state);
 
-    if (escapeNext) {
-      current += character;
-      escapeNext = false;
-      continue;
-    }
-
-    if (quote === 'single') {
-      current += character;
-
-      if (character === '\'') {
-        quote = undefined;
-      }
-
-      continue;
-    }
-
-    if (character === '\\') {
-      current += character;
-      escapeNext = true;
-      continue;
-    }
-
-    if (quote === 'double') {
-      if (character === '`') {
-        return undefined;
-      }
-
-      if (character === '$' && nextCharacter === '(') {
-        return undefined;
-      }
-
-      current += character;
-
-      if (character === '"') {
-        quote = undefined;
-      }
-
-      continue;
-    }
-
-    if (character === '`') {
+    if (step.kind === 'reject' || step.kind === 'redirection') {
       return undefined;
     }
 
-    if (character === '$' && nextCharacter === '(') {
-      return undefined;
-    }
-
-    if (character === '\'') {
-      current += character;
-      quote = 'single';
-      continue;
-    }
-
-    if (character === '"') {
-      current += character;
-      quote = 'double';
-      continue;
-    }
-
-    if (character === '>' || character === '<') {
-      return undefined;
-    }
-
-    if (character === '&') {
+    if (step.kind === 'separator') {
       pushSubcommand(subcommands, current);
       current = '';
-
-      if (nextCharacter === '&') {
-        index += 1;
-      }
+      index += step.skip;
 
       continue;
     }
 
-    if (character === '|') {
-      pushSubcommand(subcommands, current);
-      current = '';
-
-      if (nextCharacter === '|') {
-        index += 1;
-      }
-
-      continue;
-    }
-
-    if (character === ';') {
-      pushSubcommand(subcommands, current);
-      current = '';
-      continue;
-    }
-
-    if (character === '\n' || character === '\r') {
-      pushSubcommand(subcommands, current);
-      current = '';
-
-      if (character === '\r' && nextCharacter === '\n') {
-        index += 1;
-      }
-
-      continue;
-    }
-
-    current += character;
+    current += step.text;
+    state = step.state;
   }
 
-  if (escapeNext || quote !== undefined) {
+  if (!isShellScannerComplete(state)) {
     return undefined;
   }
 
@@ -1040,7 +988,7 @@ function evaluateSingleCommand(command: string, rules: ApprovalRuleMap): Command
 
   return {
     decision: 'defer',
-    reason: 'Transient environment variable assignments suppress automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
+    reason: TRANSIENT_ENVIRONMENT_ASSIGNMENTS_SUPPRESS_ALLOW_REASON,
   };
 }
 
@@ -1054,7 +1002,10 @@ function evaluateFullCommandLine(command: string, rules: ApprovalRuleMap): Comma
   const strippedCommandLine = stripTransientEnvironmentAssignmentsFromCommandLine(command);
 
   if (!strippedCommandLine) {
-    return { decision: 'defer' };
+    return {
+      decision: 'defer',
+      reason: AMBIGUOUS_TRANSIENT_ENVIRONMENT_ASSIGNMENTS_REASON,
+    };
   }
 
   const evaluation = evaluateFullCommandLineAgainstRules(strippedCommandLine.strippedCommandLine, rules);
@@ -1069,7 +1020,7 @@ function evaluateFullCommandLine(command: string, rules: ApprovalRuleMap): Comma
 
   return {
     decision: 'defer',
-    reason: 'Transient environment variable assignments suppress automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
+    reason: TRANSIENT_ENVIRONMENT_ASSIGNMENTS_SUPPRESS_ALLOW_REASON,
   };
 }
 
@@ -1090,6 +1041,11 @@ export function analyzeShellRunRuleDisposition(commandLine: string): CommandRule
 
   const rules = getMergedApprovalRules();
   const subcommandResults = subcommands.map(subcommand => evaluateSingleCommand(subcommand, rules));
+  const deferredSubcommandReason = joinUniqueReasons(
+    subcommandResults
+      .filter(result => result.decision === 'defer')
+      .map(result => result.reason),
+  );
   const deniedSubcommandResult = subcommandResults.find(result => result.decision === 'deny');
 
   if (deniedSubcommandResult) {
@@ -1123,10 +1079,12 @@ export function analyzeShellRunRuleDisposition(commandLine: string): CommandRule
     };
   }
 
-  if (commandLineResult.reason) {
+  const deferReason = joinUniqueReasons([ deferredSubcommandReason, commandLineResult.reason ]);
+
+  if (deferReason) {
     return {
       decision: 'defer',
-      reason: commandLineResult.reason,
+      reason: deferReason,
     };
   }
 

@@ -1767,6 +1767,54 @@ describe('shell tools', () => {
     }, {})).rejects.toThrow('The command `rm` is denied by the shell approval policy.');
   });
 
+  it('denies sync commands matched by deny rules before prompting', async () => {
+    registerShellTools();
+
+    const runSyncTool = getRegisteredToolWithPrepare('run_in_sync_shell');
+
+    await expect(runSyncTool.prepareInvocation({
+      input: {
+        command: 'pwd && rm -rf build',
+        explanation: 'print cwd and delete build output',
+        goal: 'mix safe and unsafe work',
+        riskAssessment: 'This deletes build output and may remove files irreversibly.',
+      },
+    }, {})).rejects.toThrow('The command `rm` is denied by the shell approval policy.');
+  });
+
+  it('re-checks deny rules during async invocation', async () => {
+    registerShellTools();
+
+    const runAsyncTool = getRegisteredTool('run_in_async_shell');
+
+    await expect(runAsyncTool.invoke({
+      input: {
+        command: 'pwd && rm -rf build',
+        explanation: 'print cwd and delete build output',
+        goal: 'mix safe and unsafe work',
+        riskAssessment: 'This deletes build output and may remove files irreversibly.',
+      },
+      toolInvocationToken: undefined,
+    }, {})).rejects.toThrow('The command `rm` is denied by the shell approval policy.');
+  });
+
+  it('re-checks deny rules during sync invocation', async () => {
+    registerShellTools();
+
+    const runSyncTool = getRegisteredTool('run_in_sync_shell');
+
+    await expect(runSyncTool.invoke({
+      input: {
+        command: 'pwd && rm -rf build',
+        explanation: 'print cwd and delete build output',
+        goal: 'mix safe and unsafe work',
+        riskAssessment: 'This deletes build output and may remove files irreversibly.',
+        timeout: 1000,
+      },
+      toolInvocationToken: undefined,
+    }, {})).rejects.toThrow('The command `rm` is denied by the shell approval policy.');
+  });
+
   it('lets the YOLO override suppress prompts when no rule decides the command', async () => {
     getConfiguration.mockReturnValue(createConfiguration(key => {
       if (key === 'shellTools.autoApprovePotentiallyDestructiveCommands') {

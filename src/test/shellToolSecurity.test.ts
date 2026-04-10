@@ -163,6 +163,10 @@ describe('shell tool security', () => {
       decision: 'defer',
       reason: 'Transient environment variable assignments suppress automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
     });
+    expect(analyzeShellRunRuleDisposition('FOO=$HOME pwd')).toEqual({
+      decision: 'defer',
+      reason: 'Transient environment variable assignments suppress automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
+    });
     expect(analyzeShellRunRuleDisposition('FOO=bar pwd && git branch')).toEqual({
       decision: 'defer',
       reason: 'Transient environment variable assignments suppress automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
@@ -326,8 +330,10 @@ describe('shell tool security', () => {
 
   it('parses transient environment assignments conservatively', () => {
     expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO=bar pwd', 0)).toBe('FOO=bar'.length);
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO=$HOME pwd', 0)).toBe('FOO=$HOME'.length);
     expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO=ba\\r pwd', 0)).toBe('FOO=ba\\r'.length);
     expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('BAR="two words" pwd', 0)).toBe('BAR="two words"'.length);
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('BAR="$HOME" pwd', 0)).toBe('BAR="$HOME"'.length);
     expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('BAZ=\'two words\' pwd', 0)).toBe('BAZ=\'two words\''.length);
     expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('pwd', 3)).toBeUndefined();
     expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('9FOO=bar pwd', 0)).toBeUndefined();
@@ -364,6 +370,10 @@ describe('shell tool security', () => {
     expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=ba\\r pwd')).toEqual({
       hadTransientEnvironmentAssignments: true,
       strippedCommandLine: 'pwd',
+    });
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=$HOME pwd && BAR="$SHELL" wc -l README.md')).toEqual({
+      hadTransientEnvironmentAssignments: true,
+      strippedCommandLine: 'pwd && wc -l README.md',
     });
     expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=\'two words\' pwd')).toEqual({
       hadTransientEnvironmentAssignments: true,
@@ -412,6 +422,10 @@ describe('shell tool security', () => {
     expect(shellToolSecurityInternals.evaluateFullCommandLine('echo ok\nnext', rules)).toEqual({
       decision: 'allow',
       reason: 'The command matched allow rule /^echo ok\nnext$/.',
+    });
+    expect(shellToolSecurityInternals.evaluateFullCommandLine('FOO="bad `x`" pwd', rules)).toEqual({
+      decision: 'defer',
+      reason: 'Transient environment variable parsing was ambiguous, so the command must be risk-assessed before it can run without confirmation.',
     });
     expect(shellToolSecurityInternals.evaluateFullCommandLine('customcmd --fast', rules)).toEqual({
       decision: 'defer',
@@ -493,6 +507,7 @@ describe('shell tool security', () => {
     });
     expect(shellToolSecurityInternals.evaluateFullCommandLine('FOO=`bad` pwd', rules)).toEqual({
       decision: 'defer',
+      reason: 'Transient environment variable parsing was ambiguous, so the command must be risk-assessed before it can run without confirmation.',
     });
   });
 
