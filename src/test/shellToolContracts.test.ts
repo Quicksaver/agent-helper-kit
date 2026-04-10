@@ -182,6 +182,7 @@ describe('shell tool contracts', () => {
       cwd: '/workspace',
       explanation: 'print ok',
       goal: 'test async validation',
+      riskAssessment: 'This only prints output.',
       shell: '/bin/zsh',
     })).toEqual({
       columns: 320,
@@ -189,6 +190,7 @@ describe('shell tool contracts', () => {
       cwd: '/workspace',
       explanation: 'print ok',
       goal: 'test async validation',
+      riskAssessment: 'This only prints output.',
       shell: '/bin/zsh',
     });
 
@@ -197,6 +199,7 @@ describe('shell tool contracts', () => {
       command: 'echo ok',
       explanation: 'print ok',
       goal: 'test async validation',
+      riskAssessment: 'This only prints output.',
     })).toThrow(new RegExp(`columns must be less than or equal to ${MAX_SHELL_COLUMNS}`));
   });
 
@@ -223,6 +226,7 @@ describe('shell tool contracts', () => {
       command: 'echo ok',
       explanation: 'print ok',
       goal: 'test sync validation',
+      riskAssessment: 'This only prints output.',
       timeout: 0,
     })).toThrow(/columns must be greater than 0/);
 
@@ -231,6 +235,7 @@ describe('shell tool contracts', () => {
       command: 'echo ok',
       explanation: 'print ok',
       goal: 'test sync validation',
+      riskAssessment: 'This only prints output.',
       timeout: 0,
     })).toThrow(/columns must be a whole number/);
 
@@ -240,6 +245,7 @@ describe('shell tool contracts', () => {
       full_output: true,
       goal: 'test sync validation',
       last_lines: 5,
+      riskAssessment: 'This only prints output.',
       timeout: 0,
     })).toThrow(/full_output, last_lines, and regex are mutually exclusive options/);
 
@@ -248,6 +254,7 @@ describe('shell tool contracts', () => {
       explanation: 'print ok',
       goal: 'test sync validation',
       regex_flags: 'i',
+      riskAssessment: 'This only prints output.',
       timeout: 0,
     })).toThrow(/regex_flags requires regex/);
   });
@@ -261,6 +268,7 @@ describe('shell tool contracts', () => {
       explanation: 'print ok',
       full_output: true,
       goal: 'test sync validation',
+      riskAssessment: 'This only prints output.',
       timeout: 1000,
     })).toEqual({
       columns: 320,
@@ -268,6 +276,7 @@ describe('shell tool contracts', () => {
       explanation: 'print ok',
       full_output: true,
       goal: 'test sync validation',
+      riskAssessment: 'This only prints output.',
       timeout: 1000,
     });
   });

@@ -2,7 +2,10 @@ import { EventEmitter } from 'node:events';
 
 import {
   beforeEach,
-  describe, expect, it, vi,
+  describe,
+  expect,
+  it,
+  vi,
 } from 'vitest';
 
 import { activate } from '@/extension';
@@ -10,11 +13,7 @@ import { resetExtensionOutputChannelForTest } from '@/logging';
 import { reviewCommentToChat } from '@/reviewComments';
 import { SHELL_TOOL_NAMES } from '@/shellToolContracts';
 import * as shellToolSecurity from '@/shellToolSecurity';
-import {
-  SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY,
-  SHELL_TOOLS_AUTO_APPROVE_RULES_KEY,
-  SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY,
-} from '@/shellToolSecurity';
+import { SHELL_TOOLS_APPROVAL_RULES_KEY } from '@/shellToolSecurity';
 
 type ConfigurationChangeEventLike = {
   affectsConfiguration: (section: string) => boolean;
@@ -49,28 +48,12 @@ const vscode = vi.hoisted(() => {
   }
 
   const commandDisposable = { dispose: vi.fn() };
-  const configurationTarget = {
-    Global: 1,
-  };
   const participantDisposable = { dispose: vi.fn() };
   const toolDisposable = { dispose: vi.fn() };
   const onDidChangeDisposable = { dispose: vi.fn() };
   const changeHandlers: ((event: { affectsConfiguration: (section: string) => boolean }) => void)[] = [];
-  const updateConfiguration = vi.fn(() => Promise.resolve());
   const getConfiguration = vi.fn(() => ({
-    get: vi.fn((key: string, defaultValue: boolean) => {
-      if (
-        key === 'bringToChat.enabled'
-        || key === 'shellTools.enabled'
-        || key === SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY
-        || key === SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY
-      ) {
-        return defaultValue;
-      }
-
-      return defaultValue;
-    }),
-    update: updateConfiguration,
+    get: vi.fn((_: string, defaultValue: boolean) => defaultValue),
   }));
 
   return {
@@ -84,7 +67,6 @@ const vscode = vi.hoisted(() => {
     commands: {
       registerCommand: vi.fn(() => commandDisposable),
     },
-    ConfigurationTarget: configurationTarget,
     Disposable: {
       from: vi.fn((...disposables: { dispose: () => void }[]) => ({
         dispose: () => {
@@ -95,8 +77,12 @@ const vscode = vi.hoisted(() => {
       })),
     },
     EventEmitter: TestEventEmitter,
+    LanguageModelChatMessage: {
+      User: vi.fn((value: string) => ({ role: 'user', value })),
+    },
     lm: {
       registerTool: vi.fn(() => toolDisposable),
+      selectChatModels: vi.fn(async () => []),
     },
     ThemeIcon: vi.fn(),
     toolDisposable,
@@ -104,7 +90,6 @@ const vscode = vi.hoisted(() => {
     TreeItemCollapsibleState: {
       None: 0,
     },
-    updateConfiguration,
     window: {
       createOutputChannel: vi.fn(() => ({
         append: vi.fn(),
@@ -118,15 +103,16 @@ const vscode = vi.hoisted(() => {
         onDidChangeSelection: vi.fn(() => ({ dispose: vi.fn() })),
       })),
       registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
+      showInformationMessage: vi.fn(),
+      showQuickPick: vi.fn(),
+      showWarningMessage: vi.fn(),
     },
     workspace: {
       getConfiguration,
-      onDidChangeConfiguration: vi.fn(
-        (listener: (event: ConfigurationChangeEventLike) => void) => {
-          changeHandlers.push(listener);
-          return onDidChangeDisposable;
-        },
-      ),
+      onDidChangeConfiguration: vi.fn((listener: (event: ConfigurationChangeEventLike) => void) => {
+        changeHandlers.push(listener);
+        return onDidChangeDisposable;
+      }),
     },
   };
 });
@@ -145,7 +131,7 @@ describe('Extension', () => {
     resetExtensionOutputChannelForTest();
   });
 
-  it('should register the reviewCommentToChat command on activation', () => {
+  it('registers the reviewCommentToChat command on activation', () => {
     const context = createMockContext();
 
     activate(context);
@@ -157,36 +143,7 @@ describe('Extension', () => {
     expect(vscode.window.createOutputChannel).toHaveBeenCalledWith('Agent Helper Kit');
   });
 
-  it('clears auto-approve warning acceptance when auto-approval is disabled', async () => {
-    const context = createMockContext();
-    const getConfigurationMock = vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>;
-
-    getConfigurationMock.mockReturnValue({
-      get: vi.fn((key: string, defaultValue: boolean) => {
-        if (key === SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY) {
-          return false;
-        }
-
-        if (key === SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY) {
-          return true;
-        }
-
-        return defaultValue;
-      }),
-      update: vscode.updateConfiguration,
-    });
-
-    activate(context);
-    await Promise.resolve();
-
-    expect(vscode.updateConfiguration).toHaveBeenCalledWith(
-      SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY,
-      false,
-      vscode.ConfigurationTarget.Global,
-    );
-  });
-
-  it('should register the chat participant on activation', () => {
+  it('registers the chat participant on activation', () => {
     const context = createMockContext();
 
     activate(context);
@@ -197,7 +154,7 @@ describe('Extension', () => {
     );
   });
 
-  it('should register shell tools on activation', () => {
+  it('registers shell tools on activation', () => {
     const context = createMockContext();
 
     activate(context);
@@ -232,7 +189,7 @@ describe('Extension', () => {
     );
   });
 
-  it('does not register bring-to-chat feature when disabled', () => {
+  it('does not register bring-to-chat when disabled', () => {
     const context = createMockContext();
     const getConfigurationMock = vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>;
 
@@ -244,7 +201,6 @@ describe('Extension', () => {
 
         return defaultValue;
       }),
-      update: vscode.updateConfiguration,
     });
 
     activate(context);
@@ -259,7 +215,7 @@ describe('Extension', () => {
     );
   });
 
-  it('unregisters shell tools when setting changes to disabled', () => {
+  it('unregisters shell tools when the feature setting changes to disabled', () => {
     const context = createMockContext();
     const getConfigurationMock = vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>;
     let shellToolsEnabled = true;
@@ -272,39 +228,9 @@ describe('Extension', () => {
 
         return defaultValue;
       }),
-      update: vscode.updateConfiguration,
     });
 
     activate(context);
-
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      SHELL_TOOL_NAMES.runInSyncShell,
-      expect.any(Object),
-    );
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      SHELL_TOOL_NAMES.runInAsyncShell,
-      expect.any(Object),
-    );
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      SHELL_TOOL_NAMES.awaitShell,
-      expect.any(Object),
-    );
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      SHELL_TOOL_NAMES.getShellOutput,
-      expect.any(Object),
-    );
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      SHELL_TOOL_NAMES.killShell,
-      expect.any(Object),
-    );
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      SHELL_TOOL_NAMES.getShellCommand,
-      expect.any(Object),
-    );
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      SHELL_TOOL_NAMES.getLastShellCommand,
-      expect.any(Object),
-    );
 
     const handlers = vscode.changeHandlers as ((event: ConfigurationChangeEventLike) => void)[];
     shellToolsEnabled = false;
@@ -312,111 +238,10 @@ describe('Extension', () => {
       affectsConfiguration: (section: string) => section === 'agent-helper-kit.shellTools.enabled',
     });
 
-    expect(vscode.lm.registerTool).toHaveBeenCalled();
     expect(vscode.toolDisposable.dispose).toHaveBeenCalled();
   });
 
-  it('clears accepted auto-approve warning when auto-approve is turned off later', async () => {
-    const context = createMockContext();
-    const getConfigurationMock = vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>;
-    let autoApproveEnabled = true;
-
-    getConfigurationMock.mockReturnValue({
-      get: vi.fn((key: string, defaultValue: boolean) => {
-        if (key === SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY) {
-          return autoApproveEnabled;
-        }
-
-        if (key === SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY) {
-          return true;
-        }
-
-        return defaultValue;
-      }),
-      update: vscode.updateConfiguration,
-    });
-
-    activate(context);
-    vscode.updateConfiguration.mockClear();
-
-    autoApproveEnabled = false;
-
-    const handlers = vscode.changeHandlers as ((event: ConfigurationChangeEventLike) => void)[];
-
-    handlers[0]?.({
-      affectsConfiguration: (section: string) => section === 'agent-helper-kit.shellTools.autoApprove.enabled',
-    });
-    await Promise.resolve();
-
-    expect(vscode.updateConfiguration).toHaveBeenCalledWith(
-      SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY,
-      false,
-      vscode.ConfigurationTarget.Global,
-    );
-  });
-
-  it('clears accepted auto-approve warning when the accepted flag changes while auto-approve is disabled', async () => {
-    const context = createMockContext();
-    const getConfigurationMock = vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>;
-
-    getConfigurationMock.mockReturnValue({
-      get: vi.fn((key: string, defaultValue: boolean) => {
-        if (key === SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY) {
-          return false;
-        }
-
-        if (key === SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY) {
-          return true;
-        }
-
-        return defaultValue;
-      }),
-      update: vscode.updateConfiguration,
-    });
-
-    activate(context);
-    vscode.updateConfiguration.mockClear();
-
-    const handlers = vscode.changeHandlers as ((event: ConfigurationChangeEventLike) => void)[];
-
-    handlers[0]?.({
-      affectsConfiguration: (section: string) => section === `agent-helper-kit.${SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY}`,
-    });
-    await Promise.resolve();
-
-    expect(vscode.updateConfiguration).toHaveBeenCalledWith(
-      SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY,
-      false,
-      vscode.ConfigurationTarget.Global,
-    );
-  });
-
-  it('does not rewrite auto-approve warning acceptance when it is already false', async () => {
-    const context = createMockContext();
-    const getConfigurationMock = vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>;
-
-    getConfigurationMock.mockReturnValue({
-      get: vi.fn((key: string, defaultValue: boolean) => {
-        if (key === SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY) {
-          return false;
-        }
-
-        if (key === SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY) {
-          return false;
-        }
-
-        return defaultValue;
-      }),
-      update: vscode.updateConfiguration,
-    });
-
-    activate(context);
-    await Promise.resolve();
-
-    expect(vscode.updateConfiguration).not.toHaveBeenCalled();
-  });
-
-  it('clears cached shell security rules when auto-approve rules change', () => {
+  it('clears cached shell security rules when approval rules change', () => {
     const context = createMockContext();
     const resetShellToolSecurityCachesSpy = vi.spyOn(shellToolSecurity, 'resetShellToolSecurityCaches');
 
@@ -425,7 +250,7 @@ describe('Extension', () => {
     const handlers = vscode.changeHandlers as ((event: ConfigurationChangeEventLike) => void)[];
 
     handlers[0]?.({
-      affectsConfiguration: (section: string) => section === `agent-helper-kit.${SHELL_TOOLS_AUTO_APPROVE_RULES_KEY}`,
+      affectsConfiguration: (section: string) => section === `agent-helper-kit.${SHELL_TOOLS_APPROVAL_RULES_KEY}`,
     });
 
     expect(resetShellToolSecurityCachesSpy).toHaveBeenCalledTimes(1);

@@ -97,6 +97,11 @@ function isExpectedOutputDirectoryPath(directoryPath: string): boolean {
   return path.resolve(directoryPath) === path.resolve(getOutputDirectoryPath());
 }
 
+/**
+ * Ensure the file-backed shell output root exists. If the expected temp path is
+ * blocked by a file or broken entry, recover by deleting that blocker before
+ * treating storage initialization as failed.
+ */
 function ensureOutputDirectory(): string {
   const directoryPath = getOutputDirectoryPath();
 
@@ -160,6 +165,11 @@ function getShellMetadataFilePath(shellId: string): string {
   return path.join(ensureOutputDirectory(), `${METADATA_FILE_PREFIX}${safeId}${METADATA_FILE_SUFFIX}`);
 }
 
+/**
+ * Prepare the shell output store for a new session and purge stale output and
+ * metadata artifacts whose newest timestamp is older than the configured grace
+ * window.
+ */
 export function initializeShellOutputStore(startupPurgeMaxAgeMs = DEFAULT_STARTUP_PURGE_MAX_AGE_MS): void {
   const directoryPath = ensureOutputDirectory();
   const nowMs = Date.now();
@@ -247,6 +257,11 @@ export function createShellOutputFile(shellId: string): void {
   fs.writeFileSync(getShellOutputFilePath(shellId), '', { encoding: 'utf8' });
 }
 
+/**
+ * Replace the persisted output for a shell command in one write. Callers use
+ * the boolean result to decide whether to keep treating the command as
+ * file-backed or to fall back to in-memory retention.
+ */
 export function overwriteShellOutput(shellId: string, output: string): boolean {
   let filePath = getOutputDirectoryPath();
 
@@ -262,6 +277,11 @@ export function overwriteShellOutput(shellId: string, output: string): boolean {
   }
 }
 
+/**
+ * Append a single output chunk to the persisted log for a shell command.
+ * Failures are reported to callers so the runtime can recover without losing
+ * the already-written history.
+ */
 export function appendShellOutput(shellId: string, chunk: string): boolean {
   let filePath = getOutputDirectoryPath();
 
@@ -277,6 +297,10 @@ export function appendShellOutput(shellId: string, chunk: string): boolean {
   }
 }
 
+/**
+ * Read persisted shell output synchronously for recovery paths where the
+ * runtime must rebuild in-memory state immediately after an append failure.
+ */
 export function readShellOutputSync(shellId: string): string | undefined {
   const filePath = getShellOutputFilePath(shellId);
 
@@ -294,6 +318,11 @@ export function readShellOutputSync(shellId: string): string | undefined {
   }
 }
 
+/**
+ * Read persisted shell output asynchronously for normal runtime and panel
+ * access. Missing files are treated as empty output because cleanup can race
+ * with reads after command completion.
+ */
 export async function readShellOutput(shellId: string): Promise<string> {
   const filePath = getShellOutputFilePath(shellId);
 
@@ -313,6 +342,10 @@ export function removeShellOutputFile(shellId: string): void {
   fs.rmSync(getShellOutputFilePath(shellId), { force: true });
 }
 
+/**
+ * Read stored command metadata defensively. Invalid or partially-written JSON
+ * is ignored so corrupt artifacts do not break panel history loading.
+ */
 export function readShellCommandMetadata(shellId: string): ShellCommandMetadata | undefined {
   try {
     const raw = fs.readFileSync(getShellMetadataFilePath(shellId), { encoding: 'utf8' });
@@ -358,6 +391,10 @@ export function removeShellCommandMetadata(shellId: string): void {
   fs.rmSync(getShellMetadataFilePath(shellId), { force: true });
 }
 
+/**
+ * Persist the command metadata companion file used to reconstruct shell run
+ * history across panel refreshes and spill-to-disk transitions.
+ */
 export function writeShellCommandMetadata(metadata: ShellCommandMetadata): void {
   let filePath = getOutputDirectoryPath();
 

@@ -195,26 +195,27 @@ export function buildShellToolMetadataFromReader(
 
 export const SHELL_TOOL_METADATA = buildShellToolMetadataFromReader();
 
-export interface RunInAsyncShellInput {
+export interface ShellRiskAssessmentInput {
+  explanation: string;
+  goal: string;
+  riskAssessment: string;
+  riskAssessmentContext?: string[];
+}
+
+export interface RunInShellBaseInput extends ShellRiskAssessmentInput {
   columns?: number;
   command: string;
   cwd?: string;
-  explanation: string;
-  goal: string;
   shell?: string;
 }
 
-export interface RunInSyncShellInput {
-  columns?: number;
-  command: string;
-  cwd?: string;
-  explanation: string;
+export type RunInAsyncShellInput = RunInShellBaseInput;
+
+export interface RunInSyncShellInput extends RunInShellBaseInput {
   full_output?: boolean;
-  goal: string;
   last_lines?: number;
   regex?: string;
   regex_flags?: string;
-  shell?: string;
   timeout: number;
 }
 
@@ -250,26 +251,31 @@ const shellColumnsSchema = z.number().int({
 })
   .optional();
 
-export const runInAsyncShellInputSchema = {
+const shellRiskAssessmentInputSchema = {
+  explanation: z.string(),
+  goal: z.string(),
+  riskAssessment: z.string(),
+  riskAssessmentContext: z.array(z.string()).optional(),
+} satisfies z.ZodRawShape;
+
+const runInShellBaseInputSchema = {
   columns: shellColumnsSchema,
   command: z.string(),
   cwd: z.string().optional(),
-  explanation: z.string(),
-  goal: z.string(),
+  ...shellRiskAssessmentInputSchema,
   shell: z.string().optional(),
 } satisfies z.ZodRawShape;
 
+export const runInAsyncShellInputSchema = {
+  ...runInShellBaseInputSchema,
+} satisfies z.ZodRawShape;
+
 export const runInSyncShellInputSchema = {
-  columns: shellColumnsSchema,
-  command: z.string(),
-  cwd: z.string().optional(),
-  explanation: z.string(),
+  ...runInShellBaseInputSchema,
   full_output: z.boolean().optional(),
-  goal: z.string(),
   last_lines: z.number().int().nonnegative().optional(),
   regex: z.string().optional(),
   regex_flags: z.string().optional(),
-  shell: z.string().optional(),
   timeout: z.number(),
 } satisfies z.ZodRawShape;
 

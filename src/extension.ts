@@ -1,14 +1,12 @@
 import * as vscode from 'vscode';
 
-import { getExtensionOutputChannel, logError } from '@/logging';
+import { getExtensionOutputChannel } from '@/logging';
 import { EXTENSION_CONFIG_SECTION } from '@/reviewCommentConfig';
 import { registerReviewParticipant, reviewCommentToChat } from '@/reviewComments';
 import { registerShellTools } from '@/shellTools';
 import {
   resetShellToolSecurityCaches,
-  SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY,
-  SHELL_TOOLS_AUTO_APPROVE_RULES_KEY,
-  SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY,
+  SHELL_TOOLS_APPROVAL_RULES_KEY,
 } from '@/shellToolSecurity';
 
 const BRING_TO_CHAT_ENABLED_KEY = 'bringToChat.enabled';
@@ -16,28 +14,6 @@ const SHELL_TOOLS_ENABLED_KEY = 'shellTools.enabled';
 
 function isFeatureEnabled(key: string): boolean {
   return vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION).get(key, true);
-}
-
-async function resetAutoApproveWarningIfDisabled(): Promise<void> {
-  const configuration = vscode.workspace.getConfiguration(EXTENSION_CONFIG_SECTION);
-  const isAutoApproveEnabled = configuration.get(SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY);
-  const warningAccepted = configuration.get(SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY);
-
-  if (isAutoApproveEnabled !== true && warningAccepted === true) {
-    await configuration.update(
-      SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY,
-      false,
-      vscode.ConfigurationTarget.Global,
-    );
-  }
-}
-
-function queueAutoApproveWarningReset(): void {
-  void resetAutoApproveWarningIfDisabled().catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-
-    logError(`Failed to reset shell auto-approve warning acceptance: ${message}`);
-  });
 }
 
 function disposeAndRemoveSubscription(
@@ -86,7 +62,6 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   applyFeatureConfiguration();
-  queueAutoApproveWarningReset();
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(event => {
@@ -97,14 +72,7 @@ export function activate(context: vscode.ExtensionContext): void {
         applyFeatureConfiguration();
       }
 
-      if (
-        event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${SHELL_TOOLS_AUTO_APPROVE_ENABLED_KEY}`)
-        || event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${SHELL_TOOLS_AUTO_APPROVE_WARNING_ACCEPTED_KEY}`)
-      ) {
-        queueAutoApproveWarningReset();
-      }
-
-      if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${SHELL_TOOLS_AUTO_APPROVE_RULES_KEY}`)) {
+      if (event.affectsConfiguration(`${EXTENSION_CONFIG_SECTION}.${SHELL_TOOLS_APPROVAL_RULES_KEY}`)) {
         resetShellToolSecurityCaches();
       }
     }),

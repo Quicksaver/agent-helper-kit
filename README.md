@@ -31,6 +31,7 @@ Compared with built-in terminal tools, these extension tools are optimized for a
 - Deterministic command lifecycle with stable IDs you can await, poll, and kill.
 - Structured metadata (`exitCode`, `terminationSignal`, `timedOut`, `shell`) that is easier to automate against.
 - Output controls (`full_output`, `last_lines`, `regex`) to reduce context noise in chat.
+- Approval flow that combines explicit allow/ask/deny rules with optional model-based risk assessment.
 - `run_in_sync_shell` is optimal for single- or multi-step deterministic commands.
 - `run_in_async_shell` is optimal for long-running detached jobs plus explicit polling.
 
@@ -48,12 +49,20 @@ Compared with built-in terminal tools, these extension tools are optimized for a
 - `agent-helper-kit.bringToChat.enabled`: enable or disable bring-to-chat actions.
 - `agent-helper-kit.bringToChat.queueBeforeSend`: queue comments and bring-all-to-chat flow instead of immediate send on each click.
 - `agent-helper-kit.shellTools.enabled`: enable or disable shell tool registration.
-- `agent-helper-kit.shellTools.autoApprove.enabled`: allow shell tools to skip confirmation only for commands that pass the built-in and user-configured auto-approval policy.
-- `agent-helper-kit.shellTools.autoApprove.warningAccepted`: second opt-in gate for shell tool auto-approval after you review the risk of model-triggered shell execution.
-- `agent-helper-kit.shellTools.autoApprove.rules`: override shell tool auto-approval rules with per-command or regex-based allow and deny entries.
+- `agent-helper-kit.shellTools.autoApprovePotentiallyDestructiveCommands`: dangerous YOLO override that auto-approves unresolved commands before any risk-assessment prompt runs; explicit `allow`, `ask`, and `deny` rules still override it.
+- `agent-helper-kit.shellTools.riskAssessment.chatModel`: model ID used to pre-assess shell command risk after explicit rules and before user confirmation; leave empty to disable model-based risk assessment and fall back to explicit rules plus the YOLO setting.
+- `agent-helper-kit.shellTools.riskAssessment.timeoutMs`: timeout for shell risk-assessment prompts. On timeout or other risk-assessment failure, unresolved commands fall back to explicit approval.
+- `agent-helper-kit.shellTools.approvalRules`: override shell tool approval rules with per-command or regex-based `allow`, `ask`, and `deny` entries.
 - `agent-helper-kit.shellOutput.inMemoryOutputLimitKiB`: KiB of shell output to keep in memory before immediately spilling to a temp file. Set to `0` to disable the size-based spill threshold.
 - `agent-helper-kit.shellOutput.memoryToFileSpillMinutes`: minutes to keep output in memory before spilling to file.
 - `agent-helper-kit.shellOutput.startupPurgeMaxAgeHours`: startup cleanup threshold for old persisted output.
+
+When using `run_in_sync_shell` or `run_in_async_shell`, provide:
+
+- `explanation`: what the command does.
+- `goal`: why the command is being run.
+- `riskAssessment`: a brief pre-assessment of possible destructive effects, sensitive-data leakage, data loss, or system impact.
+- `riskAssessmentContext` (optional): additional risk context. Use file paths for scripts the command executes, and inline strings for relevant sub-actions or alias expansions that help explain what the command ultimately runs.
 
 ## Contributing
 

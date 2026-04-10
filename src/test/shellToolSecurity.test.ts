@@ -10,16 +10,28 @@ import {
 } from 'vitest';
 
 import {
-  analyzeShellRunAutoApproval,
+  analyzeShellRunRuleDisposition,
   buildShellRunConfirmationMessage,
+  decideShellRunApproval,
+  SHELL_TOOLS_APPROVAL_RULES_KEY,
+  SHELL_TOOLS_AUTO_APPROVE_POTENTIALLY_DESTRUCTIVE_COMMANDS_KEY,
   shellToolSecurityInternals,
 } from '@/shellToolSecurity';
 
+const assessShellCommandRisk = vi.hoisted(() => vi.fn());
 const logWarn = vi.hoisted(() => vi.fn());
 
-function createConfiguration(getter: (key: string) => unknown = () => undefined): { get: ReturnType<typeof vi.fn> } {
+function createConfiguration(
+  getter: (key: string, defaultValue?: unknown) => unknown = (_, defaultValue) => defaultValue,
+): {
+  get: ReturnType<typeof vi.fn>;
+} {
   return {
-    get: vi.fn((key: string) => getter(key)),
+    get: vi.fn((key: string, defaultValue?: unknown) => {
+      const value = getter(key, defaultValue);
+
+      return value === undefined ? defaultValue : value;
+    }),
   };
 }
 
@@ -36,6 +48,11 @@ const workspaceFoldersState = vi.hoisted(() => ({
 
 vi.mock('@/logging', () => ({
   logWarn,
+}));
+
+vi.mock('@/shellRiskAssessment', () => ({
+  assessShellCommandRisk,
+  SHELL_TOOLS_RISK_ASSESSMENT_CHAT_MODEL_KEY: 'shellTools.riskAssessment.chatModel',
 }));
 
 vi.mock('vscode', () => ({
@@ -59,747 +76,664 @@ describe('shell tool security', () => {
       },
     ];
     getConfiguration.mockReturnValue(createConfiguration());
+    assessShellCommandRisk.mockResolvedValue({ kind: 'disabled' });
   });
 
   afterEach(() => {
     shellToolSecurityInternals.resetShellToolSecurityCaches();
   });
 
-  it('builds a detailed confirmation message with workspace-relative cwd preview and approval note', () => {
+  it('builds a detailed confirmation message with risk context and approval notes', () => {
     expect(buildShellRunConfirmationMessage({
-      autoApprovalDecision: {
-        autoApprove: false,
-        reason: 'Auto-approval is disabled in settings.',
+      approvalDecision: {
+        decision: 'ask',
+        modelAssessment: 'The command may delete files under the workspace.',
+        reason: 'Risk assessment requested explicit approval before running this command.',
       },
-      command: 'pwd',
+      command: 'node scripts/danger.js',
       cwd: 'packages/api',
-      explanation: 'print working directory',
-      goal: 'inspect cwd',
+      explanation: 'run a maintenance script',
+      goal: 'clean generated files',
+      riskAssessment: 'This script may delete generated files under build outputs.',
+      riskAssessmentContext: [ 'scripts/danger.js', 'src/cleanup.ts' ],
     })).toBe(
-      'Command: pwd\n\nCwd: /workspace/packages/api\n\nExplanation: print working directory\n\nGoal: inspect cwd\n\nApproval note: Auto-approval is disabled in settings.',
+      'Command: node scripts/danger.js\n\nCwd: /workspace/packages/api\n\nExplanation: run a maintenance script\n\nGoal: clean generated files\n\nRisk pre-assessment: This script may delete generated files under build outputs.\n\nRisk context files: scripts/danger.js, src/cleanup.ts\n\nRisk model note: The command may delete files under the workspace.\n\nApproval note: Risk assessment requested explicit approval before running this command.',
     );
   });
 
-  it('falls back to home directory and placeholder text when confirmation details are missing', () => {
+  it('falls back to the home directory and placeholders when confirmation details are missing', () => {
     workspaceFoldersState.value = undefined;
 
     expect(buildShellRunConfirmationMessage({
-      autoApprovalDecision: {
-        autoApprove: true,
+      approvalDecision: {
+        decision: 'allow',
       },
       command: '',
       cwd: ' ',
+      riskAssessment: '',
     })).toBe(
-      `Command: (empty command)\n\nCwd: ${os.homedir()} (invalid empty cwd override)\n\nExplanation: (not provided)\n\nGoal: (not provided)`,
+      `Command: (empty command)\n\nCwd: ${os.homedir()} (invalid empty cwd override)\n\nExplanation: (not provided)\n\nGoal: (not provided)\n\nRisk pre-assessment: (not provided)`,
     );
   });
 
-  it('requires auto-approval to be explicitly enabled', () => {
-    expect(analyzeShellRunAutoApproval('pwd')).toEqual({
-      autoApprove: false,
-      reason: 'Auto-approval is disabled in settings.',
+  it('allows commands when every parsed subcommand matches allow rules', () => {
+    expect(analyzeShellRunRuleDisposition('pwd && wc -l README.md')).toEqual({
+      decision: 'allow',
+      reason: 'Every parsed subcommand matched an allow rule.',
+    });
+    expect(analyzeShellRunRuleDisposition('git status')).toEqual({
+      decision: 'allow',
+      reason: 'The command matched allow rule /^git\\s+(branch|diff|log|show|status)\\b/.',
     });
   });
 
-  it('requires the warning acceptance gate even when auto-approval is enabled', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled') {
-        return true;
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('pwd')).toEqual({
-      autoApprove: false,
-      reason: 'Auto-approval warning has not been accepted in settings.',
+  it('denies dangerous commands and dangerous variants of otherwise safe commands', () => {
+    expect(analyzeShellRunRuleDisposition('RM -rf build')).toEqual({
+      decision: 'deny',
+      reason: 'The command `RM` is denied by the shell approval policy.',
+    });
+    expect(analyzeShellRunRuleDisposition('find . -delete')).toEqual({
+      decision: 'deny',
+      reason: 'The command matched deny rule /^find\\b.*\\s-(delete|exec|execdir|fprint|fprintf|fls|ok|okdir)\\b/.',
     });
   });
 
-  it('auto-approves only when every parsed subcommand is allowlisted', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('pwd && wc -l README.md')).toEqual({
-      autoApprove: true,
+  it('always asks when transient environment variables or ambiguous shell parsing are detected', () => {
+    expect(analyzeShellRunRuleDisposition('FOO=bar pwd')).toEqual({
+      decision: 'ask',
+      reason: 'The command begins with transient environment variable assignments, so it always requires explicit approval.',
     });
-    expect(analyzeShellRunAutoApproval('echo "a|b" && echo c\\;d')).toEqual({
-      autoApprove: true,
-    });
-    expect(analyzeShellRunAutoApproval('echo \'a\\\' && pwd')).toEqual({
-      autoApprove: true,
+    expect(analyzeShellRunRuleDisposition('echo $(pwd)')).toEqual({
+      decision: 'ask',
+      reason: 'The command line could not be parsed safely for approval rules, so explicit approval is required.',
     });
   });
 
-  it('allows regex-backed safe commands such as git status and git show', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('git status')).toEqual({
-      autoApprove: true,
-    });
-    expect(analyzeShellRunAutoApproval('git show HEAD~1')).toEqual({
-      autoApprove: true,
+  it('defers unknown commands to the risk assessment model', () => {
+    expect(analyzeShellRunRuleDisposition('git checkout main')).toEqual({
+      decision: 'defer',
     });
   });
 
-  it('denies named dangerous commands even when written with different casing', () => {
+  it('applies configured allow, ask, and deny overrides', () => {
     getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('RM -rf build')).toEqual({
-      autoApprove: false,
-      reason: 'The command `RM` is denied by the shell security policy.',
-    });
-    expect(analyzeShellRunAutoApproval('invoke-expression whoami')).toEqual({
-      autoApprove: false,
-      reason: 'The command `invoke-expression` is denied by the shell security policy.',
-    });
-  });
-
-  it('denies dangerous variants of otherwise safe commands through regex rules', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('find . -delete')).toEqual({
-      autoApprove: false,
-      reason: 'The command matched denied rule /^find\\b.*\\s-(delete|exec|execdir|fprint|fprintf|fls|ok|okdir)\\b/.',
-    });
-    expect(analyzeShellRunAutoApproval('rg todo --pre cat')).toEqual({
-      autoApprove: false,
-      reason: 'The command matched denied rule /^rg\\b.*\\s(--hostname-bin|--pre)\\b/.',
-    });
-    expect(analyzeShellRunAutoApproval('sed -i "" file.txt')).toEqual({
-      autoApprove: false,
-      reason: 'The command matched denied rule /^sed\\b.*\\s(-[a-zA-Z]*(e|f|i)[a-zA-Z]*|--expression|--file|--in-place)\\b/.',
-    });
-    expect(analyzeShellRunAutoApproval('sed \'s/a/b/;w out.txt\' file.txt')).toEqual({
-      autoApprove: false,
-      reason: 'The command matched denied rule /^sed\\b.*;\\s*[wW]\\b/.',
-    });
-  });
-
-  it('keeps confirmation when a command is not on the allowlist', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('git checkout main')).toEqual({
-      autoApprove: false,
-      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
-    });
-  });
-
-  it('allows safe configured regex rules and ignores non-boolean entries', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      if (key === 'shellTools.autoApprove.rules') {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
         return {
-          '/^customcmd\\b/': true,
-          note: 'ignore-me',
+          '/^customcmd\\b/': 'allow',
+          pwd: 'ask',
+          rm: 'allow',
         };
       }
 
       return undefined;
     }));
 
-    expect(analyzeShellRunAutoApproval('customcmd --help')).toEqual({
-      autoApprove: true,
+    expect(analyzeShellRunRuleDisposition('customcmd --help')).toEqual({
+      decision: 'allow',
+      reason: 'The command matched allow rule /^customcmd\\b/.',
     });
-    expect(logWarn).not.toHaveBeenCalled();
-  });
-
-  it('requires every subcommand in a compound command to pass the policy', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('pwd && rm -rf build')).toEqual({
-      autoApprove: false,
-      reason: 'The command `rm` is denied by the shell security policy.',
+    expect(analyzeShellRunRuleDisposition('pwd')).toEqual({
+      decision: 'ask',
+      reason: 'The command `pwd` is configured to always request approval.',
     });
-    expect(analyzeShellRunAutoApproval('pwd | top')).toEqual({
-      autoApprove: false,
-      reason: 'The command `top` is denied by the shell security policy.',
+    expect(analyzeShellRunRuleDisposition('rm -rf build')).toEqual({
+      decision: 'allow',
+      reason: 'Every parsed subcommand matched an allow rule.',
     });
   });
 
-  it('denies compound command lines matched by a configured whole-line regex rule', () => {
+  it('ignores invalid configured regex rules and logs a warning', () => {
     getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      if (key === 'shellTools.autoApprove.rules') {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
         return {
-          '/^pwd && which node$/': false,
+          '/^customcmd$/g': 'allow',
         };
       }
 
       return undefined;
     }));
 
-    expect(analyzeShellRunAutoApproval('pwd && which node')).toEqual({
-      autoApprove: false,
-      reason: 'The command matched denied rule /^pwd && which node$/.',
-    });
-  });
-
-  it('applies user-configured rule overrides after the built-in defaults', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      if (key === 'shellTools.autoApprove.rules') {
-        return {
-          '/[invalid/': true,
-          customcmd: true,
-          pwd: false,
-        };
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('customcmd && which node')).toEqual({
-      autoApprove: true,
-    });
-    expect(analyzeShellRunAutoApproval('pwd')).toEqual({
-      autoApprove: false,
-      reason: 'The command `pwd` is denied by the shell security policy.',
-    });
-  });
-
-  it('fails closed on conflicting case-insensitive named rule variants', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      if (key === 'shellTools.autoApprove.rules') {
-        return {
-          CustomTool: true,
-          cUSTOMtOOL: false,
-        };
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('CUSTOMTOOL README.md')).toEqual({
-      autoApprove: false,
-      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
-    });
-  });
-
-  it('accepts matching case-insensitive named rule variants when they agree', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      if (key === 'shellTools.autoApprove.rules') {
-        return {
-          CustomTool: true,
-          cUSTOMtOOL: true,
-        };
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('CUSTOMTOOL README.md')).toEqual({
-      autoApprove: true,
-    });
-  });
-
-  it('rejects vulnerable user-configured regex rules and falls back to manual approval', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      if (key === 'shellTools.autoApprove.rules') {
-        return {
-          '/(a+)+$/': true,
-        };
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('aaaa')).toEqual({
-      autoApprove: false,
-      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
+    expect(analyzeShellRunRuleDisposition('customcmd')).toEqual({
+      decision: 'defer',
     });
     expect(logWarn).toHaveBeenCalledWith(
-      'Ignoring configured auto-approve regex rule /(a+)+$/ because recheck marked it as potentially vulnerable (exponential).',
+      'Ignoring configured shell approval regex rule /^customcmd$/g because it is not a valid regex literal or uses unsupported flags.',
     );
   });
 
-  it('ignores malformed rule configuration payloads', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      if (key === 'shellTools.autoApprove.rules') {
-        return [ true ];
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('0')).toEqual({
-      autoApprove: false,
-      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
-    });
-  });
-
-  it('fails closed when parsing sees command substitution, redirection, backticks, or unmatched quoting', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('echo $(pwd)')).toEqual({
-      autoApprove: false,
-      reason: 'The command line could not be parsed safely for subcommand analysis.',
-    });
-    expect(analyzeShellRunAutoApproval('echo "$(pwd)"')).toEqual({
-      autoApprove: false,
-      reason: 'The command line could not be parsed safely for subcommand analysis.',
-    });
-    expect(analyzeShellRunAutoApproval('echo `pwd`')).toEqual({
-      autoApprove: false,
-      reason: 'The command line could not be parsed safely for subcommand analysis.',
-    });
-    expect(analyzeShellRunAutoApproval('echo "`pwd`"')).toEqual({
-      autoApprove: false,
-      reason: 'The command line could not be parsed safely for subcommand analysis.',
-    });
-    expect(analyzeShellRunAutoApproval('echo ok > file.txt')).toEqual({
-      autoApprove: false,
-      reason: 'The command line could not be parsed safely for subcommand analysis.',
-    });
-    expect(analyzeShellRunAutoApproval('echo "unterminated')).toEqual({
-      autoApprove: false,
-      reason: 'The command line could not be parsed safely for subcommand analysis.',
-    });
-  });
-
-  it('treats line breaks as command separators during auto-approval analysis', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('pwd\nrm -rf build')).toEqual({
-      autoApprove: false,
-      reason: 'The command `rm` is denied by the shell security policy.',
-    });
-    expect(analyzeShellRunAutoApproval('pwd\r\nwhich node')).toEqual({
-      autoApprove: true,
-    });
-  });
-
-  it('fails closed when parsing cannot identify any subcommand', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('   ')).toEqual({
-      autoApprove: false,
-      reason: 'The command line could not be parsed safely for subcommand analysis.',
-    });
-  });
-
-  it('extracts first tokens across plain, single-quoted, and double-quoted command names', () => {
-    expect(shellToolSecurityInternals.extractFirstToken('pwd -P')).toBe('pwd');
-    expect(shellToolSecurityInternals.extractFirstToken('   ')).toBeUndefined();
-    expect(shellToolSecurityInternals.extractFirstToken('"git status" --short')).toBe('"git status"');
-    expect(shellToolSecurityInternals.extractFirstToken('\'custom tool\' --help')).toBe('\'custom tool\'');
-  });
-
-  it('parses approval regex literals conservatively', () => {
-    expect(shellToolSecurityInternals.parseApprovalRegexRule('pwd')).toEqual({
-      kind: 'non-literal',
-    });
-    expect(shellToolSecurityInternals.parseApprovalRegexRule('/[invalid')).toEqual({
-      kind: 'invalid',
-    });
-    expect(shellToolSecurityInternals.parseApprovalRegexRule('/^pwd$/ii')).toEqual({
-      kind: 'invalid',
-    });
-    expect(shellToolSecurityInternals.parseApprovalRegexRule('/^pwd$/y')).toEqual({
-      kind: 'invalid',
+  it('parses regex approval rules and rejects unsupported forms', () => {
+    expect(shellToolSecurityInternals.parseApprovalRegexRule('pwd')).toEqual({ kind: 'non-literal' });
+    expect(shellToolSecurityInternals.parseApprovalRegexRule('/^pwd$/')).toEqual({
+      flags: 'u',
+      kind: 'literal',
+      pattern: '^pwd$',
     });
     expect(shellToolSecurityInternals.parseApprovalRegexRule('/^pwd$/i')).toEqual({
       flags: 'iu',
       kind: 'literal',
       pattern: '^pwd$',
     });
+    expect(shellToolSecurityInternals.parseApprovalRegexRule('/^pwd$/u')).toEqual({
+      flags: 'u',
+      kind: 'literal',
+      pattern: '^pwd$',
+    });
+    expect(shellToolSecurityInternals.parseApprovalRegexRule('/^pwd$/g')).toEqual({ kind: 'invalid' });
+    expect(shellToolSecurityInternals.parseApprovalRegexRule('/^pwd$/ii')).toEqual({ kind: 'invalid' });
+    expect(shellToolSecurityInternals.parseApprovalRegexRule('/^pwd$')).toEqual({ kind: 'invalid' });
   });
 
-  it('splits safe compound command lines and preserves quoted separators', () => {
-    expect(shellToolSecurityInternals.splitShellSubcommands('pwd && wc -l README.md')).toEqual([
+  it('compiles regex approval rules and drops invalid expressions', () => {
+    expect(shellToolSecurityInternals.parseRegexRule('/^pwd$/')?.test('pwd')).toBe(true);
+    expect(shellToolSecurityInternals.parseRegexRule('/[a-/')).toBeUndefined();
+    expect(shellToolSecurityInternals.parseRegexRule('pwd')).toBeUndefined();
+  });
+
+  it('extracts first tokens and splits shell command lines conservatively', () => {
+    expect(shellToolSecurityInternals.extractFirstToken('   ')).toBeUndefined();
+    expect(shellToolSecurityInternals.extractFirstToken('echo "hello world"')).toBe('echo');
+    expect(shellToolSecurityInternals.extractFirstToken('"my tool" --flag')).toBe('"my tool"');
+
+    expect(shellToolSecurityInternals.splitShellSubcommands('pwd && wc -l README.md;git status\r\necho ok')).toEqual([
       'pwd',
       'wc -l README.md',
+      'git status',
+      'echo ok',
     ]);
-    expect(shellToolSecurityInternals.splitShellSubcommands('echo "a|b" | wc -c')).toEqual([
-      'echo "a|b"',
-      'wc -c',
-    ]);
-    expect(shellToolSecurityInternals.splitShellSubcommands('echo \'a;b\' ; pwd')).toEqual([
-      'echo \'a;b\'',
-      'pwd',
-    ]);
-    expect(shellToolSecurityInternals.splitShellSubcommands('echo a\\;b && pwd')).toEqual([
-      'echo a\\;b',
-      'pwd',
-    ]);
-    expect(shellToolSecurityInternals.splitShellSubcommands('echo \'a\\\' ; pwd')).toEqual([
-      'echo \'a\\\'',
-      'pwd',
-    ]);
-    expect(shellToolSecurityInternals.splitShellSubcommands('pwd & which node')).toEqual([
-      'pwd',
-      'which node',
-    ]);
-    expect(shellToolSecurityInternals.splitShellSubcommands('pwd || which node')).toEqual([
-      'pwd',
-      'which node',
-    ]);
-    expect(shellToolSecurityInternals.splitShellSubcommands('pwd\nwhich node')).toEqual([
-      'pwd',
-      'which node',
-    ]);
-    expect(shellToolSecurityInternals.splitShellSubcommands('pwd\r\nwhich node')).toEqual([
-      'pwd',
-      'which node',
-    ]);
+    expect(shellToolSecurityInternals.splitShellSubcommands('echo $(pwd)')).toBeUndefined();
+    expect(shellToolSecurityInternals.splitShellSubcommands('echo hi > out.txt')).toBeUndefined();
+    expect(shellToolSecurityInternals.splitShellSubcommands('echo "unterminated')).toBeUndefined();
   });
 
-  it('rejects subcommand splitting when the syntax is ambiguous or unsafe', () => {
+  it('covers additional cwd preview and shell parser edge cases', () => {
+    expect(shellToolSecurityInternals.getPreviewCwd(undefined)).toBe('/workspace');
+    expect(shellToolSecurityInternals.getPreviewCwd('packages/api')).toBe('/workspace/packages/api');
+    expect(shellToolSecurityInternals.extractFirstToken('\'two words\' --flag')).toBe('\'two words\'');
+    expect(shellToolSecurityInternals.splitShellSubcommands('echo one\\ two | cat')).toEqual([
+      'echo one\\ two',
+      'cat',
+    ]);
+    expect(shellToolSecurityInternals.splitShellSubcommands('printf \'a b\' || cat')).toEqual([
+      'printf \'a b\'',
+      'cat',
+    ]);
+    expect(shellToolSecurityInternals.splitShellSubcommands('echo "fine" && cat')).toEqual([
+      'echo "fine"',
+      'cat',
+    ]);
+    expect(shellToolSecurityInternals.splitShellSubcommands('echo "bad `subshell`"')).toBeUndefined();
+    expect(shellToolSecurityInternals.splitShellSubcommands('echo "bad $(subshell)"')).toBeUndefined();
     expect(shellToolSecurityInternals.splitShellSubcommands('echo `pwd`')).toBeUndefined();
-    expect(shellToolSecurityInternals.splitShellSubcommands('echo $(pwd)')).toBeUndefined();
-    expect(shellToolSecurityInternals.splitShellSubcommands('echo "$(pwd)"')).toBeUndefined();
-    expect(shellToolSecurityInternals.splitShellSubcommands('echo "`pwd`"')).toBeUndefined();
-    expect(shellToolSecurityInternals.splitShellSubcommands('echo ok > out.txt')).toBeUndefined();
-    expect(shellToolSecurityInternals.splitShellSubcommands('echo ok < in.txt')).toBeUndefined();
-    expect(shellToolSecurityInternals.splitShellSubcommands('echo "unterminated')).toBeUndefined();
     expect(shellToolSecurityInternals.splitShellSubcommands('echo trailing\\')).toBeUndefined();
   });
 
-  it('evaluates named and regex-backed rules directly', () => {
-    const rules = shellToolSecurityInternals.getMergedAutoApproveRules();
+  it('evaluates single commands and full command lines with named and regex rules', () => {
+    const rules = {
+      '/^echo ok\nnext$/': 'allow',
+      '/^reviewcmd/': 'ask',
+      customcmd: 'allow',
+      dangerous: 'deny',
+      maybe: 'ask',
+    } as const;
+
+    expect(shellToolSecurityInternals.evaluateSingleCommand('dangerous --now', rules)).toEqual({
+      decision: 'deny',
+      reason: 'The command `dangerous` is denied by the shell approval policy.',
+    });
+    expect(shellToolSecurityInternals.evaluateSingleCommand('maybe later', rules)).toEqual({
+      decision: 'ask',
+      reason: 'The command `maybe` is configured to always request approval.',
+    });
+    expect(shellToolSecurityInternals.evaluateSingleCommand('reviewcmd --review', rules)).toEqual({
+      decision: 'ask',
+      reason: 'The command matched ask rule /^reviewcmd/.',
+    });
+    expect(shellToolSecurityInternals.evaluateSingleCommand('customcmd --fast', rules)).toEqual({
+      decision: 'allow',
+    });
+    expect(shellToolSecurityInternals.evaluateSingleCommand('unknown', rules)).toEqual({
+      decision: 'defer',
+    });
+
+    expect(shellToolSecurityInternals.evaluateFullCommandLine('echo ok\nnext', rules)).toEqual({
+      decision: 'allow',
+      reason: 'The command matched allow rule /^echo ok\nnext$/.',
+    });
+    expect(shellToolSecurityInternals.evaluateFullCommandLine('customcmd --fast', rules)).toEqual({
+      decision: 'defer',
+    });
+  });
+
+  it('covers regex-only deny and ask branches for single commands and full command lines', () => {
+    const rules = {
+      '/^blocked/': 'deny',
+      '/^line one\nline two$/': 'ask',
+      '/^safe/': 'allow',
+    } as const;
 
     expect(shellToolSecurityInternals.evaluateSingleCommand('', rules)).toEqual({
-      state: 'pending',
+      decision: 'defer',
     });
-    expect(shellToolSecurityInternals.evaluateSingleCommand('pwd', rules)).toEqual({
-      state: 'allowed',
+    expect(shellToolSecurityInternals.evaluateSingleCommand('blocked now', rules)).toEqual({
+      decision: 'deny',
+      reason: 'The command matched deny rule /^blocked/.',
     });
-    expect(shellToolSecurityInternals.evaluateSingleCommand('RM -rf build', rules)).toEqual({
-      reason: 'The command `RM` is denied by the shell security policy.',
-      state: 'denied',
+    expect(shellToolSecurityInternals.evaluateSingleCommand('safe now', rules)).toEqual({
+      decision: 'allow',
+      reason: 'The command matched allow rule /^safe/.',
     });
-    expect(shellToolSecurityInternals.evaluateSingleCommand('git diff --stat', rules)).toEqual({
-      state: 'allowed',
+    expect(shellToolSecurityInternals.evaluateFullCommandLine('', rules)).toEqual({
+      decision: 'defer',
     });
-    expect(shellToolSecurityInternals.evaluateSingleCommand('find . -exec rm {} \\;', rules)).toEqual({
-      reason: 'The command matched denied rule /^find\\b.*\\s-(delete|exec|execdir|fprint|fprintf|fls|ok|okdir)\\b/.',
-      state: 'denied',
+    expect(shellToolSecurityInternals.evaluateFullCommandLine('ENV=1 cmd', rules)).toEqual({
+      decision: 'ask',
+      reason: 'The command begins with transient environment variable assignments, so it always requires explicit approval.',
     });
-    expect(shellToolSecurityInternals.evaluateSingleCommand('customcmd', rules)).toEqual({
-      reason: 'The command is not allowlisted for auto-approval.',
-      state: 'pending',
+    expect(shellToolSecurityInternals.evaluateFullCommandLine('blocked now', rules)).toEqual({
+      decision: 'deny',
+      reason: 'The command matched deny rule /^blocked/.',
+    });
+    expect(shellToolSecurityInternals.evaluateFullCommandLine('line one\nline two', rules)).toEqual({
+      decision: 'ask',
+      reason: 'The command matched ask rule /^line one\nline two$/.',
     });
   });
 
-  it('parses regex rules safely and resolves cwd previews from the workspace', () => {
-    expect(shellToolSecurityInternals.parseRegexRule('/^pwd$/')?.test('pwd')).toBe(true);
-    expect(shellToolSecurityInternals.parseRegexRule('/^pwd$/i')?.test('PWD')).toBe(true);
-    expect(shellToolSecurityInternals.parseRegexRule('/^pwd$/g')).toBeUndefined();
-    expect(shellToolSecurityInternals.parseRegexRule('/[invalid/')).toBeUndefined();
-    expect(shellToolSecurityInternals.parseRegexRule('/[/')).toBeUndefined();
-    expect(shellToolSecurityInternals.getPreviewCwd(undefined)).toBe('/workspace');
-    expect(shellToolSecurityInternals.getPreviewCwd('packages/core')).toBe('/workspace/packages/core');
-  });
-
-  it('reuses merged rule snapshots until caches are reset', () => {
+  it('treats conflicting case-variant named rules as ask', () => {
     getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.rules') {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
         return {
-          customcmd: true,
+          FoO: 'allow',
+          fOo: 'deny',
         };
       }
 
       return undefined;
     }));
 
-    const firstRules = shellToolSecurityInternals.getMergedAutoApproveRules();
-    const secondRules = shellToolSecurityInternals.getMergedAutoApproveRules();
-
-    expect(firstRules).toBe(secondRules);
-
-    shellToolSecurityInternals.resetShellToolSecurityCaches();
-
-    const thirdRules = shellToolSecurityInternals.getMergedAutoApproveRules();
-
-    expect(thirdRules).not.toBe(firstRules);
-    expect(thirdRules.customcmd).toBe(true);
+    expect(analyzeShellRunRuleDisposition('FOO README.md')).toEqual({
+      decision: 'ask',
+      reason: 'The command `FOO` is configured to always request approval.',
+    });
   });
 
-  it('rejects invalid configured regex literals before evaluating approval rules', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      if (key === 'shellTools.autoApprove.rules') {
-        return {
-          '/^customcmd$/g': true,
-        };
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('customcmd')).toEqual({
-      autoApprove: false,
-      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
-    });
-    expect(logWarn).toHaveBeenCalledWith(
-      'Ignoring configured auto-approve regex rule /^customcmd$/g because it is not a valid regex literal or uses unsupported flags.',
-    );
-  });
-
-  it('reuses cached invalid regex validation results across configuration snapshots', () => {
-    let configVersion = 1;
-
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      if (key === 'shellTools.autoApprove.rules') {
-        return configVersion === 1
-          ? {
-            '/^customcmd$/g': true,
-          }
-          : {
-            '/^customcmd$/g': true,
-            pwd: true,
-          };
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('customcmd')).toEqual({
-      autoApprove: false,
-      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
-    });
-    expect(logWarn).toHaveBeenCalledTimes(1);
-
-    configVersion = 2;
-
-    expect(analyzeShellRunAutoApproval('customcmd')).toEqual({
-      autoApprove: false,
-      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
-    });
-    expect(logWarn).toHaveBeenCalledTimes(1);
-  });
-
-  it('caches unsafe configured regex validation failures by rule key', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      if (key === 'shellTools.autoApprove.rules') {
-        return {
-          '/(a+)+b$/': true,
-        };
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('aaaa')).toEqual({
-      autoApprove: false,
-      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
-    });
-    expect(analyzeShellRunAutoApproval('aaaa')).toEqual({
-      autoApprove: false,
-      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
-    });
-    expect(logWarn).toHaveBeenCalledTimes(1);
-  });
-
-  it('reuses configured and parsed regex caches when inputs stay stable', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.rules') {
-        return {
-          customcmd: true,
-        };
-      }
-
-      return undefined;
-    }));
-
-    const firstConfiguredRules = shellToolSecurityInternals.getConfiguredAutoApproveRules();
-    const secondConfiguredRules = shellToolSecurityInternals.getConfiguredAutoApproveRules();
-
-    expect(firstConfiguredRules).toBe(secondConfiguredRules);
-
-    expect(shellToolSecurityInternals.parseRegexRule('/[/')).toBeUndefined();
-    expect(shellToolSecurityInternals.parseRegexRule('/[/')).toBeUndefined();
-  });
-
-  it('fails closed when regex validation throws unexpectedly', () => {
-    shellToolSecurityInternals.setRegexRuleValidatorForTest(
-      vi.fn(() => {
-        throw new Error('boom');
-      }),
-    );
-
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      if (key === 'shellTools.autoApprove.rules') {
-        return {
-          '/^customcmd$/': true,
-        };
-      }
-
-      return undefined;
-    }));
-
-    expect(analyzeShellRunAutoApproval('customcmd')).toEqual({
-      autoApprove: false,
-      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
-    });
-    expect(logWarn).toHaveBeenCalledWith(
-      'Ignoring configured auto-approve regex rule /^customcmd$/ because validation failed: boom.',
-    );
-  });
-
-  it('retries regex validation once when the initial recheck pass times out', () => {
-    const validator = vi.fn()
+  it('retries regex validation timeouts before accepting configured regex rules', () => {
+    const validator = vi
+      .fn()
       .mockReturnValueOnce({
-        error: {
-          kind: 'timeout',
-        },
+        error: { kind: 'timeout' },
         status: 'unknown',
       })
       .mockReturnValueOnce({
-        checker: 'automaton',
-        complexity: {
-          isFuzz: false,
-          summary: 'safe',
-          type: 'safe',
-        },
-        flags: 'u',
-        source: '^customcmd$',
         status: 'safe',
       });
 
-    shellToolSecurityInternals.setRegexRuleValidatorForTest(validator);
-
+    shellToolSecurityInternals.setRegexRuleValidatorForTest(validator as never);
     getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
-
-      if (key === 'shellTools.autoApprove.rules') {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
         return {
-          '/^customcmd$/': true,
+          '/^customcmd$/': 'allow',
         };
       }
 
       return undefined;
     }));
 
-    expect(analyzeShellRunAutoApproval('customcmd')).toEqual({
-      autoApprove: true,
+    expect(shellToolSecurityInternals.getConfiguredApprovalRules()).toEqual({
+      '/^customcmd$/': 'allow',
     });
-    expect(validator).toHaveBeenCalledTimes(2);
-    expect(logWarn).not.toHaveBeenCalled();
+    expect(validator).toHaveBeenNthCalledWith(1, '^customcmd$', 'u', { timeout: 250 });
+    expect(validator).toHaveBeenNthCalledWith(2, '^customcmd$', 'u', { timeout: 1000 });
   });
 
-  it('clears cached rule validation state when requested', () => {
-    getConfiguration.mockReturnValue(createConfiguration(key => {
-      if (key === 'shellTools.autoApprove.enabled' || key === 'shellTools.autoApprove.warningAccepted') {
-        return true;
-      }
+  it('accepts safe configured regex rules without retrying validation', () => {
+    const validator = vi.fn().mockReturnValue({
+      status: 'safe',
+    });
 
-      if (key === 'shellTools.autoApprove.rules') {
+    shellToolSecurityInternals.setRegexRuleValidatorForTest(validator as never);
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
         return {
-          '/(a+)+b$/': true,
+          '/^safecmd$/': 'allow',
         };
       }
 
       return undefined;
     }));
 
-    expect(analyzeShellRunAutoApproval('aaaa')).toEqual({
-      autoApprove: false,
-      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
+    expect(shellToolSecurityInternals.getConfiguredApprovalRules()).toEqual({
+      '/^safecmd$/': 'allow',
     });
-    expect(logWarn).toHaveBeenCalledTimes(1);
+    expect(validator).toHaveBeenCalledTimes(1);
+    expect(validator).toHaveBeenCalledWith('^safecmd$', 'u', { timeout: 250 });
+  });
 
-    shellToolSecurityInternals.resetShellToolSecurityCaches();
-    expect(analyzeShellRunAutoApproval('aaaa')).toEqual({
-      autoApprove: false,
-      reason: 'One or more subcommands are not explicitly allowlisted for auto-approval.',
+  it('reuses cached configured rule validation and compiled regex instances', () => {
+    const validator = vi.fn().mockReturnValue({
+      status: 'safe',
     });
 
-    expect(logWarn).toHaveBeenCalledTimes(2);
+    shellToolSecurityInternals.setRegexRuleValidatorForTest(validator as never);
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
+        return {
+          '/^cached$/': 'allow',
+        };
+      }
+
+      return undefined;
+    }));
+
+    const firstRules = shellToolSecurityInternals.getConfiguredApprovalRules();
+    const secondRules = shellToolSecurityInternals.getConfiguredApprovalRules();
+    const firstRegex = shellToolSecurityInternals.parseRegexRule('/^cached$/');
+    const secondRegex = shellToolSecurityInternals.parseRegexRule('/^cached$/');
+    const missingRegex = shellToolSecurityInternals.parseRegexRule('/[a-/');
+    const missingRegexAgain = shellToolSecurityInternals.parseRegexRule('/[a-/');
+
+    expect(firstRules).toBe(secondRules);
+    expect(firstRegex).toBe(secondRegex);
+    expect(missingRegex).toBeUndefined();
+    expect(missingRegexAgain).toBeUndefined();
+    expect(validator).toHaveBeenCalledTimes(1);
+
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
+        return {
+          '/^cached$/': 'allow',
+          plain: 'allow',
+        };
+      }
+
+      return undefined;
+    }));
+
+    expect(shellToolSecurityInternals.getConfiguredApprovalRules()).toEqual({
+      '/^cached$/': 'allow',
+      plain: 'allow',
+    });
+    expect(validator).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops configured regex rules that are vulnerable, unknown, or throw during validation', () => {
+    const validator = vi
+      .fn()
+      .mockReturnValueOnce({
+        complexity: { summary: 'catastrophic backtracking' },
+        status: 'vulnerable',
+      })
+      .mockReturnValueOnce({
+        error: { kind: 'unsupported' },
+        status: 'unknown',
+      })
+      .mockImplementationOnce(() => {
+        throw new Error('validator exploded');
+      });
+
+    shellToolSecurityInternals.setRegexRuleValidatorForTest(validator as never);
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
+        return {
+          '/^askme$/': 'ask',
+          '/^boom$/': 'deny',
+          '/^safe$/': 'allow',
+          plain: 'allow',
+        };
+      }
+
+      return undefined;
+    }));
+
+    expect(shellToolSecurityInternals.getConfiguredApprovalRules()).toEqual({
+      plain: 'allow',
+    });
+    expect(logWarn).toHaveBeenCalledWith(
+      'Ignoring configured shell approval regex rule /^askme$/ because recheck marked it as potentially vulnerable (catastrophic backtracking).',
+    );
+    expect(logWarn).toHaveBeenCalledWith(
+      'Ignoring configured shell approval regex rule /^boom$/ because recheck could not validate it (unsupported).',
+    );
+    expect(logWarn).toHaveBeenCalledWith(
+      'Ignoring configured shell approval regex rule /^safe$/ because validation failed: validator exploded.',
+    );
+  });
+
+  it('ignores non-record configured approval rules', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
+        return 'not-an-object';
+      }
+
+      return undefined;
+    }));
+
+    expect(shellToolSecurityInternals.getConfiguredApprovalRules()).toEqual({});
+  });
+
+  it('filters configured approval rules with unsupported values', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
+        return {
+          broken: 'maybe',
+          numeric: 1,
+          ok: 'allow',
+        };
+      }
+
+      return undefined;
+    }));
+
+    expect(shellToolSecurityInternals.getConfiguredApprovalRules()).toEqual({
+      ok: 'allow',
+    });
+  });
+
+  it('lets full-command regex rules force ask or deny after subcommand parsing succeeds', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
+        return {
+          '/^echo ok\nnext$/': 'ask',
+          '/^pwd\nnext$/': 'deny',
+          echo: 'allow',
+          next: 'allow',
+          pwd: 'allow',
+        };
+      }
+
+      return undefined;
+    }));
+
+    expect(analyzeShellRunRuleDisposition('echo ok\nnext')).toEqual({
+      decision: 'ask',
+      reason: 'The command matched ask rule /^echo ok\nnext$/.',
+    });
+    expect(analyzeShellRunRuleDisposition('pwd\nnext')).toEqual({
+      decision: 'deny',
+      reason: 'The command matched deny rule /^pwd\nnext$/.',
+    });
+  });
+
+  it('requests approval when the model is disabled and the YOLO override is off', async () => {
+    await expect(decideShellRunApproval({
+      command: 'git checkout main',
+      cwd: '/workspace',
+      explanation: 'switch branches',
+      goal: 'move to main',
+      riskAssessment: 'This changes the working tree and may replace uncommitted files.',
+    }, {} as never)).resolves.toEqual({
+      decision: 'ask',
+      reason: 'Risk assessment model is disabled via shellTools.riskAssessment.chatModel, so explicit approval is required.',
+    });
+  });
+
+  it('runs without prompting when the model is disabled and the YOLO override is on', async () => {
+    getConfiguration.mockReturnValue(createConfiguration((key, defaultValue) => {
+      if (key === SHELL_TOOLS_AUTO_APPROVE_POTENTIALLY_DESTRUCTIVE_COMMANDS_KEY) {
+        return true;
+      }
+
+      return defaultValue;
+    }));
+
+    await expect(decideShellRunApproval({
+      command: 'git checkout main',
+      cwd: '/workspace',
+      explanation: 'switch branches',
+      goal: 'move to main',
+      riskAssessment: 'This changes the working tree and may replace uncommitted files.',
+    }, {} as never)).resolves.toEqual({
+      decision: 'allow',
+      reason: 'The YOLO override is enabled, so unresolved commands run without risk-assessment prompting.',
+    });
+    expect(assessShellCommandRisk).not.toHaveBeenCalled();
+  });
+
+  it('uses the model response when rule evaluation defers', async () => {
+    assessShellCommandRisk.mockResolvedValue({
+      decision: 'request',
+      kind: 'response',
+      modelId: 'copilot:gpt-4.1',
+      reason: 'The command may overwrite checked out files and should be reviewed.',
+    });
+
+    await expect(decideShellRunApproval({
+      command: 'git checkout main',
+      cwd: '/workspace',
+      explanation: 'switch branches',
+      goal: 'move to main',
+      riskAssessment: 'This may replace files in the working tree.',
+    }, {} as never)).resolves.toEqual({
+      decision: 'ask',
+      modelAssessment: 'The command may overwrite checked out files and should be reviewed.',
+      reason: 'Risk assessment requested explicit approval before running this command.',
+    });
+  });
+
+  it('returns rule-based allow and deny decisions without consulting the model', async () => {
+    await expect(decideShellRunApproval({
+      command: 'pwd',
+      cwd: '/workspace',
+      riskAssessment: 'Read-only command.',
+    }, {} as never)).resolves.toEqual({
+      decision: 'allow',
+      reason: 'Every parsed subcommand matched an allow rule.',
+    });
+    await expect(decideShellRunApproval({
+      command: 'rm -rf build',
+      cwd: '/workspace',
+      riskAssessment: 'Deletes files under the workspace.',
+    }, {} as never)).resolves.toEqual({
+      decision: 'deny',
+      reason: 'The command `rm` is denied by the shell approval policy.',
+    });
+    expect(assessShellCommandRisk).not.toHaveBeenCalled();
+  });
+
+  it('turns model errors into approval requests', async () => {
+    assessShellCommandRisk.mockResolvedValue({
+      kind: 'error',
+      modelId: 'copilot:gpt-4.1',
+      reason: 'The configured model could not be reached.',
+    });
+
+    await expect(decideShellRunApproval({
+      command: 'git checkout main',
+      cwd: '/workspace',
+      riskAssessment: 'May replace files in the working tree.',
+    }, {} as never)).resolves.toEqual({
+      decision: 'ask',
+      modelAssessment: 'The configured model could not be reached.',
+      reason: 'Risk assessment could not determine that this command is safe enough to run without approval.',
+    });
+  });
+
+  it('turns model timeouts into approval requests', async () => {
+    assessShellCommandRisk.mockResolvedValue({
+      kind: 'timeout',
+      modelId: 'copilot:gpt-4.1',
+      reason: 'Risk assessment model `copilot:gpt-4.1` timed out after 8000ms.',
+      timeoutMs: 8000,
+    });
+
+    await expect(decideShellRunApproval({
+      command: 'git checkout main',
+      cwd: '/workspace',
+      riskAssessment: 'May replace files in the working tree.',
+    }, {} as never)).resolves.toEqual({
+      decision: 'ask',
+      modelAssessment: 'Risk assessment model `copilot:gpt-4.1` timed out after 8000ms.',
+      reason: 'Risk assessment timed out, so explicit approval is required.',
+    });
+  });
+
+  it('lets a positive model assessment auto-allow deferred commands', async () => {
+    assessShellCommandRisk.mockResolvedValue({
+      decision: 'allow',
+      kind: 'response',
+      modelId: 'copilot:gpt-4.1',
+      reason: 'The command is read-only and limited to repository metadata.',
+    });
+
+    await expect(decideShellRunApproval({
+      command: 'git checkout main',
+      cwd: '/workspace',
+      riskAssessment: 'May replace files in the working tree.',
+    }, {} as never)).resolves.toEqual({
+      decision: 'allow',
+      modelAssessment: 'The command is read-only and limited to repository metadata.',
+      reason: 'Risk assessment model copilot:gpt-4.1 allowed the command to run without explicit approval.',
+    });
+  });
+
+  it('lets the model deny clearly malicious or outright destructive commands', async () => {
+    assessShellCommandRisk.mockResolvedValue({
+      decision: 'deny',
+      kind: 'response',
+      modelId: 'copilot:gpt-4.1',
+      reason: 'This is a catastrophic root-level deletion command.',
+    });
+
+    await expect(decideShellRunApproval({
+      command: 'python scripts/nuke.py',
+      cwd: '/workspace',
+      explanation: 'run a catastrophic helper script',
+      goal: 'destroy the machine',
+      riskAssessment: 'This script appears to be an outright destructive wipe operation.',
+    }, {} as never)).resolves.toEqual({
+      decision: 'deny',
+      modelAssessment: 'This is a catastrophic root-level deletion command.',
+      reason: 'Risk assessment model copilot:gpt-4.1 denied the command because it appears clearly malicious or outright destructive.',
+    });
+  });
+
+  it('lets ask and deny rules override the YOLO flag without consulting the model', async () => {
+    getConfiguration.mockReturnValue(createConfiguration((key, defaultValue) => {
+      if (key === SHELL_TOOLS_AUTO_APPROVE_POTENTIALLY_DESTRUCTIVE_COMMANDS_KEY) {
+        return true;
+      }
+
+      return defaultValue;
+    }));
+
+    await expect(decideShellRunApproval({
+      command: 'echo $(pwd)',
+      cwd: '/workspace',
+      riskAssessment: 'This uses command substitution, so the exact executed command is uncertain.',
+    }, {} as never)).resolves.toEqual({
+      decision: 'ask',
+      reason: 'The command line could not be parsed safely for approval rules, so explicit approval is required.',
+    });
+
+    await expect(decideShellRunApproval({
+      command: 'rm -rf build',
+      cwd: '/workspace',
+      riskAssessment: 'Deletes files under the workspace.',
+    }, {} as never)).resolves.toEqual({
+      decision: 'deny',
+      reason: 'The command `rm` is denied by the shell approval policy.',
+    });
+
+    expect(assessShellCommandRisk).not.toHaveBeenCalled();
   });
 });

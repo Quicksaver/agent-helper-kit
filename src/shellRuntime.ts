@@ -119,6 +119,10 @@ function getNodeTerminalSizeShimPathExists(): boolean {
   return hasNodeTerminalSizeShimFile;
 }
 
+/**
+ * Parse NODE_OPTIONS into argv-style tokens so we can detect whether the width
+ * shim is already required without relying on brittle substring checks.
+ */
 function parseNodeOptionsArguments(nodeOptions: string): string[] {
   const args: string[] = [];
   let current = '';
@@ -220,6 +224,11 @@ interface ShellRuntimeOptions {
   startupPurgeMaxAgeMs?: number;
 }
 
+/**
+ * Manage shell command execution and history for both LM tools and the Shell
+ * Runs panel. Output stays in memory until size or time thresholds push it to
+ * the file-backed store, but reads always normalize from the same boundary.
+ */
 export class ShellRuntime {
   private readonly backgroundProcesses = new Map<string, BackgroundProcessState>();
   private readonly commandChangeListeners = new Set<() => void>();
@@ -401,6 +410,10 @@ export class ShellRuntime {
     };
   }
 
+  /**
+   * Read command output using incremental cursors for streaming callers while
+   * still returning a full final read once after completion for sync records.
+   */
   async readBackgroundOutput(input: ReadBackgroundOutputInput): Promise<{
     exitCode: null | number;
     isRunning: boolean;
@@ -440,6 +453,10 @@ export class ShellRuntime {
   }
 
   startBackgroundCommand(command: string, options: StartBackgroundCommandOptions = {}): string {
+    /**
+     * Preserve shell-friendly terminal defaults, then append the Node width shim
+     * only when it is packaged and not already present in NODE_OPTIONS.
+     */
     this.lastCommand = command;
 
     const shellInvocation = this.createShellInvocation(command, options.shell);
@@ -717,6 +734,10 @@ export class ShellRuntime {
     }
   }
 
+  /**
+   * Normalize output at read time rather than append time so persisted output,
+   * incremental reads, and panel rendering all apply the same filtering rules.
+   */
   private async getBackgroundOutput(id: string, state: BackgroundProcessState): Promise<string> {
     if (state.outputInFile) {
       return normalizeShellOutput(await readShellOutput(id));
@@ -803,6 +824,10 @@ export class ShellRuntime {
     }
   }
 
+  /**
+   * Treat process exit as the authoritative status, but delay completion until
+   * close or a short drain timer so trailing piped output is not dropped.
+   */
   private recordExit(
     id: string,
     state: BackgroundProcessState,
@@ -875,6 +900,11 @@ export class ShellRuntime {
     return outputBytes >= outputLimitBytes;
   }
 
+  /**
+   * Move buffered output into the file-backed store. The state only flips to
+   * file-backed after a successful write, and failed writes retry a few times
+   * before falling back to in-memory retention.
+   */
   private spillOutputToFile(id: string, state: BackgroundProcessState, output: string): void {
     if (state.memoryToFileTimer) {
       clearTimeout(state.memoryToFileTimer);

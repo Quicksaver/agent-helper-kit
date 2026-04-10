@@ -264,6 +264,11 @@ function toAnsi256Rgb(code: number): string {
   return `rgb(${String(gray)}, ${String(gray)}, ${String(gray)})`;
 }
 
+/**
+ * Apply ANSI SGR codes to the current render state. Standard 16-color styles
+ * map to CSS classes, while extended 256 and truecolor values fall back to
+ * inline styles when no shared class can represent them.
+ */
 function applyAnsiCodes(state: AnsiRenderState, codes: number[]): void {
   const normalizedCodes = codes.length === 0 ? [ 0 ] : codes;
 
@@ -501,6 +506,10 @@ function getAnsiStateStyle(state: AnsiRenderState): string {
   return declarations.join('; ');
 }
 
+/**
+ * Convert ANSI-colored shell output into escaped HTML spans for the panel while
+ * preserving styling information captured by the runtime.
+ */
 function convertAnsiToHtml(value: string): string {
   const sequencePattern = ansiRegex();
   const state: AnsiRenderState = {
@@ -712,6 +721,11 @@ function getWebviewAssetUri(
   return webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, ...WEBVIEW_ASSET_DIRECTORY, filename)).toString();
 }
 
+/**
+ * Build the full webview document for the first render. Later refreshes patch
+ * the command list and details with postMessage so the surrounding shell stays
+ * stable across updates.
+ */
 function getWebviewHtml(
   webview: vscode.Webview,
   extensionUri: undefined | vscode.Uri,
@@ -761,6 +775,11 @@ function getWebviewHtml(
   `;
 }
 
+/**
+ * Keep the Shell Runs webview in sync with runtime state. Initial render writes
+ * the full document, later refreshes patch HTML fragments, and running command
+ * output is polled separately so the list does not need a full re-render.
+ */
 class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewViewProvider {
   private readonly disposeRuntimeListener: () => void;
   private hasRenderedWebview = false;
@@ -795,6 +814,11 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     return this.selectedCommandId;
   }
 
+  /**
+   * Refresh the list and selected details. Once the webview has rendered and
+   * acknowledged readiness, updates flow through postMessage instead of
+   * replacing the entire document.
+   */
   async refresh(): Promise<void> {
     if (!this.view) {
       return;
@@ -888,6 +912,10 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     this.selectedCommandId = commandId;
   }
 
+  /**
+   * Route row actions through webview messages because WebviewView rows no
+   * longer expose per-item context actions like the old tree-based UI did.
+   */
   private async handleMessage(message: WebviewMessage): Promise<void> {
     if (message.type === 'ready') {
       this.isWebviewReady = true;
@@ -944,6 +972,10 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
     }
   }
 
+  /**
+   * Poll only the selected running command and replace just the output block
+   * when its rendered content length changes.
+   */
   private async refreshRunningCommandOutput(): Promise<void> {
     const { view } = this;
     const { selectedCommandId } = this;
@@ -1028,6 +1060,10 @@ class ShellCommandsPanelProvider implements vscode.Disposable, vscode.WebviewVie
   }
 }
 
+/**
+ * Register the Shell Runs panel and bridge legacy command entrypoints to the
+ * webview-backed provider.
+ */
 export function registerShellCommandsPanel(
   getRuntime: () => ShellRuntime,
   extensionUri?: vscode.Uri,

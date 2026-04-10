@@ -11,6 +11,9 @@ import {
   stripShellControlSequences,
 } from '@/shellOutputFilter';
 import {
+  registerShellRiskAssessmentModelCommand,
+} from '@/shellRiskAssessment';
+import {
   ShellRuntime,
   toPublicCommandId,
 } from '@/shellRuntime';
@@ -28,8 +31,9 @@ import {
   validateRunInSyncShellInput,
 } from '@/shellToolContracts';
 import {
-  analyzeShellRunAutoApproval,
+  analyzeShellRunRuleDisposition,
   buildShellRunConfirmationMessage,
+  decideShellRunApproval,
 } from '@/shellToolSecurity';
 
 const DEFAULT_MEMORY_OUTPUT_LIMIT_KIB = 512;
@@ -44,6 +48,10 @@ function getNumericSettingOrDefault(value: number | undefined, fallback: number)
   return value;
 }
 
+/**
+ * Read shell output retention settings and normalize them into bytes and
+ * milliseconds so the runtime never has to interpret raw configuration values.
+ */
 function getShellOutputSettings(): {
   memoryOutputLimitBytes: number;
   memoryToFileDelayMs: number;
@@ -82,6 +90,10 @@ function getWorkspaceCwd(): string {
   return os.homedir();
 }
 
+/**
+ * Resolve a tool-provided cwd against the workspace root and verify that the
+ * resulting directory exists and is accessible before starting a shell run.
+ */
 function resolveCommandCwd(inputCwd?: string): string {
   const defaultCwd = getWorkspaceCwd();
 
@@ -164,6 +176,11 @@ function buildYamlToolResult(payload: Record<string, unknown>): vscode.LanguageM
   ]);
 }
 
+/**
+ * Package shell tool results as YAML metadata plus a separate plain-text output
+ * part. Output normalization happens here so the runtime can keep raw ANSI for
+ * the Shell Runs panel while chat responses stay readable.
+ */
 function buildSplitOutputToolResult(payload: Record<string, unknown> & {
   output: string;
 }): vscode.LanguageModelToolResult {
@@ -180,6 +197,10 @@ function buildSplitOutputToolResult(payload: Record<string, unknown> & {
   ]);
 }
 
+/**
+ * Attach optional termination metadata only when it is actually present so the
+ * serialized tool payload stays compact and stable for callers.
+ */
 function addOptionalCompletionMetadata(
   payload: Record<string, unknown>,
   completion: {
@@ -208,6 +229,10 @@ export function resetShellRuntimeForTest(): void {
   shellRuntime = undefined;
 }
 
+/**
+ * Lazily create the shared shell runtime so sync and async shell tools use the
+ * same command lifecycle, output store, and panel backing state.
+ */
 function getShellRuntime(): ShellRuntime {
   if (!shellRuntime) {
     const {
@@ -226,6 +251,10 @@ function getShellRuntime(): ShellRuntime {
   return shellRuntime;
 }
 
+/**
+ * Detect whether a synchronous shell run should return command output in
+ * addition to completion metadata.
+ */
 function hasRunOutputOverrides(input: {
   full_output?: boolean;
   last_lines?: number;
@@ -238,6 +267,10 @@ function hasRunOutputOverrides(input: {
     || typeof input.regex_flags === 'string';
 }
 
+/**
+ * Choose the explicit shell override when provided, otherwise fall back to the
+ * user's VS Code default shell.
+ */
 function getRequestedOrDefaultShell(inputShell?: string): string | undefined {
   if (typeof inputShell === 'string' && inputShell.trim().length > 0) {
     return inputShell.trim();
@@ -257,6 +290,12 @@ const runInAsyncShellTool: vscode.LanguageModelTool<RunInAsyncShellInput> = {
     options: vscode.LanguageModelToolInvocationOptions<RunInAsyncShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
     const input = validateRunInAsyncShellInput(options.input);
+    const ruleDisposition = analyzeShellRunRuleDisposition(input.command);
+
+    if (ruleDisposition.decision === 'deny') {
+      throw new Error(ruleDisposition.reason ?? 'The shell approval policy denied this command.');
+    }
+
     const resolvedCwd = resolveCommandCwd(input.cwd);
     const id = getShellRuntime().startBackgroundCommand(input.command, {
       columns: input.columns,
@@ -266,22 +305,37 @@ const runInAsyncShellTool: vscode.LanguageModelTool<RunInAsyncShellInput> = {
 
     return buildYamlToolResult({ id: toPublicCommandId(id) });
   },
-  prepareInvocation(
+  async prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<RunInAsyncShellInput>,
-  ): vscode.PreparedToolInvocation {
+    token: vscode.CancellationToken,
+  ): Promise<vscode.PreparedToolInvocation> {
     const commandPreview = options.input.command.split('\n')[0]?.trim() || '(empty command)';
-    const autoApprovalDecision = analyzeShellRunAutoApproval(options.input.command);
+    const resolvedCwd = resolveCommandCwd(options.input.cwd);
+    const approvalDecision = await decideShellRunApproval({
+      command: options.input.command,
+      cwd: resolvedCwd,
+      explanation: options.input.explanation,
+      goal: options.input.goal,
+      riskAssessment: options.input.riskAssessment,
+      riskAssessmentContext: options.input.riskAssessmentContext,
+    }, token);
+
+    if (approvalDecision.decision === 'deny') {
+      throw new Error(approvalDecision.reason ?? 'The shell approval policy denied this command.');
+    }
 
     return {
-      confirmationMessages: autoApprovalDecision.autoApprove
+      confirmationMessages: approvalDecision.decision === 'allow'
         ? undefined
         : {
           message: buildShellRunConfirmationMessage({
-            autoApprovalDecision,
+            approvalDecision,
             command: options.input.command,
-            cwd: options.input.cwd,
+            cwd: resolvedCwd,
             explanation: options.input.explanation,
             goal: options.input.goal,
+            riskAssessment: options.input.riskAssessment,
+            riskAssessmentContext: options.input.riskAssessmentContext,
           }),
           title: SHELL_TOOL_METADATA.runInAsyncShell.confirmationTitle,
         },
@@ -295,6 +349,12 @@ const runInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = {
     options: vscode.LanguageModelToolInvocationOptions<RunInSyncShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
     const input = validateRunInSyncShellInput(options.input);
+    const ruleDisposition = analyzeShellRunRuleDisposition(input.command);
+
+    if (ruleDisposition.decision === 'deny') {
+      throw new Error(ruleDisposition.reason ?? 'The shell approval policy denied this command.');
+    }
+
     const shouldReturnOutput = hasRunOutputOverrides(input);
     const shellRuntimeInstance = getShellRuntime();
     const resolvedCwd = resolveCommandCwd(input.cwd);
@@ -359,22 +419,37 @@ const runInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = {
       output: string;
     });
   },
-  prepareInvocation(
+  async prepareInvocation(
     options: vscode.LanguageModelToolInvocationPrepareOptions<RunInSyncShellInput>,
-  ): vscode.PreparedToolInvocation {
+    token: vscode.CancellationToken,
+  ): Promise<vscode.PreparedToolInvocation> {
     const commandPreview = options.input.command.split('\n')[0]?.trim() || '(empty command)';
-    const autoApprovalDecision = analyzeShellRunAutoApproval(options.input.command);
+    const resolvedCwd = resolveCommandCwd(options.input.cwd);
+    const approvalDecision = await decideShellRunApproval({
+      command: options.input.command,
+      cwd: resolvedCwd,
+      explanation: options.input.explanation,
+      goal: options.input.goal,
+      riskAssessment: options.input.riskAssessment,
+      riskAssessmentContext: options.input.riskAssessmentContext,
+    }, token);
+
+    if (approvalDecision.decision === 'deny') {
+      throw new Error(approvalDecision.reason ?? 'The shell approval policy denied this command.');
+    }
 
     return {
-      confirmationMessages: autoApprovalDecision.autoApprove
+      confirmationMessages: approvalDecision.decision === 'allow'
         ? undefined
         : {
           message: buildShellRunConfirmationMessage({
-            autoApprovalDecision,
+            approvalDecision,
             command: options.input.command,
-            cwd: options.input.cwd,
+            cwd: resolvedCwd,
             explanation: options.input.explanation,
             goal: options.input.goal,
+            riskAssessment: options.input.riskAssessment,
+            riskAssessmentContext: options.input.riskAssessmentContext,
           }),
           title: SHELL_TOOL_METADATA.runInSyncShell.confirmationTitle,
         },
@@ -505,6 +580,10 @@ const getLastShellCommandTool: vscode.LanguageModelTool<GetLastShellCommandInput
   },
 };
 
+/**
+ * Register the shell language-model tools together with the risk-assessment
+ * model picker command and the Shell Runs panel.
+ */
 export function registerShellTools(extensionUri?: vscode.Uri): vscode.Disposable {
   const registrations = [
     vscode.lm.registerTool(SHELL_TOOL_NAMES.runInSyncShell, runInSyncShellTool),
@@ -514,6 +593,7 @@ export function registerShellTools(extensionUri?: vscode.Uri): vscode.Disposable
     vscode.lm.registerTool(SHELL_TOOL_NAMES.getShellCommand, getShellCommandTool),
     vscode.lm.registerTool(SHELL_TOOL_NAMES.getLastShellCommand, getLastShellCommandTool),
     vscode.lm.registerTool(SHELL_TOOL_NAMES.killShell, killShellTool),
+    registerShellRiskAssessmentModelCommand(),
     registerShellCommandsPanel(getShellRuntime, extensionUri),
   ];
 

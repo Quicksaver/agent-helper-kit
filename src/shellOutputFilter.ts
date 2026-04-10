@@ -4,6 +4,11 @@ export interface ShellOutputFilterInput {
   regex_flags?: string;
 }
 
+/**
+ * Strip shell control sequences from output, optionally preserving ANSI SGR
+ * color/style escapes while removing other non-display sequences such as OSC
+ * payloads and cursor-control codes.
+ */
 function stripShellSequences(output: string, preserveSgr: boolean): string {
   let sanitized = '';
 
@@ -76,6 +81,11 @@ function stripNonDisplayShellSequences(output: string): string {
   return stripShellSequences(output, true);
 }
 
+/**
+ * Normalize shell output for downstream consumers by removing non-display
+ * control sequences, dropping visually empty lines, and preserving a trailing
+ * newline only when the original display output ended with one.
+ */
 export function normalizeShellOutput(output: string): string {
   const displayOutput = stripNonDisplayShellSequences(output);
   const normalizedLines = displayOutput
@@ -91,6 +101,11 @@ export function normalizeShellOutput(output: string): string {
     : normalizedLines.join('\n');
 }
 
+/**
+ * Apply the LM tool output selectors after normalization. Regex matching runs
+ * against control-sequence-stripped display text so ANSI styling does not
+ * affect line selection.
+ */
 export function getFilteredOutput(input: ShellOutputFilterInput, output: string): string {
   const hasLastLines = typeof input.last_lines === 'number';
   const hasRegex = typeof input.regex === 'string';
