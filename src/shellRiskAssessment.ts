@@ -562,6 +562,11 @@ async function buildRiskAssessmentCacheKey(
 ): Promise<string> {
   const normalizedCwd = await normalizePathForCache(options.cwd);
 
+  // Cache only on inputs that should materially affect the command's risk.
+  // `explanation`, `goal`, and `riskAssessment` are prompt hints for the model,
+  // not execution-affecting properties of the command itself, so a correct risk
+  // assessment should not change solely because those clues are phrased
+  // differently.
   return createChecksum(JSON.stringify({
     command: options.command,
     context: contextEntries.map(entry => {
@@ -688,6 +693,7 @@ export async function assessShellCommandRisk(
   token: vscode.CancellationToken,
 ): Promise<ShellRiskAssessmentModelResult> {
   const configuredModelId = getConfiguredRiskAssessmentModelId();
+  let cacheKey: string | undefined;
 
   if (configuredModelId.length === 0) {
     return {
@@ -703,7 +709,7 @@ export async function assessShellCommandRisk(
       options.cwd,
     );
     const loadedContextEntries = await loadRiskAssessmentContextEntries(normalizedContextEntries);
-    const cacheKey = await buildRiskAssessmentCacheKey(
+    cacheKey = await buildRiskAssessmentCacheKey(
       options,
       configuredModelId,
       timeoutMs,
@@ -777,9 +783,19 @@ export async function assessShellCommandRisk(
     })();
 
     riskAssessmentResultCache.set(cacheKey, assessmentPromise);
-    return assessmentPromise;
+    const result = await assessmentPromise;
+
+    if (result.kind !== 'response') {
+      riskAssessmentResultCache.delete(cacheKey);
+    }
+
+    return result;
   }
   catch (error) {
+    if (cacheKey !== undefined) {
+      riskAssessmentResultCache.delete(cacheKey);
+    }
+
     const message = summarizeError(error);
 
     logWarn(`Shell risk assessment failed for model ${configuredModelId}: ${message}`);

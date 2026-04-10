@@ -97,7 +97,7 @@ describe('shell tool security', () => {
       riskAssessment: 'This script may delete generated files under build outputs.',
       riskAssessmentContext: [ 'scripts/danger.js', 'src/cleanup.ts' ],
     })).toBe(
-      'Command: node scripts/danger.js\n\nCwd: /workspace/packages/api\n\nExplanation: run a maintenance script\n\nGoal: clean generated files\n\nRisk pre-assessment: This script may delete generated files under build outputs.\n\nRisk context files: scripts/danger.js, src/cleanup.ts\n\nRisk model note: The command may delete files under the workspace.\n\nApproval note: Risk assessment requested explicit approval before running this command.',
+      'Command: node scripts/danger.js\n\nCwd: /workspace/packages/api\n\nExplanation: run a maintenance script\n\nGoal: clean generated files\n\nRisk pre-assessment: This script may delete generated files under build outputs.\n\nRisk context: scripts/danger.js, src/cleanup.ts\n\nRisk model note: The command may delete files under the workspace.\n\nApproval note: Risk assessment requested explicit approval before running this command.',
     );
   });
 

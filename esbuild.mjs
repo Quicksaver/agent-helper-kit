@@ -6,6 +6,9 @@ const isWatch = process.argv.includes('--watch');
 const extensionBuildOptions = {
   bundle: true,
   entryPoints: [ './src/extension.ts' ],
+  // Keep runtime dependencies like `recheck` bundled.
+  // The VSIX build uses `vsce --no-dependencies`, so marking them external
+  // leaves Node `require(...)` calls unresolved after installation.
   external: [ 'vscode' ],
   format: 'cjs',
   minify: !isWatch,

@@ -446,6 +446,49 @@ describe('shell risk assessment', () => {
     expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('alias expands to: node scripts/run.js --refresh'));
   });
 
+  it('evicts non-response model results from the session cache so retries can recover', async () => {
+    const sendRequest = vi.fn(async () => createResponseStream([ 'allow::safe enough after retry' ]));
+
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_RISK_ASSESSMENT_CHAT_MODEL_KEY) {
+        return 'copilot:gpt-4.1';
+      }
+
+      return undefined;
+    }));
+    (selectChatModels as unknown as Mock)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([ createModel({ id: 'gpt-4.1', sendRequest, vendor: 'copilot' }) ]);
+
+    await expect(assessShellCommandRisk({
+      command: 'git checkout main',
+      cwd: '/workspace',
+      explanation: 'switch branches',
+      goal: 'move to main',
+      riskAssessment: 'This may replace files in the working tree.',
+    }, {} as never)).resolves.toEqual({
+      kind: 'error',
+      modelId: 'copilot:gpt-4.1',
+      reason: 'Configured risk assessment model `copilot:gpt-4.1` is not available.',
+    });
+
+    await expect(assessShellCommandRisk({
+      command: 'git checkout main',
+      cwd: '/workspace',
+      explanation: 'switch branches',
+      goal: 'move to main',
+      riskAssessment: 'This may replace files in the working tree.',
+    }, {} as never)).resolves.toEqual({
+      decision: 'allow',
+      kind: 'response',
+      modelId: 'copilot:gpt-4.1',
+      reason: 'safe enough after retry',
+    });
+
+    expect(selectChatModels).toHaveBeenCalledTimes(2);
+    expect(sendRequest).toHaveBeenCalledTimes(1);
+  });
+
   it('returns disabled when no risk assessment model is configured', async () => {
     await expect(assessShellCommandRisk({
       command: 'git status',
@@ -740,6 +783,39 @@ describe('shell risk assessment', () => {
 
     expect(selectChatModels).not.toHaveBeenCalled();
     expect(logWarn).toHaveBeenCalledWith('Shell risk assessment failed for model copilot:gpt-4.1: cache key failed');
+  });
+
+  it('cleans up the cache key when cache storage fails after key generation', async () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_RISK_ASSESSMENT_CHAT_MODEL_KEY) {
+        return 'copilot:gpt-4.1';
+      }
+
+      return undefined;
+    }));
+
+    const mapSetSpy = vi.spyOn(Map.prototype, 'set').mockImplementationOnce(() => {
+      throw new Error('cache store failed');
+    });
+
+    try {
+      await expect(assessShellCommandRisk({
+        command: 'git checkout main',
+        cwd: '/workspace',
+        explanation: 'switch branches',
+        goal: 'move to main',
+        riskAssessment: 'This may replace files in the working tree.',
+      }, {} as never)).resolves.toEqual({
+        kind: 'error',
+        modelId: 'copilot:gpt-4.1',
+        reason: 'Risk assessment model `copilot:gpt-4.1` failed: cache store failed',
+      });
+    }
+    finally {
+      mapSetSpy.mockRestore();
+    }
+
+    expect(logWarn).toHaveBeenCalledWith('Shell risk assessment failed for model copilot:gpt-4.1: cache store failed');
   });
 
   it('returns a deny decision when the model flags a command as clearly destructive', async () => {

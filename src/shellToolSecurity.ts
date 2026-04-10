@@ -943,7 +943,7 @@ export function buildShellRunConfirmationMessage(options: BuildConfirmationOptio
   ];
 
   if (options.riskAssessmentContext && options.riskAssessmentContext.length > 0) {
-    lines.push(`Risk context files: ${options.riskAssessmentContext.join(', ')}`);
+    lines.push(`Risk context: ${options.riskAssessmentContext.join(', ')}`);
   }
 
   if (options.approvalDecision.modelAssessment) {
