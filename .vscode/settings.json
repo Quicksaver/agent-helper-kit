@@ -38,6 +38,7 @@
   "yaml.format.singleQuote": true,
   "lgtm.contextFiles": [
     "AGENTS.md",
+    "package.json",
     "README.md"
   ]
 }
