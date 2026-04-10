@@ -16,6 +16,22 @@ const MAX_CONTEXT_FILES = 20;
 const MAX_CONTEXT_FILE_CHARACTERS = 12_000;
 const MAX_TOTAL_CONTEXT_CHARACTERS = 60_000;
 const riskAssessmentResultCache = new Map<string, Promise<ShellRiskAssessmentModelResult>>();
+// Keep this shortlist intentionally small and revisit it when the validated
+// fast models for shell risk assessment change.
+const RECOMMENDED_MODEL_MATCHERS = [
+  {
+    matches: (model: vscode.LanguageModelChat) => model.id === 'gpt-4.1',
+    vendor: 'copilot',
+  },
+  {
+    matches: (model: vscode.LanguageModelChat) => model.id.startsWith('claude-sonnet-4.6'),
+    vendor: 'copilot',
+  },
+  {
+    matches: (model: vscode.LanguageModelChat) => model.id.startsWith('claude-sonnet-4-6'),
+    vendor: 'claude-model-provider',
+  },
+] as const;
 
 type ModelQuickPickItem = vscode.QuickPickItem & {
   id?: string;
@@ -120,6 +136,25 @@ function createChecksum(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+function escapePromptAttribute(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+}
+
+function escapePromptText(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+}
+
+function formatModelIdWithVendor(vendor: string | undefined, id: string): string {
+  return vendor?.length ? `${vendor}:${id}` : id;
+}
+
 function isLikelyFilePointer(pointer: string): boolean {
   if (path.isAbsolute(pointer) || pointer.startsWith('.')) {
     return true;
@@ -183,15 +218,7 @@ async function readResponse(
 }
 
 function isRecommendedModel(model: vscode.LanguageModelChat): boolean {
-  if (
-    (model.vendor === 'copilot' && model.id === 'gpt-4.1')
-    || (model.vendor === 'copilot' && model.id.startsWith('claude-sonnet-4.6'))
-    || (model.vendor === 'claude-model-provider' && model.id.startsWith('claude-sonnet-4-6'))
-  ) {
-    return true;
-  }
-
-  return false;
+  return RECOMMENDED_MODEL_MATCHERS.some(matcher => matcher.vendor === model.vendor && matcher.matches(model));
 }
 
 function isUnsupportedModel(model: vscode.LanguageModelChat): boolean {
@@ -219,7 +246,7 @@ function getModelQuickPickItems(models: vscode.LanguageModelChat[]): ModelQuickP
   const unsupportedModels: ModelQuickPickItem[] = [];
 
   for (const model of models) {
-    const modelIdWithVendor = `${model.vendor}:${model.id}`;
+    const modelIdWithVendor = formatModelIdWithVendor(model.vendor, model.id);
     const modelName = model.name;
     const item: ModelQuickPickItem = {
       description: modelIdWithVendor,
@@ -361,8 +388,16 @@ function parseRiskAssessmentResponse(response: string): undefined | {
   decision: 'allow' | 'deny' | 'request';
   reason: string;
 } {
-  const trimmedResponse = response.trim();
-  const match = /^(allow|deny|request)\s*::\s*(.+)$/isu.exec(trimmedResponse);
+  const lines = response
+    .trim()
+    .split(/\r?\n/u)
+    .filter(line => line.trim().length > 0);
+
+  if (lines.length !== 1) {
+    return undefined;
+  }
+
+  const match = /^(allow|deny|request)\s*::\s*(.+)$/iu.exec(lines[0]);
 
   if (!match) {
     return undefined;
@@ -453,7 +488,10 @@ async function normalizeRiskAssessmentContextEntries(
     .slice(0, MAX_CONTEXT_FILES);
 }
 
-/** Load risk-assessment context files, keeping unreadable paths as inline diagnostic placeholders. */
+/**
+ * Legacy test helper that mirrors production file truncation while keeping the
+ * older file-only return shape used by focused unit tests.
+ */
 async function loadContextFiles(
   contextPointers: string[],
   cwd: string,
@@ -597,7 +635,7 @@ function buildRiskAssessmentPrompt(
   const renderedContextEntries = contextEntries.flatMap<string>(entry => {
     if (entry.kind === 'file') {
       return [
-        `<file path="${entry.path}">`,
+        `<file path="${escapePromptAttribute(entry.path)}">`,
         '```',
         entry.content,
         '```',
@@ -637,14 +675,37 @@ Use the provided explanation, goal, risk pre-assessment, and context to decide w
 Any meaningful ambiguity or uncertainty must result in a request for user confirmation.
 Only deny commands that are clearly malicious or outright destructive. Do not deny merely because a command is risky or could change files.
 Only allow commands when they appear clearly safe to run without confirmation.
-<command>${options.command}</command>
-<cwd>${options.cwd}</cwd>
-<explanation>${explanation}</explanation>
-<goal>${goal}</goal>
-<risk_assessment>${options.riskAssessment}</risk_assessment>
+<command>${escapePromptText(options.command)}</command>
+<cwd>${escapePromptText(options.cwd)}</cwd>
+<explanation>${escapePromptText(explanation)}</explanation>
+<goal>${escapePromptText(goal)}</goal>
+<risk_assessment>${escapePromptText(options.riskAssessment)}</risk_assessment>
 ${contextBlock}
 Use the following template to respond: allow|request|deny::brief-explanation-for-why
 Include nothing else in your response.`;
+}
+
+function createLinkedCancellationTokenSource(
+  token: vscode.CancellationToken,
+): { dispose: () => void; tokenSource: vscode.CancellationTokenSource } {
+  const tokenSource = new vscode.CancellationTokenSource();
+  const externalCancellation = typeof token.onCancellationRequested === 'function'
+    ? token.onCancellationRequested(() => {
+      tokenSource.cancel();
+    })
+    : undefined;
+
+  if (token.isCancellationRequested) {
+    tokenSource.cancel();
+  }
+
+  return {
+    dispose: () => {
+      externalCancellation?.dispose();
+      tokenSource.dispose();
+    },
+    tokenSource,
+  };
 }
 
 async function readResponseWithTimeout(
@@ -654,6 +715,7 @@ async function readResponseWithTimeout(
   timeoutMs: number,
 ): Promise<string> {
   let timeoutHandle: NodeJS.Timeout | undefined;
+  const { dispose, tokenSource } = createLinkedCancellationTokenSource(token);
 
   try {
     return await Promise.race([
@@ -661,13 +723,14 @@ async function readResponseWithTimeout(
         const responseStream = await model.sendRequest(
           [ vscode.LanguageModelChatMessage.User(prompt) ],
           {},
-          token,
+          tokenSource.token,
         );
 
         return readResponse(responseStream);
       })(),
       new Promise<never>((_, reject) => {
         timeoutHandle = setTimeout(() => {
+          tokenSource.cancel();
           reject(new ShellRiskAssessmentTimeoutError(timeoutMs));
         }, timeoutMs);
       }),
@@ -677,6 +740,8 @@ async function readResponseWithTimeout(
     if (timeoutHandle) {
       clearTimeout(timeoutHandle);
     }
+
+    dispose();
   }
 }
 
@@ -782,6 +847,8 @@ export async function assessShellCommandRisk(
       }
     })();
 
+    // Share a single in-flight assessment, but evict non-response results so
+    // transient errors and timeouts do not poison later retries.
     riskAssessmentResultCache.set(cacheKey, assessmentPromise);
     const result = await assessmentPromise;
 

@@ -290,6 +290,10 @@ const runInAsyncShellTool: vscode.LanguageModelTool<RunInAsyncShellInput> = {
     options: vscode.LanguageModelToolInvocationOptions<RunInAsyncShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
     const input = validateRunInAsyncShellInput(options.input);
+    // Re-check only hard deny rules here as defense in depth in case policy
+    // changes between prepare and invoke. Model-based ask/allow decisions are
+    // intentionally resolved during prepareInvocation and, when needed, by the
+    // user's explicit confirmation.
     const ruleDisposition = analyzeShellRunRuleDisposition(input.command);
 
     if (ruleDisposition.decision === 'deny') {
@@ -349,6 +353,10 @@ const runInSyncShellTool: vscode.LanguageModelTool<RunInSyncShellInput> = {
     options: vscode.LanguageModelToolInvocationOptions<RunInSyncShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
     const input = validateRunInSyncShellInput(options.input);
+    // Re-check only hard deny rules here as defense in depth in case policy
+    // changes between prepare and invoke. Model-based ask/allow decisions are
+    // intentionally resolved during prepareInvocation and, when needed, by the
+    // user's explicit confirmation.
     const ruleDisposition = analyzeShellRunRuleDisposition(input.command);
 
     if (ruleDisposition.decision === 'deny') {

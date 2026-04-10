@@ -105,7 +105,7 @@ const DEFAULT_APPROVAL_RULES: ApprovalRuleMap = {
 const APPROVAL_REGEX_LITERAL_PATTERN = /^\/((?:\\.|[^/])*)\/([a-z]*)$/u;
 const APPROVAL_REGEX_RECOGNIZED_FLAGS = new Set([ 'd', 'g', 'i', 'm', 's', 'u', 'v', 'y' ]);
 const APPROVAL_RULE_VALUES = new Set<ApprovalRuleValue>([ 'allow', 'ask', 'deny' ]);
-const TRANSIENT_ENVIRONMENT_VARIABLE_REGEX = /^[A-Z_][A-Z0-9_]*=/iu;
+const TRANSIENT_ENVIRONMENT_VARIABLE_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*=/u;
 const compiledRegexRulesCache = new WeakMap<ApprovalRuleMap, CompiledRegexRule[]>();
 const parsedRegexRuleCache = new Map<string, null | RegExp>();
 const safeConfiguredRegexRuleCache = new Map<string, boolean>();
@@ -704,7 +704,8 @@ function evaluateSingleCommand(command: string, rules: ApprovalRuleMap): Command
 /**
  * Evaluate full command-line regex rules after subcommand-level analysis. This
  * lets compound patterns still match the original text while preserving the
- * same deny > ask > allow precedence.
+ * same deny > ask > allow precedence. Per-subcommand transient env prefixes
+ * are handled earlier by `evaluateSingleCommand` during full disposition.
  */
 function evaluateFullCommandLine(command: string, rules: ApprovalRuleMap): CommandRuleDecision {
   const trimmedCommand = command.trim();

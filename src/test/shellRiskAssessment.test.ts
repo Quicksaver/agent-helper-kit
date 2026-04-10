@@ -29,6 +29,34 @@ const showWarningMessage = vi.hoisted(() => vi.fn());
 const updateConfiguration = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 const getConfiguration = vi.hoisted(() => vi.fn());
 const userMessage = vi.hoisted(() => vi.fn((value: string) => ({ role: 'user', value })));
+const MockCancellationTokenSource = vi.hoisted(() => class {
+  private readonly listeners = new Set<() => void>();
+
+  readonly token = {
+    isCancellationRequested: false,
+    onCancellationRequested: (listener: () => void) => {
+      this.listeners.add(listener);
+
+      return {
+        dispose: () => {
+          this.listeners.delete(listener);
+        },
+      };
+    },
+  };
+
+  cancel(): void {
+    this.token.isCancellationRequested = true;
+
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
+  dispose(): void {
+    this.listeners.clear();
+  }
+});
 
 function createConfiguration(
   getter: (key: string, defaultValue?: unknown) => unknown = (_, defaultValue) => defaultValue,
@@ -92,6 +120,7 @@ vi.mock('@/logging', () => ({
 }));
 
 vi.mock('vscode', () => ({
+  CancellationTokenSource: MockCancellationTokenSource,
   commands: {
     registerCommand,
   },
@@ -296,8 +325,8 @@ describe('shell risk assessment', () => {
 
     expect(items).toEqual([
       { kind: -1, label: 'Other Models' },
-      expect.objectContaining({ label: 'Alpha', modelIdWithVendor: 'undefined:alpha' }),
-      expect.objectContaining({ label: 'Zeta', modelIdWithVendor: 'undefined:zeta' }),
+      expect.objectContaining({ label: 'Alpha', modelIdWithVendor: 'alpha' }),
+      expect.objectContaining({ label: 'Zeta', modelIdWithVendor: 'zeta' }),
     ]);
   });
 
@@ -314,8 +343,32 @@ describe('shell risk assessment', () => {
       decision: 'request',
       reason: 'needs review',
     });
+    expect(shellRiskAssessmentInternals.parseRiskAssessmentResponse('allow::looks safe\nignore this')).toBeUndefined();
     expect(shellRiskAssessmentInternals.parseRiskAssessmentResponse('allow::   ')).toBeUndefined();
     expect(shellRiskAssessmentInternals.parseRiskAssessmentResponse('maybe')).toBeUndefined();
+  });
+
+  it('fails closed when parsing produces an unsupported decision payload', () => {
+    const originalExec = Object.getOwnPropertyDescriptor(RegExp.prototype, 'exec')?.value as
+      | ((this: RegExp, value: string) => null | RegExpExecArray)
+      | undefined;
+
+    expect(originalExec).toBeDefined();
+
+    const execSpy = vi.spyOn(RegExp.prototype, 'exec').mockImplementation(function mockExec(this: RegExp, value: string) {
+      if (this.source === '^(allow|deny|request)\\s*::\\s*(.+)$') {
+        return [ 'maybe::reason', 'maybe', 'reason' ] as unknown as RegExpExecArray;
+      }
+
+      return originalExec?.call(this, value) ?? null;
+    });
+
+    try {
+      expect(shellRiskAssessmentInternals.parseRiskAssessmentResponse('allow::looks safe')).toBeUndefined();
+    }
+    finally {
+      execSpy.mockRestore();
+    }
   });
 
   it('loads file-backed context and records read failures inline', async () => {
@@ -446,6 +499,39 @@ describe('shell risk assessment', () => {
     expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('alias expands to: node scripts/run.js --refresh'));
   });
 
+  it('omits additional context entries once the total context budget is exhausted', async () => {
+    const sendRequest = vi.fn(async () => createResponseStream([ 'allow::context budget enforced' ]));
+
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_RISK_ASSESSMENT_CHAT_MODEL_KEY) {
+        return 'copilot:gpt-4.1';
+      }
+
+      return undefined;
+    }));
+    mockSelectChatModels([ createModel({ id: 'gpt-4.1', sendRequest, vendor: 'copilot' }) ]);
+
+    const oversizedInlineContext = [ 'A', 'B', 'C', 'D', 'E', 'F' ].map(label => `${label}_START:${label.toLowerCase().repeat(11_992)}`);
+
+    await expect(assessShellCommandRisk({
+      command: 'node scripts/huge-context.js',
+      cwd: '/workspace',
+      explanation: 'exercise context budgeting',
+      goal: 'verify prompt truncation boundaries',
+      riskAssessment: 'This command reads a large amount of inline risk context.',
+      riskAssessmentContext: oversizedInlineContext,
+    }, {} as never)).resolves.toEqual({
+      decision: 'allow',
+      kind: 'response',
+      modelId: 'copilot:gpt-4.1',
+      reason: 'context budget enforced',
+    });
+
+    expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('A_START:'));
+    expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('E_START:'));
+    expect(userMessage).not.toHaveBeenCalledWith(expect.stringContaining('F_START:'));
+  });
+
   it('evicts non-response model results from the session cache so retries can recover', async () => {
     const sendRequest = vi.fn(async () => createResponseStream([ 'allow::safe enough after retry' ]));
 
@@ -554,6 +640,38 @@ describe('shell risk assessment', () => {
     expect(sendRequest).toHaveBeenCalled();
   });
 
+  it('escapes prompt tag content and file path attributes before sending them to the model', async () => {
+    const sendRequest = vi.fn(async () => createResponseStream([ 'allow::escaped safely' ]));
+
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_RISK_ASSESSMENT_CHAT_MODEL_KEY) {
+        return 'copilot:gpt-4.1';
+      }
+
+      return undefined;
+    }));
+    mockSelectChatModels([ createModel({ id: 'gpt-4.1', sendRequest, vendor: 'copilot' }) ]);
+
+    await assessShellCommandRisk({
+      command: 'echo </command> && echo <safe>',
+      cwd: '/workspace',
+      explanation: 'quote <this>',
+      goal: 'avoid </goal> prompt breaks',
+      riskAssessment: 'This <might> rewrite generated files & needs review.',
+      riskAssessmentContext: [ '/workspace/script"quoted".ts' ],
+    }, {} as never);
+
+    expect(userMessage).toHaveBeenCalledWith(expect.stringContaining(
+      '<command>echo &lt;/command&gt; &amp;&amp; echo &lt;safe&gt;</command>',
+    ));
+    expect(userMessage).toHaveBeenCalledWith(expect.stringContaining(
+      '<risk_assessment>This &lt;might&gt; rewrite generated files &amp; needs review.</risk_assessment>',
+    ));
+    expect(userMessage).toHaveBeenCalledWith(expect.stringContaining(
+      '<file path="/workspace/script&quot;quoted&quot;.ts">',
+    ));
+  });
+
   it('includes unreadable file placeholders when cached prompt context cannot be loaded', async () => {
     const sendRequest = vi.fn(async () => createResponseStream([ 'allow::safe enough after reviewing the placeholder' ]));
 
@@ -642,6 +760,8 @@ describe('shell risk assessment', () => {
     vi.useFakeTimers();
 
     try {
+      let requestToken: undefined | { isCancellationRequested: boolean };
+
       getConfiguration.mockReturnValue(createConfiguration(key => {
         if (key === SHELL_TOOLS_RISK_ASSESSMENT_CHAT_MODEL_KEY) {
           return 'copilot:gpt-4.1';
@@ -656,10 +776,14 @@ describe('shell risk assessment', () => {
       mockSelectChatModels([
         createModel({
           id: 'gpt-4.1',
-          sendRequest: vi.fn(async () => new Promise<never>((resolve, reject) => {
-            void resolve;
-            void reject;
-          })),
+          sendRequest: vi.fn(async (_messages, _options, token) => {
+            requestToken = token as { isCancellationRequested: boolean };
+
+            return new Promise<never>((resolve, reject) => {
+              void resolve;
+              void reject;
+            });
+          }),
           vendor: 'copilot',
         }),
       ]);
@@ -680,11 +804,106 @@ describe('shell risk assessment', () => {
         reason: 'Risk assessment model `copilot:gpt-4.1` timed out after 25ms.',
         timeoutMs: 25,
       });
+      expect(requestToken?.isCancellationRequested).toBe(true);
       expect(logWarn).toHaveBeenCalledWith('Shell risk assessment timed out for model copilot:gpt-4.1 after 25ms.');
     }
     finally {
       vi.useRealTimers();
     }
+  });
+
+  it('passes through an already-cancelled token even when no cancellation listener is available', async () => {
+    let requestToken: undefined | { isCancellationRequested: boolean };
+
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_RISK_ASSESSMENT_CHAT_MODEL_KEY) {
+        return 'copilot:gpt-4.1';
+      }
+
+      return undefined;
+    }));
+    mockSelectChatModels([
+      createModel({
+        id: 'gpt-4.1',
+        sendRequest: vi.fn(async (_messages, _options, token) => {
+          requestToken = token as { isCancellationRequested: boolean };
+
+          return createResponseStream([ 'allow::already cancelled but still parsed' ]);
+        }),
+        vendor: 'copilot',
+      }),
+    ]);
+
+    await expect(assessShellCommandRisk({
+      command: 'git status',
+      cwd: '/workspace',
+      explanation: 'inspect state',
+      goal: 'read repo status',
+      riskAssessment: 'Read-only command.',
+    }, { isCancellationRequested: true } as never)).resolves.toEqual({
+      decision: 'allow',
+      kind: 'response',
+      modelId: 'copilot:gpt-4.1',
+      reason: 'already cancelled but still parsed',
+    });
+
+    expect(requestToken?.isCancellationRequested).toBe(true);
+  });
+
+  it('propagates external cancellation requests to the model token', async () => {
+    let requestToken: undefined | { isCancellationRequested: boolean };
+    let triggerCancellation: (() => void) | undefined;
+
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_RISK_ASSESSMENT_CHAT_MODEL_KEY) {
+        return 'copilot:gpt-4.1';
+      }
+
+      return undefined;
+    }));
+    mockSelectChatModels([
+      createModel({
+        id: 'gpt-4.1',
+        sendRequest: vi.fn(async (_messages, _options, token) => {
+          requestToken = token as { isCancellationRequested: boolean };
+          triggerCancellation?.();
+
+          return createResponseStream([ 'allow::cancel propagated' ]);
+        }),
+        vendor: 'copilot',
+      }),
+    ]);
+
+    const externalToken = {
+      isCancellationRequested: false,
+      onCancellationRequested: (listener: () => void) => {
+        triggerCancellation = () => {
+          externalToken.isCancellationRequested = true;
+          listener();
+        };
+
+        return {
+          dispose: () => {
+            triggerCancellation = undefined;
+          },
+        };
+      },
+    };
+
+    await expect(assessShellCommandRisk({
+      command: 'git status',
+      cwd: '/workspace',
+      explanation: 'inspect state',
+      goal: 'read repo status',
+      riskAssessment: 'Read-only command.',
+    }, externalToken as never)).resolves.toEqual({
+      decision: 'allow',
+      kind: 'response',
+      modelId: 'copilot:gpt-4.1',
+      reason: 'cancel propagated',
+    });
+
+    expect(requestToken?.isCancellationRequested).toBe(true);
   });
 
   it('returns an error when the model response is not parseable', async () => {
