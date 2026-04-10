@@ -12,6 +12,7 @@ This file provides context for AI agents working in this codebase.
 
 ## Documentation
 
+- **INTEGRATION_SECURITY.md** describes the security model and integration points for LM tools, shell runtimes, and the approval system, mostly adapted from VS Code's core functionality.
 - **README.md** at root, provides project features and description.
 
 ## Tech Stack
@@ -78,6 +79,7 @@ Agent Skills are in `.github/skills/`, **activate** as many as fit the nature of
 
 - **[tools] LM Tool Registration**: Shell tools must stay declared in `package.json` and registered at runtime, and their user-facing metadata should keep coming from the manifest with a safe fallback when parsing fails. See `registerShellTools` in src/shellTools.ts.
 - **[tools] Prompt Reference Names**: Any LM tool with `canBeReferencedInPrompt: true` also needs `toolReferenceName`, or VS Code rejects registration during activation. See `contributes.languageModelTools` in package.json.
+- **[approval] Read-Only Rule Specificity**: Prefer subcommand-specific regex allow rules for shell approval instead of broad command-name allows; named rules over-approve write-capable variants like `git branch`. See `DEFAULT_APPROVAL_RULES` in src/shellToolSecurity.ts.
 - **[extension] Feature Toggle Completeness**: Disabling a feature requires both runtime disposal and manifest `when`/`enablement` guards; unregistering alone leaves commands or chat tools visible after reload. See `activate` in src/extension.ts.
 - **[runtime] Tool Boundary**: Resolve workspace-relative `cwd` and other editor-context defaults in the tool layer, then pass concrete values into `ShellRuntime`; this keeps runtime reusable and testable. See `resolveCommandCwd` in src/shellTools.ts.
 - **[runtime] Single Execution Path**: Keep sync and async shell runs on the same background-command lifecycle so IDs, streaming reads, kill behavior, and the Shell Runs panel stay consistent. See `runInSyncShellTool` in src/shellTools.ts.

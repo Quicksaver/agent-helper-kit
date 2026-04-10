@@ -123,7 +123,23 @@ describe('shell tool security', () => {
     });
     expect(analyzeShellRunRuleDisposition('git status')).toEqual({
       decision: 'allow',
-      reason: 'The command matched allow rule /^git\\s+(branch|diff|log|show|status)\\b/.',
+      reason: 'The command matched allow rule /^git(\\s+(-C\\s+\\S+|--no-pager))*\\s+status\\b/.',
+    });
+    expect(analyzeShellRunRuleDisposition('git --no-pager diff --stat')).toEqual({
+      decision: 'allow',
+      reason: 'The command matched allow rule /^git(\\s+(-C\\s+\\S+|--no-pager))*\\s+diff\\b/.',
+    });
+    expect(analyzeShellRunRuleDisposition('git -C packages/api log --oneline')).toEqual({
+      decision: 'allow',
+      reason: 'The command matched allow rule /^git(\\s+(-C\\s+\\S+|--no-pager))*\\s+log\\b/.',
+    });
+    expect(analyzeShellRunRuleDisposition('docker ps')).toEqual({
+      decision: 'allow',
+      reason: 'The command matched allow rule /^docker\\s+(ps|images|info|version|inspect|logs)\\b/.',
+    });
+    expect(analyzeShellRunRuleDisposition('npm ls react')).toEqual({
+      decision: 'allow',
+      reason: 'The command matched allow rule /^npm\\s+(ls|list|outdated|view|info|show|explain|why)\\b/.',
     });
   });
 
@@ -135,6 +151,10 @@ describe('shell tool security', () => {
     expect(analyzeShellRunRuleDisposition('find . -delete')).toEqual({
       decision: 'deny',
       reason: 'The command matched deny rule /^find\\b.*\\s-(delete|exec|execdir|fprint|fprintf|fls|ok|okdir)\\b/.',
+    });
+    expect(analyzeShellRunRuleDisposition('sort -o sorted.txt unsorted.txt')).toEqual({
+      decision: 'deny',
+      reason: 'The command matched deny rule /^sort\\b.*\\s-o\\b/.',
     });
   });
 
@@ -150,6 +170,9 @@ describe('shell tool security', () => {
   });
 
   it('defers unknown commands to the risk assessment model', () => {
+    expect(analyzeShellRunRuleDisposition('git branch')).toEqual({
+      decision: 'defer',
+    });
     expect(analyzeShellRunRuleDisposition('git checkout main')).toEqual({
       decision: 'defer',
     });

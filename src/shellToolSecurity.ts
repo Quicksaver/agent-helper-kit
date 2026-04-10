@@ -49,12 +49,18 @@ export type ShellRunApprovalDecision = {
 };
 
 const DEFAULT_APPROVAL_RULES: ApprovalRuleMap = {
+  '/^docker\\s+(ps|images|info|version|inspect|logs)\\b/': 'allow',
   '/^find\\b.*\\s-(delete|exec|execdir|fprint|fprintf|fls|ok|okdir)\\b/': 'deny',
-  '/^git\\s+(branch|diff|log|show|status)\\b/': 'allow',
+  '/^git(\\s+(-C\\s+\\S+|--no-pager))*\\s+diff\\b/': 'allow',
+  '/^git(\\s+(-C\\s+\\S+|--no-pager))*\\s+log\\b/': 'allow',
+  '/^git(\\s+(-C\\s+\\S+|--no-pager))*\\s+show\\b/': 'allow',
+  '/^git(\\s+(-C\\s+\\S+|--no-pager))*\\s+status\\b/': 'allow',
+  '/^npm\\s+(ls|list|outdated|view|info|show|explain|why)\\b/': 'allow',
   '/^rg\\b.*\\s(--hostname-bin|--pre)\\b/': 'deny',
   '/^sed\\b.*;\\s*[wW]\\b/': 'deny',
   '/^sed\\b.*\\s(-[a-zA-Z]*(e|f|i)[a-zA-Z]*|--expression|--file|--in-place)\\b/': 'deny',
   '/^sed\\b.*s\\/.*\\/.*\\/[ew]/': 'deny',
+  '/^sort\\b.*\\s-o\\b/': 'deny',
   cat: 'allow',
   chmod: 'deny',
   chown: 'deny',
