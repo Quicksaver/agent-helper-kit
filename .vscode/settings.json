@@ -2,6 +2,13 @@
   "[javascript]": {
     "editor.defaultFormatter": "dbaeumer.vscode-eslint"
   },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.rulers": [166]
+  },
   "[typescript]": {
     "editor.defaultFormatter": "dbaeumer.vscode-eslint"
   },
@@ -17,7 +24,7 @@
   "editor.formatOnSave": true,
   "eslint.enable": true,
   "eslint.format.enable": true,
-  "eslint.runtime": "/Users/luismiguelsousa/.nvm/versions/node/v24.13.0/bin/node",
+  "eslint.runtime": "/Users/luismiguelsousa/.nvm/versions/node/v24.14.0/bin/node",
   "evenBetterToml.formatter.indentEntries": true,
   "evenBetterToml.formatter.reorderKeys": true,
   "evenBetterToml.formatter.trailingNewline": true,
@@ -31,14 +38,14 @@
   "js/ts.format.enabled": true,
   "js/ts.tsdk.path": "node_modules/typescript/lib",
   "js/ts.validate.enabled": true,
-  "prettier.configPath": "prettier.config.mjs",
-  "prettier.enable": true,
-  "prettier.ignorePath": ".prettierignore",
-  "yaml.format.printWidth": 120,
-  "yaml.format.singleQuote": true,
   "lgtm.contextFiles": [
     "AGENTS.md",
     "package.json",
     "README.md"
-  ]
+  ],
+  "prettier.configPath": "prettier.config.mjs",
+  "prettier.enable": true,
+  "prettier.ignorePath": ".prettierignore",
+  "yaml.format.printWidth": 120,
+  "yaml.format.singleQuote": true
 }
