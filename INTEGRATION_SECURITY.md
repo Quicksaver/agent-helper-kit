@@ -471,6 +471,19 @@ Commands like `FOO=bar cmd` can radically alter execution and are hard to reason
 
 Fail closed. This is a cheap, high-value rule that avoids surprising behavior.
 
+### Current Extension Divergence Note
+
+This extension intentionally diverges from the core behavior above.
+
+When a command begins with transient environment assignments, it strips those leading assignments before evaluating approval rules:
+
+- matching `deny` and `ask` rules are preserved
+- matching `allow` rules are ignored instead of auto-running the command
+- unresolved commands still go through model-based risk assessment unless the user has enabled the explicit YOLO override
+- if risk assessment is disabled, times out, errors, or explicitly requests review, the command falls back to manual approval
+
+This keeps transient prefixes from silently inheriting an `allow` rule while avoiding a blanket manual-confirmation requirement for every such command.
+
 ### Core Reference Snippet
 
 ```ts

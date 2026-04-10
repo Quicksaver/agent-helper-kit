@@ -31,7 +31,7 @@ Compared with built-in terminal tools, these extension tools are optimized for a
 - Deterministic command lifecycle with stable IDs you can await, poll, and kill.
 - Structured metadata (`exitCode`, `terminationSignal`, `timedOut`, `shell`) that is easier to automate against.
 - Output controls (`full_output`, `last_lines`, `regex`) to reduce context noise in chat.
-- Approval flow that combines explicit allow/ask/deny rules with optional model-based risk assessment.
+- Approval flow that combines explicit allow/ask/deny rules with optional model-based risk assessment, while treating transient env-var prefixes conservatively.
 - `run_in_sync_shell` is optimal for single- or multi-step deterministic commands.
 - `run_in_async_shell` is optimal for long-running detached jobs plus explicit polling.
 
@@ -65,6 +65,8 @@ When using `run_in_sync_shell` or `run_in_async_shell`, provide:
 - `goal`: why the command is being run.
 - `riskAssessment`: a brief pre-assessment of possible destructive effects, sensitive-data leakage, data loss, or system impact.
 - `riskAssessmentContext` (optional): additional risk context. Use file paths for scripts the command executes, and inline strings for relevant sub-actions or alias expansions that help explain what the command ultimately runs.
+
+Transient env-var prefixes such as `FOO=bar cmd` do not automatically force manual approval in this extension. Instead, the approval engine strips those prefixes for rule matching, preserves matching `ask` and `deny` rules, and downgrades matching `allow` rules to model-based risk assessment.
 
 ## Contributing
 

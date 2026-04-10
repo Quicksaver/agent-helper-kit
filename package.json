@@ -167,7 +167,7 @@
         },
         "agent-helper-kit.shellTools.riskAssessment.chatModel": {
           "default": "copilot:gpt-4.1",
-          "description": "Chat model used to pre-assess shell-command risk after explicit approval rules and before any user confirmation. Set this to a model ID in vendor:id format, or leave it empty to disable model-based risk assessment. Prefer a fast model for optimal experience. When left empty, unresolved commands default to explicit approval unless autoApprovePotentiallyDestructiveCommands is enabled.",
+          "description": "Chat model used to pre-assess shell-command risk after explicit approval rules and before any user confirmation. Set this to a model ID in vendor:id format, or leave it empty to disable model-based risk assessment. Prefer a fast model for optimal experience. When left empty, unresolved commands default to explicit approval unless autoApprovePotentiallyDestructiveCommands is enabled. Commands with transient environment-variable prefixes still route through this model unless a matching ask or deny rule already decides them.",
           "type": "string"
         },
         "agent-helper-kit.shellTools.riskAssessment.timeoutMs": {
@@ -178,7 +178,7 @@
         },
         "agent-helper-kit.shellTools.approvalRules": {
           "default": {},
-          "description": "Override shell tool approval rules. Keys are command names like 'pwd' or regex literals like '/^git\\s+status\\b/i'. Values are 'allow', 'ask', or 'deny'. 'allow' runs without prompting, 'ask' always prompts, and 'deny' blocks execution outright. Deny rules take precedence over ask and allow for matching commands. Invalid or vulnerable regex literals are ignored.",
+          "description": "Override shell tool approval rules. Keys are command names like 'pwd' or regex literals like '/^git\\s+status\\b/i'. Values are 'allow', 'ask', or 'deny'. 'allow' runs without prompting, 'ask' always prompts, and 'deny' blocks execution outright. Deny rules take precedence over ask and allow for matching commands. When a command begins with transient environment assignments, matching ask and deny rules are preserved after stripping those prefixes, but matching allow rules are downgraded to model-based risk assessment instead of auto-running. Invalid or vulnerable regex literals are ignored.",
           "additionalProperties": {
             "type": "string",
             "enum": [

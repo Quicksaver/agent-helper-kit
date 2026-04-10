@@ -111,13 +111,13 @@ const DEFAULT_APPROVAL_RULES: ApprovalRuleMap = {
 const APPROVAL_REGEX_LITERAL_PATTERN = /^\/((?:\\.|[^/])*)\/([a-z]*)$/u;
 const APPROVAL_REGEX_RECOGNIZED_FLAGS = new Set([ 'd', 'g', 'i', 'm', 's', 'u', 'v', 'y' ]);
 const APPROVAL_RULE_VALUES = new Set<ApprovalRuleValue>([ 'allow', 'ask', 'deny' ]);
-const TRANSIENT_ENVIRONMENT_VARIABLE_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*=/u;
 const compiledRegexRulesCache = new WeakMap<ApprovalRuleMap, CompiledRegexRule[]>();
 const parsedRegexRuleCache = new Map<string, null | RegExp>();
 const safeConfiguredRegexRuleCache = new Map<string, boolean>();
 const REGEX_RULE_VALIDATION_TIMEOUT_MS = 250;
 const REGEX_RULE_VALIDATION_RETRY_TIMEOUT_MS = 1000;
 const WHITESPACE_CHARACTER_REGEX = /\s/u;
+const TRANSIENT_ENVIRONMENT_VARIABLE_NAME_CHARACTER_REGEX = /[a-zA-Z0-9_]/u;
 let regexRuleValidator: typeof checkSync = checkSync;
 let configuredApprovalRulesCache: undefined | {
   cacheKey: string;
@@ -500,6 +500,398 @@ function pushSubcommand(subcommands: string[], current: string): void {
   }
 }
 
+function parseLeadingTransientEnvironmentAssignment(command: string, startIndex: number): number | undefined {
+  if (startIndex >= command.length) {
+    return undefined;
+  }
+
+  const firstCharacter = command[startIndex];
+
+  if (!/[a-zA-Z_]/u.test(firstCharacter)) {
+    return undefined;
+  }
+
+  let index = startIndex + 1;
+
+  while (
+    index < command.length
+    && TRANSIENT_ENVIRONMENT_VARIABLE_NAME_CHARACTER_REGEX.test(command[index] ?? '')
+  ) {
+    index += 1;
+  }
+
+  if (command[index] !== '=') {
+    return undefined;
+  }
+
+  index += 1;
+
+  let escapeNext = false;
+  let quote: 'double' | 'single' | undefined;
+
+  for (; index < command.length; index += 1) {
+    const character = command[index];
+    const nextCharacter = command[index + 1];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (quote === 'single') {
+      if (character === '\'') {
+        quote = undefined;
+      }
+
+      continue;
+    }
+
+    if (character === '\\') {
+      escapeNext = true;
+      continue;
+    }
+
+    if (quote === 'double') {
+      if (character === '`') {
+        return undefined;
+      }
+
+      if (character === '$' && nextCharacter === '(') {
+        return undefined;
+      }
+
+      if (character === '"') {
+        quote = undefined;
+      }
+
+      continue;
+    }
+
+    if (character === '`') {
+      return undefined;
+    }
+
+    if (character === '$' && nextCharacter === '(') {
+      return undefined;
+    }
+
+    if (character === '\'') {
+      quote = 'single';
+      continue;
+    }
+
+    if (character === '"') {
+      quote = 'double';
+      continue;
+    }
+
+    if (WHITESPACE_CHARACTER_REGEX.test(character)) {
+      return index;
+    }
+  }
+
+  if (escapeNext || quote !== undefined) {
+    return undefined;
+  }
+
+  return index;
+}
+
+function stripLeadingTransientEnvironmentAssignments(command: string): {
+  hadTransientEnvironmentAssignments: boolean;
+  strippedCommand: string;
+} {
+  let index = 0;
+
+  while (index < command.length && WHITESPACE_CHARACTER_REGEX.test(command[index] ?? '')) {
+    index += 1;
+  }
+
+  const leadingWhitespace = command.slice(0, index);
+  let scanIndex = index;
+  let hadTransientEnvironmentAssignments = false;
+
+  while (scanIndex < command.length) {
+    const assignmentEndIndex = parseLeadingTransientEnvironmentAssignment(command, scanIndex);
+
+    if (assignmentEndIndex === undefined) {
+      break;
+    }
+
+    hadTransientEnvironmentAssignments = true;
+    scanIndex = assignmentEndIndex;
+
+    while (scanIndex < command.length && WHITESPACE_CHARACTER_REGEX.test(command[scanIndex] ?? '')) {
+      scanIndex += 1;
+    }
+  }
+
+  if (!hadTransientEnvironmentAssignments) {
+    return {
+      hadTransientEnvironmentAssignments,
+      strippedCommand: command,
+    };
+  }
+
+  return {
+    hadTransientEnvironmentAssignments,
+    strippedCommand: `${leadingWhitespace}${command.slice(scanIndex)}`,
+  };
+}
+
+function stripTransientEnvironmentAssignmentsFromCommandLine(commandLine: string): undefined | {
+  hadTransientEnvironmentAssignments: boolean;
+  strippedCommandLine: string;
+} {
+  let current = '';
+  let escapeNext = false;
+  let quote: 'double' | 'single' | undefined;
+  let hadTransientEnvironmentAssignments = false;
+  let strippedCommandLine = '';
+
+  const flushCurrent = () => {
+    const strippedCurrent = stripLeadingTransientEnvironmentAssignments(current);
+
+    hadTransientEnvironmentAssignments ||= strippedCurrent.hadTransientEnvironmentAssignments;
+    strippedCommandLine += strippedCurrent.strippedCommand;
+    current = '';
+  };
+
+  for (let index = 0; index < commandLine.length; index += 1) {
+    const character = commandLine[index];
+    const nextCharacter = commandLine[index + 1];
+
+    if (escapeNext) {
+      current += character;
+      escapeNext = false;
+      continue;
+    }
+
+    if (quote === 'single') {
+      current += character;
+
+      if (character === '\'') {
+        quote = undefined;
+      }
+
+      continue;
+    }
+
+    if (character === '\\') {
+      current += character;
+      escapeNext = true;
+      continue;
+    }
+
+    if (quote === 'double') {
+      if (character === '`') {
+        return undefined;
+      }
+
+      if (character === '$' && nextCharacter === '(') {
+        return undefined;
+      }
+
+      current += character;
+
+      if (character === '"') {
+        quote = undefined;
+      }
+
+      continue;
+    }
+
+    if (character === '`') {
+      return undefined;
+    }
+
+    if (character === '$' && nextCharacter === '(') {
+      return undefined;
+    }
+
+    if (character === '\'') {
+      current += character;
+      quote = 'single';
+      continue;
+    }
+
+    if (character === '"') {
+      current += character;
+      quote = 'double';
+      continue;
+    }
+
+    if (character === '>' || character === '<') {
+      return undefined;
+    }
+
+    if (character === '&') {
+      flushCurrent();
+      strippedCommandLine += nextCharacter === '&' ? '&&' : '&';
+
+      if (nextCharacter === '&') {
+        index += 1;
+      }
+
+      continue;
+    }
+
+    if (character === '|') {
+      flushCurrent();
+      strippedCommandLine += nextCharacter === '|' ? '||' : '|';
+
+      if (nextCharacter === '|') {
+        index += 1;
+      }
+
+      continue;
+    }
+
+    if (character === ';') {
+      flushCurrent();
+      strippedCommandLine += character;
+      continue;
+    }
+
+    if (character === '\n' || character === '\r') {
+      flushCurrent();
+      strippedCommandLine += character;
+
+      if (character === '\r' && nextCharacter === '\n') {
+        strippedCommandLine += nextCharacter;
+        index += 1;
+      }
+
+      continue;
+    }
+
+    current += character;
+  }
+
+  if (escapeNext || quote !== undefined) {
+    return undefined;
+  }
+
+  flushCurrent();
+
+  return {
+    hadTransientEnvironmentAssignments,
+    strippedCommandLine,
+  };
+}
+
+function evaluateSingleCommandAgainstRules(command: string, rules: ApprovalRuleMap): CommandRuleDecision {
+  const trimmedCommand = command.trim();
+
+  if (trimmedCommand.length === 0) {
+    return { decision: 'defer' };
+  }
+
+  const commandName = extractFirstToken(trimmedCommand) ?? trimmedCommand;
+  const namedRule = getNamedRule(rules, commandName);
+  const regexOutcomes = getCompiledRegexRules(rules)
+    .filter(rule => rule.regex.test(trimmedCommand))
+    .map(rule => ({
+      reason: `The command matched ${rule.ruleValue} rule ${rule.ruleKey}.`,
+      value: rule.ruleValue,
+    }));
+
+  if (namedRule === 'deny') {
+    return {
+      decision: 'deny',
+      reason: `The command \`${commandName}\` is denied by the shell approval policy.`,
+    };
+  }
+
+  const deniedRegexRule = regexOutcomes.find(rule => rule.value === 'deny');
+
+  if (deniedRegexRule) {
+    return {
+      decision: 'deny',
+      reason: deniedRegexRule.reason,
+    };
+  }
+
+  if (namedRule === 'ask') {
+    return {
+      decision: 'ask',
+      reason: `The command \`${commandName}\` is configured to always request approval.`,
+    };
+  }
+
+  const askedRegexRule = regexOutcomes.find(rule => rule.value === 'ask');
+
+  if (askedRegexRule) {
+    return {
+      decision: 'ask',
+      reason: askedRegexRule.reason,
+    };
+  }
+
+  if (namedRule === 'allow') {
+    return { decision: 'allow' };
+  }
+
+  const allowedRegexRule = regexOutcomes.find(rule => rule.value === 'allow');
+
+  if (allowedRegexRule) {
+    return {
+      decision: 'allow',
+      reason: allowedRegexRule.reason,
+    };
+  }
+
+  return {
+    decision: 'defer',
+  };
+}
+
+function evaluateFullCommandLineAgainstRules(command: string, rules: ApprovalRuleMap): CommandRuleDecision {
+  const trimmedCommand = command.trim();
+
+  if (trimmedCommand.length === 0) {
+    return { decision: 'defer' };
+  }
+
+  const regexOutcomes = getCompiledRegexRules(rules)
+    .filter(rule => rule.regex.test(trimmedCommand))
+    .map(rule => ({
+      reason: `The command matched ${rule.ruleValue} rule ${rule.ruleKey}.`,
+      value: rule.ruleValue,
+    }));
+
+  const deniedRegexRule = regexOutcomes.find(rule => rule.value === 'deny');
+
+  if (deniedRegexRule) {
+    return {
+      decision: 'deny',
+      reason: deniedRegexRule.reason,
+    };
+  }
+
+  const askedRegexRule = regexOutcomes.find(rule => rule.value === 'ask');
+
+  if (askedRegexRule) {
+    return {
+      decision: 'ask',
+      reason: askedRegexRule.reason,
+    };
+  }
+
+  const allowedRegexRule = regexOutcomes.find(rule => rule.value === 'allow');
+
+  if (allowedRegexRule) {
+    return {
+      decision: 'allow',
+      reason: allowedRegexRule.reason,
+    };
+  }
+
+  return {
+    decision: 'defer',
+  };
+}
+
 /**
  * Split a shell command line into approval-sized subcommands using a
  * conservative parser. Anything ambiguous, such as substitutions,
@@ -635,75 +1027,20 @@ function splitShellSubcommands(commandLine: string): string[] | undefined {
  * model assessment or explicit approval.
  */
 function evaluateSingleCommand(command: string, rules: ApprovalRuleMap): CommandRuleDecision {
-  const trimmedCommand = command.trim();
+  const strippedCommand = stripLeadingTransientEnvironmentAssignments(command);
+  const evaluation = evaluateSingleCommandAgainstRules(strippedCommand.strippedCommand, rules);
 
-  if (trimmedCommand.length === 0) {
-    return { decision: 'defer' };
+  if (!strippedCommand.hadTransientEnvironmentAssignments) {
+    return evaluation;
   }
 
-  if (TRANSIENT_ENVIRONMENT_VARIABLE_REGEX.test(trimmedCommand)) {
-    return {
-      decision: 'ask',
-      reason: 'The command begins with transient environment variable assignments, so it always requires explicit approval.',
-    };
-  }
-
-  const commandName = extractFirstToken(trimmedCommand) ?? trimmedCommand;
-  const namedRule = getNamedRule(rules, commandName);
-  const regexOutcomes = getCompiledRegexRules(rules)
-    .filter(rule => rule.regex.test(trimmedCommand))
-    .map(rule => ({
-      reason: `The command matched ${rule.ruleValue} rule ${rule.ruleKey}.`,
-      value: rule.ruleValue,
-    }));
-
-  if (namedRule === 'deny') {
-    return {
-      decision: 'deny',
-      reason: `The command \`${commandName}\` is denied by the shell approval policy.`,
-    };
-  }
-
-  const deniedRegexRule = regexOutcomes.find(rule => rule.value === 'deny');
-
-  if (deniedRegexRule) {
-    return {
-      decision: 'deny',
-      reason: deniedRegexRule.reason,
-    };
-  }
-
-  if (namedRule === 'ask') {
-    return {
-      decision: 'ask',
-      reason: `The command \`${commandName}\` is configured to always request approval.`,
-    };
-  }
-
-  const askedRegexRule = regexOutcomes.find(rule => rule.value === 'ask');
-
-  if (askedRegexRule) {
-    return {
-      decision: 'ask',
-      reason: askedRegexRule.reason,
-    };
-  }
-
-  if (namedRule === 'allow') {
-    return { decision: 'allow' };
-  }
-
-  const allowedRegexRule = regexOutcomes.find(rule => rule.value === 'allow');
-
-  if (allowedRegexRule) {
-    return {
-      decision: 'allow',
-      reason: allowedRegexRule.reason,
-    };
+  if (evaluation.decision === 'ask' || evaluation.decision === 'deny') {
+    return evaluation;
   }
 
   return {
     decision: 'defer',
+    reason: 'Transient environment variable assignments suppress automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
   };
 }
 
@@ -714,55 +1051,25 @@ function evaluateSingleCommand(command: string, rules: ApprovalRuleMap): Command
  * are handled earlier by `evaluateSingleCommand` during full disposition.
  */
 function evaluateFullCommandLine(command: string, rules: ApprovalRuleMap): CommandRuleDecision {
-  const trimmedCommand = command.trim();
+  const strippedCommandLine = stripTransientEnvironmentAssignmentsFromCommandLine(command);
 
-  if (trimmedCommand.length === 0) {
+  if (!strippedCommandLine) {
     return { decision: 'defer' };
   }
 
-  if (TRANSIENT_ENVIRONMENT_VARIABLE_REGEX.test(trimmedCommand)) {
-    return {
-      decision: 'ask',
-      reason: 'The command begins with transient environment variable assignments, so it always requires explicit approval.',
-    };
+  const evaluation = evaluateFullCommandLineAgainstRules(strippedCommandLine.strippedCommandLine, rules);
+
+  if (!strippedCommandLine.hadTransientEnvironmentAssignments) {
+    return evaluation;
   }
 
-  const regexOutcomes = getCompiledRegexRules(rules)
-    .filter(rule => rule.regex.test(trimmedCommand))
-    .map(rule => ({
-      reason: `The command matched ${rule.ruleValue} rule ${rule.ruleKey}.`,
-      value: rule.ruleValue,
-    }));
-
-  const deniedRegexRule = regexOutcomes.find(rule => rule.value === 'deny');
-
-  if (deniedRegexRule) {
-    return {
-      decision: 'deny',
-      reason: deniedRegexRule.reason,
-    };
-  }
-
-  const askedRegexRule = regexOutcomes.find(rule => rule.value === 'ask');
-
-  if (askedRegexRule) {
-    return {
-      decision: 'ask',
-      reason: askedRegexRule.reason,
-    };
-  }
-
-  const allowedRegexRule = regexOutcomes.find(rule => rule.value === 'allow');
-
-  if (allowedRegexRule) {
-    return {
-      decision: 'allow',
-      reason: allowedRegexRule.reason,
-    };
+  if (evaluation.decision === 'ask' || evaluation.decision === 'deny') {
+    return evaluation;
   }
 
   return {
     decision: 'defer',
+    reason: 'Transient environment variable assignments suppress automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
   };
 }
 
@@ -813,6 +1120,13 @@ export function analyzeShellRunRuleDisposition(commandLine: string): CommandRule
     return {
       decision: 'allow',
       reason: 'Every parsed subcommand matched an allow rule.',
+    };
+  }
+
+  if (commandLineResult.reason) {
+    return {
+      decision: 'defer',
+      reason: commandLineResult.reason,
     };
   }
 
@@ -967,14 +1281,19 @@ export function buildShellRunConfirmationMessage(options: BuildConfirmationOptio
 export const shellToolSecurityInternals = {
   analyzeShellRunRuleDisposition,
   evaluateFullCommandLine,
+  evaluateFullCommandLineAgainstRules,
   evaluateSingleCommand,
+  evaluateSingleCommandAgainstRules,
   extractFirstToken,
   getConfiguredApprovalRules,
   getMergedApprovalRules,
   getPreviewCwd,
   parseApprovalRegexRule,
+  parseLeadingTransientEnvironmentAssignment,
   parseRegexRule,
   resetShellToolSecurityCaches,
   setRegexRuleValidatorForTest,
   splitShellSubcommands,
+  stripLeadingTransientEnvironmentAssignments,
+  stripTransientEnvironmentAssignmentsFromCommandLine,
 };

@@ -158,10 +158,36 @@ describe('shell tool security', () => {
     });
   });
 
-  it('always asks when transient environment variables or ambiguous shell parsing are detected', () => {
+  it('falls back to risk assessment when transient environment variables suppress an allow rule', () => {
+    expect(analyzeShellRunRuleDisposition('FOO=bar pwd')).toEqual({
+      decision: 'defer',
+      reason: 'Transient environment variable assignments suppress automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
+    });
+    expect(analyzeShellRunRuleDisposition('FOO=bar pwd && git branch')).toEqual({
+      decision: 'defer',
+      reason: 'Transient environment variable assignments suppress automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
+    });
+  });
+
+  it('preserves ask and deny rules when transient environment variables are present', () => {
+    expect(analyzeShellRunRuleDisposition('FOO=bar rm -rf build')).toEqual({
+      decision: 'deny',
+      reason: 'The command `rm` is denied by the shell approval policy.',
+    });
+
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
+        return {
+          pwd: 'ask',
+        };
+      }
+
+      return undefined;
+    }));
+
     expect(analyzeShellRunRuleDisposition('FOO=bar pwd')).toEqual({
       decision: 'ask',
-      reason: 'The command begins with transient environment variable assignments, so it always requires explicit approval.',
+      reason: 'The command `pwd` is configured to always request approval.',
     });
     expect(analyzeShellRunRuleDisposition('echo $(pwd)')).toEqual({
       decision: 'ask',
@@ -288,6 +314,71 @@ describe('shell tool security', () => {
     expect(shellToolSecurityInternals.splitShellSubcommands('echo "bad $(subshell)"')).toBeUndefined();
     expect(shellToolSecurityInternals.splitShellSubcommands('echo `pwd`')).toBeUndefined();
     expect(shellToolSecurityInternals.splitShellSubcommands('echo trailing\\')).toBeUndefined();
+    expect(shellToolSecurityInternals.stripLeadingTransientEnvironmentAssignments('  FOO=bar BAR="two words" pwd')).toEqual({
+      hadTransientEnvironmentAssignments: true,
+      strippedCommand: '  pwd',
+    });
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=bar pwd && BAR="two words" wc -l README.md')).toEqual({
+      hadTransientEnvironmentAssignments: true,
+      strippedCommandLine: 'pwd && wc -l README.md',
+    });
+  });
+
+  it('parses transient environment assignments conservatively', () => {
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO=bar pwd', 0)).toBe('FOO=bar'.length);
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO=ba\\r pwd', 0)).toBe('FOO=ba\\r'.length);
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('BAR="two words" pwd', 0)).toBe('BAR="two words"'.length);
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('BAZ=\'two words\' pwd', 0)).toBe('BAZ=\'two words\''.length);
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('pwd', 3)).toBeUndefined();
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('9FOO=bar pwd', 0)).toBeUndefined();
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO pwd', 0)).toBeUndefined();
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO=`whoami` pwd', 0)).toBeUndefined();
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO=$(whoami) pwd', 0)).toBeUndefined();
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO="bad `whoami`" pwd', 0)).toBeUndefined();
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO="bad $(whoami)" pwd', 0)).toBeUndefined();
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO="unterminated', 0)).toBeUndefined();
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO=bar\\', 0)).toBeUndefined();
+  });
+
+  it('strips transient environment prefixes from full command lines while failing closed on ambiguous syntax', () => {
+    expect(shellToolSecurityInternals.stripLeadingTransientEnvironmentAssignments('pwd')).toEqual({
+      hadTransientEnvironmentAssignments: false,
+      strippedCommand: 'pwd',
+    });
+    expect(shellToolSecurityInternals.stripLeadingTransientEnvironmentAssignments('  FOO=bar')).toEqual({
+      hadTransientEnvironmentAssignments: true,
+      strippedCommand: '  ',
+    });
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=bar pwd; BAR=baz cat\r\nBAZ=qux tail')).toEqual({
+      hadTransientEnvironmentAssignments: true,
+      strippedCommandLine: 'pwd; cat\r\ntail',
+    });
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=bar pwd | BAR=baz cat')).toEqual({
+      hadTransientEnvironmentAssignments: true,
+      strippedCommandLine: 'pwd | cat',
+    });
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=bar pwd || BAR=baz cat')).toEqual({
+      hadTransientEnvironmentAssignments: true,
+      strippedCommandLine: 'pwd || cat',
+    });
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=ba\\r pwd')).toEqual({
+      hadTransientEnvironmentAssignments: true,
+      strippedCommandLine: 'pwd',
+    });
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=\'two words\' pwd')).toEqual({
+      hadTransientEnvironmentAssignments: true,
+      strippedCommandLine: 'pwd',
+    });
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=bar \'two words\'')).toEqual({
+      hadTransientEnvironmentAssignments: true,
+      strippedCommandLine: '\'two words\'',
+    });
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=`bad` pwd')).toBeUndefined();
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO="bad `x`" pwd')).toBeUndefined();
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=bar > out.txt')).toBeUndefined();
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=bar $(pwd)')).toBeUndefined();
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO="bad $(x)" pwd')).toBeUndefined();
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=bar "unterminated')).toBeUndefined();
   });
 
   it('evaluates single commands and full command lines with named and regex rules', () => {
@@ -349,8 +440,8 @@ describe('shell tool security', () => {
       decision: 'defer',
     });
     expect(shellToolSecurityInternals.evaluateFullCommandLine('ENV=1 cmd', rules)).toEqual({
-      decision: 'ask',
-      reason: 'The command begins with transient environment variable assignments, so it always requires explicit approval.',
+      decision: 'defer',
+      reason: 'Transient environment variable assignments suppress automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
     });
     expect(shellToolSecurityInternals.evaluateFullCommandLine('blocked now', rules)).toEqual({
       decision: 'deny',
@@ -359,6 +450,49 @@ describe('shell tool security', () => {
     expect(shellToolSecurityInternals.evaluateFullCommandLine('line one\nline two', rules)).toEqual({
       decision: 'ask',
       reason: 'The command matched ask rule /^line one\nline two$/.',
+    });
+    expect(shellToolSecurityInternals.evaluateFullCommandLine('ENV=1 line one\nline two', rules)).toEqual({
+      decision: 'ask',
+      reason: 'The command matched ask rule /^line one\nline two$/.',
+    });
+  });
+
+  it('covers extracted rule helpers and transient-aware full-command allow suppression', () => {
+    const rules = {
+      '/^pwd && cat README.md$/': 'allow',
+      '/^pwd && rm -rf build$/': 'deny',
+      '/^status$/': 'ask',
+      pwd: 'allow',
+      rm: 'deny',
+    } as const;
+
+    expect(shellToolSecurityInternals.evaluateSingleCommandAgainstRules('', rules)).toEqual({
+      decision: 'defer',
+    });
+    expect(shellToolSecurityInternals.evaluateSingleCommandAgainstRules('pwd', rules)).toEqual({
+      decision: 'allow',
+    });
+    expect(shellToolSecurityInternals.evaluateSingleCommandAgainstRules('status', rules)).toEqual({
+      decision: 'ask',
+      reason: 'The command matched ask rule /^status$/.',
+    });
+    expect(shellToolSecurityInternals.evaluateFullCommandLineAgainstRules('', rules)).toEqual({
+      decision: 'defer',
+    });
+    expect(shellToolSecurityInternals.evaluateFullCommandLineAgainstRules('pwd && cat README.md', rules)).toEqual({
+      decision: 'allow',
+      reason: 'The command matched allow rule /^pwd && cat README.md$/.',
+    });
+    expect(shellToolSecurityInternals.evaluateFullCommandLine('FOO=bar pwd && cat README.md', rules)).toEqual({
+      decision: 'defer',
+      reason: 'Transient environment variable assignments suppress automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
+    });
+    expect(shellToolSecurityInternals.evaluateFullCommandLine('FOO=bar pwd && rm -rf build', rules)).toEqual({
+      decision: 'deny',
+      reason: 'The command matched deny rule /^pwd && rm -rf build$/.',
+    });
+    expect(shellToolSecurityInternals.evaluateFullCommandLine('FOO=`bad` pwd', rules)).toEqual({
+      decision: 'defer',
     });
   });
 
@@ -612,6 +746,28 @@ describe('shell tool security', () => {
     expect(assessShellCommandRisk).not.toHaveBeenCalled();
   });
 
+  it('lets the YOLO shortcut auto-run unresolved transient-prefixed commands', async () => {
+    getConfiguration.mockReturnValue(createConfiguration((key, defaultValue) => {
+      if (key === SHELL_TOOLS_AUTO_APPROVE_POTENTIALLY_DESTRUCTIVE_COMMANDS_KEY) {
+        return true;
+      }
+
+      return defaultValue;
+    }));
+
+    await expect(decideShellRunApproval({
+      command: 'FOO=bar pwd',
+      cwd: '/workspace',
+      explanation: 'print the current directory with a transient flag',
+      goal: 'inspect the workspace location',
+      riskAssessment: 'Read-only command with a transient environment variable prefix.',
+    }, {} as never)).resolves.toEqual({
+      decision: 'allow',
+      reason: 'The YOLO override is enabled, so unresolved commands run without risk-assessment prompting.',
+    });
+    expect(assessShellCommandRisk).not.toHaveBeenCalled();
+  });
+
   it('uses the model response when rule evaluation defers', async () => {
     assessShellCommandRisk.mockResolvedValue({
       decision: 'request',
@@ -750,6 +906,37 @@ describe('shell tool security', () => {
 
     await expect(decideShellRunApproval({
       command: 'rm -rf build',
+      cwd: '/workspace',
+      riskAssessment: 'Deletes files under the workspace.',
+    }, {} as never)).resolves.toEqual({
+      decision: 'deny',
+      reason: 'The command `rm` is denied by the shell approval policy.',
+    });
+
+    expect(assessShellCommandRisk).not.toHaveBeenCalled();
+  });
+
+  it('keeps transient-prefixed ask and deny rules ahead of model review', async () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
+        return {
+          pwd: 'ask',
+        };
+      }
+
+      return undefined;
+    }));
+
+    await expect(decideShellRunApproval({
+      command: 'FOO=bar pwd',
+      cwd: '/workspace',
+      riskAssessment: 'Read-only command with a transient environment variable prefix.',
+    }, {} as never)).resolves.toEqual({
+      decision: 'ask',
+      reason: 'The command `pwd` is configured to always request approval.',
+    });
+    await expect(decideShellRunApproval({
+      command: 'FOO=bar rm -rf build',
       cwd: '/workspace',
       riskAssessment: 'Deletes files under the workspace.',
     }, {} as never)).resolves.toEqual({
