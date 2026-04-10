@@ -12,6 +12,6 @@ Add an entry under `## [Unreleased]` for the changes made:
 - Word the entry clearly for users
 - Be explicit about the "symptom" that was addressed
 
-Also rewrite or remove any entries under `## [Unreleased]` that are no longer relevant or accurate based on the diff.
+Evaluate existing entries under `## [Unreleased]`, consider them implemented previously to the diff'd changes, and update them if the diff'd changes significantly altered their context or relevance.
 
 Adapt README.md if necessary to reflect any user-facing changes.

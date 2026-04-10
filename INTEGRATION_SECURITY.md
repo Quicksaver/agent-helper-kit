@@ -35,13 +35,14 @@ If you cannot replicate everything, prioritize in this order:
 
 ## Progress
 
-The current extension implementation covers the first five priorities in this document as follows:
+The current extension implementation covers the first five priorities in this document, and it also implements the transient environment-variable handling described in section 6, as follows:
 
 1. **Default confirmation gate**: Implemented. Shell tools build confirmation messages in `prepareInvocation` and include command, cwd, explanation, goal, and the required caller-supplied risk summary.
 2. **Auto-approval gating**: Implemented with a different scope. The previous double opt-in design was intentionally removed in favor of explicit `allow`/`ask`/`deny` rules, optional model-based risk assessment, and a single explicit YOLO override.
 3. **Default allowlist and denylist rules**: Implemented. Safe read-oriented commands can run without prompting, dangerous commands are denied outright, and undecided commands fall through to model review or manual confirmation.
 4. **Dangerous variants of otherwise safe commands**: Implemented. Regex-backed rules still block unsafe variants such as `find -delete`, `rg --pre`, and in-place or write-capable `sed` forms.
 5. **Subcommand parsing**: Implemented. Compound commands are parsed conservatively and fail closed to explicit approval when parsing is ambiguous.
+6. **Transient environment variable prefixes**: Implemented with a deliberate divergence from core. The extension strips leading transient assignments before rule matching, preserves matching `ask` and `deny` outcomes, suppresses `allow` auto-runs, and routes unresolved commands to model review or explicit confirmation.
 
 ## Third-Party Extension Divergence Notes
 
@@ -474,6 +475,8 @@ Fail closed. This is a cheap, high-value rule that avoids surprising behavior.
 ### Current Extension Divergence Note
 
 This extension intentionally diverges from the core behavior above.
+
+Compared with core's blanket denial, the extension keeps the same fail-closed posture for ambiguous prefixes and for explicit `ask` or `deny` matches, but it does not force an automatic manual prompt for every unambiguous transient-prefix command.
 
 When a command begins with transient environment assignments, it strips those leading assignments before evaluating approval rules:
 
