@@ -57,6 +57,8 @@ Compared with built-in terminal tools, these extension tools are optimized for a
 - `agent-helper-kit.shellOutput.memoryToFileSpillMinutes`: minutes to keep output in memory before spilling to file.
 - `agent-helper-kit.shellOutput.startupPurgeMaxAgeHours`: startup cleanup threshold for old persisted output.
 
+Use the Command Palette action `Select Shell Risk Assessment Model` to choose or clear the chat model behind `agent-helper-kit.shellTools.riskAssessment.chatModel`.
+
 When using `run_in_sync_shell` or `run_in_async_shell`, provide:
 
 - `explanation`: what the command does.

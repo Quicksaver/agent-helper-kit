@@ -8,12 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Added shell tool approval gating so commands now require confirmation by default instead of running unchecked.
-- Added opt-in shell tool auto-approval settings and rule overrides so trusted allowlisted commands can skip repeated confirmation.
+- Added shell tool approval prompts for commands that are not explicitly allowed, so model-triggered shell runs no longer execute unchecked by default.
+- Added configurable shell approval rules (`allow`, `ask`, `deny`), optional model-based risk assessment, and a model picker command so trusted commands can skip repeated prompts without disabling review entirely.
 
 ### Fixed
 
-- Fixed shell tool approval checks to fail closed so risky or ambiguous commands stay blocked pending approval.
+- Fixed shell approval matching to fail closed when commands or regex rules are ambiguous or unsafe, so risky shell runs stay blocked pending approval.
 
 ## [1.2.2] - 2026-03-23
 
