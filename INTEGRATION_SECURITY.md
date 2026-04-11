@@ -43,12 +43,15 @@ The current extension implementation covers the first five priorities in this do
 4. **Dangerous variants of otherwise safe commands**: Implemented. Regex-backed rules still block unsafe variants such as `find -delete`, `rg --pre`, and in-place or write-capable `sed` forms.
 5. **Subcommand parsing**: Implemented. Compound commands are parsed conservatively and fail closed to explicit approval when parsing is ambiguous.
 6. **Transient environment variable prefixes**: Implemented with a deliberate divergence from core. The extension strips leading transient assignments before rule matching, preserves matching `ask` and `deny` outcomes, suppresses `allow` auto-runs, and routes unresolved commands to model review or explicit confirmation.
+7. **File-write detection**: Implemented with a deliberate divergence from core. Detected output redirections suppress matching `allow` rules in the same way transient prefixes do, but they preserve `ask` and `deny` outcomes and otherwise fall through to model review or explicit confirmation.
+8. **Workspace-only package scripts**: Intentionally not implemented. Instead, callers should pass relevant script definitions or alias expansions through `riskAssessmentContext`, and the risk-assessment prompt explicitly requests manual confirmation when that context is insufficient.
+9. **Prompt-injection and script-injection review**: Implemented with a different UX. The extension does not show a separate disclaimer message for web fetchers; instead, default deny rules cover obvious fetchers and the risk-assessment prompt explicitly asks the model to review fetched-content and script-injection hazards.
 
 ## Third-Party Extension Divergence Notes
 
 These notes are intentionally preserved because they describe the behavior of this third-party extension this guide is meant to support. They are not claims about the checked-in VS Code core implementation at the reference snapshot above.
 
-That third-party extension intentionally diverges from VS Code core in one major area:
+That third-party extension intentionally diverges from VS Code core in several areas:
 
 - it does **not** use a double opt-in gate for shell auto-approval
 - it requires each shell run request to include a human-readable `riskAssessment`
@@ -57,6 +60,9 @@ That third-party extension intentionally diverges from VS Code core in one major
 - it can optionally ask a configured chat model to return a deterministic `allow`, `request`, or `deny` risk decision for commands that are not already decided by explicit rules
 - it caches risk-assessment results for the current session using normalized command, cwd, and context fingerprints so retries do not keep re-prompting the model
 - it exposes a deliberately dangerous YOLO-style override for users who want zero confirmation prompts on unresolved commands after explicit rules are checked
+- detected file-write redirections suppress matching `allow` rules but otherwise stay on the normal model-review or explicit-confirmation path instead of forcing a dedicated file-write block
+- it does not implement workspace-only package-script auto-approval; package scripts should be evaluated through `riskAssessmentContext` and the model prompt fails closed when script context is incomplete
+- it does not surface a dedicated prompt-injection disclaimer for web fetchers; instead, deny rules and the risk-assessment prompt cover fetched-content and script-injection risks
 
 Section 2 below still describes the current VS Code core behavior. Treat these divergence notes as a downstream design delta for the third-party app, not as a replacement for the core reference.
 
@@ -532,6 +538,19 @@ If you cannot parse all writes, still parse the high-value ones:
 
 Fail closed when the target path is ambiguous.
 
+### Current Extension Divergence Note
+
+This extension intentionally implements a narrower file-write policy than core.
+
+It detects output redirections conservatively during approval parsing, but it does not use file-write location analysis to force a dedicated approval outcome.
+
+When a command includes a detected output redirection:
+
+- matching `deny` and `ask` rules are preserved
+- matching `allow` rules are ignored instead of auto-running the command
+- unresolved commands continue through model-based risk assessment unless the YOLO override is enabled
+- if risk assessment is disabled, times out, errors, or requests review, the command falls back to explicit approval
+
 ### Core Reference Snippet
 
 ```ts
@@ -609,6 +628,14 @@ Core makes a narrow exception for package scripts because they are already decla
 
 This is a good narrow convenience path if your extension works primarily in JS/TS repos. Restrict it to workspace-local `package.json` files.
 
+### Current Extension Divergence Note
+
+This extension intentionally does not implement workspace-only package-script auto-approval.
+
+Instead, callers should pass the relevant `package.json` script definitions, alias expansions, or referenced helper files through `riskAssessmentContext` so the risk-assessment model can review what the command will actually run.
+
+The prompt used for model-based risk assessment is explicitly instructed to request manual confirmation when script-related context is missing or insufficient to evaluate the command safely.
+
 ### Core Reference Snippet
 
 ```ts
@@ -678,6 +705,16 @@ Commands that fetch remote content can return hostile text that tries to manipul
 ### Third-Party Extension Guidance
 
 Implement this even if you cannot implement the full rule system. This warning has strong security value and low implementation cost.
+
+### Current Extension Divergence Note
+
+This extension does not emit a separate user-facing disclaimer for web fetchers.
+
+Instead:
+
+- default deny rules already cover common fetchers such as `curl`, `wget`, `Invoke-WebRequest`, and `Invoke-RestMethod`
+- the risk-assessment prompt explicitly asks the model to look for fetched-content, prompt-injection, and script-injection hazards
+- missing fetched-content context or missing script details are treated as reasons to request manual confirmation
 
 ### Core Reference Snippet
 

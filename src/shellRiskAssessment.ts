@@ -669,10 +669,13 @@ Consider at minimum:
 - alterations or loss of work or data
 - damage to internal or external systems
 - account, environment, or infrastructure actions that result in meaningful or irreversible changes
+- script-injection, prompt-injection, or fetched-content dangers that could cause a local script, package script, shell snippet, or interpreter entrypoint to execute riskier actions than the visible command alone suggests
 - clearly malicious or outright destructive behavior, including catastrophic commands such as fork bombs, destructive root-level deletion, credential exfiltration, or similarly severe actions
 - any other potentially damaging effects or meaningful uncertainty
 Use the provided explanation, goal, risk pre-assessment, and context to decide whether the command is safe to run without user confirmation, should request user confirmation prior to running, or should be denied outright.
 Any meaningful ambiguity or uncertainty must result in a request for user confirmation.
+If the command appears to rely on scripts, aliases, package-manager script definitions, generated shell fragments, or fetched/remote content and the provided context does not make it clear what will actually run or what data will be consumed, request user confirmation.
+Treat missing or incomplete script definitions, alias expansions, or fetched-content details as insufficient context for auto-approval.
 Only deny commands that are clearly malicious or outright destructive. Do not deny merely because a command is risky or could change files.
 Only allow commands when they appear clearly safe to run without confirmation.
 <command>${escapePromptText(options.command)}</command>

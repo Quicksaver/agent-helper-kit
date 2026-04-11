@@ -294,7 +294,15 @@ describe('shell tool security', () => {
       'echo ok',
     ]);
     expect(shellToolSecurityInternals.splitShellSubcommands('echo $(pwd)')).toBeUndefined();
-    expect(shellToolSecurityInternals.splitShellSubcommands('echo hi > out.txt')).toBeUndefined();
+    expect(shellToolSecurityInternals.splitShellSubcommands('echo hi > out.txt')).toEqual([
+      'echo hi > out.txt',
+    ]);
+    expect(shellToolSecurityInternals.splitShellSubcommands('echo hi >&1')).toEqual([
+      'echo hi >&1',
+    ]);
+    expect(shellToolSecurityInternals.splitShellSubcommands('echo hi >| out.txt')).toEqual([
+      'echo hi >| out.txt',
+    ]);
     expect(shellToolSecurityInternals.splitShellSubcommands('echo "unterminated')).toBeUndefined();
   });
 
@@ -314,6 +322,7 @@ describe('shell tool security', () => {
       'echo "fine"',
       'cat',
     ]);
+    expect(shellToolSecurityInternals.splitShellSubcommands('echo hi < input.txt')).toBeUndefined();
     expect(shellToolSecurityInternals.splitShellSubcommands('echo "bad `subshell`"')).toBeUndefined();
     expect(shellToolSecurityInternals.splitShellSubcommands('echo "bad $(subshell)"')).toBeUndefined();
     expect(shellToolSecurityInternals.splitShellSubcommands('echo `pwd`')).toBeUndefined();
@@ -342,6 +351,7 @@ describe('shell tool security', () => {
     expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO=$(whoami) pwd', 0)).toBeUndefined();
     expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO="bad `whoami`" pwd', 0)).toBeUndefined();
     expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO="bad $(whoami)" pwd', 0)).toBeUndefined();
+    expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO=>out.txt pwd', 0)).toBeUndefined();
     expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO="unterminated', 0)).toBeUndefined();
     expect(shellToolSecurityInternals.parseLeadingTransientEnvironmentAssignment('FOO=bar\\', 0)).toBeUndefined();
   });
@@ -385,7 +395,15 @@ describe('shell tool security', () => {
     });
     expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=`bad` pwd')).toBeUndefined();
     expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO="bad `x`" pwd')).toBeUndefined();
-    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=bar > out.txt')).toBeUndefined();
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=bar pwd > out.txt')).toEqual({
+      hadTransientEnvironmentAssignments: true,
+      strippedCommandLine: 'pwd > out.txt',
+    });
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=bar > out.txt')).toEqual({
+      hadTransientEnvironmentAssignments: true,
+      strippedCommandLine: '> out.txt',
+    });
+    expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=bar pwd < input.txt')).toBeUndefined();
     expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=bar $(pwd)')).toBeUndefined();
     expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO="bad $(x)" pwd')).toBeUndefined();
     expect(shellToolSecurityInternals.stripTransientEnvironmentAssignmentsFromCommandLine('FOO=bar "unterminated')).toBeUndefined();
@@ -508,6 +526,39 @@ describe('shell tool security', () => {
     expect(shellToolSecurityInternals.evaluateFullCommandLine('FOO=`bad` pwd', rules)).toEqual({
       decision: 'defer',
       reason: 'Transient environment variable parsing was ambiguous, so the command must be risk-assessed before it can run without confirmation.',
+    });
+  });
+
+  it('falls back to risk assessment when file-write redirections suppress an allow rule', () => {
+    expect(analyzeShellRunRuleDisposition('pwd > out.txt')).toEqual({
+      decision: 'defer',
+      reason: 'Detected file-write redirection suppresses automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
+    });
+    expect(analyzeShellRunRuleDisposition('git status >> status.txt')).toEqual({
+      decision: 'defer',
+      reason: 'Detected file-write redirection suppresses automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
+    });
+  });
+
+  it('preserves ask and deny rules when file-write redirections are present', () => {
+    expect(analyzeShellRunRuleDisposition('rm -rf build > deleted.log')).toEqual({
+      decision: 'deny',
+      reason: 'The command `rm` is denied by the shell approval policy.',
+    });
+
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
+        return {
+          pwd: 'ask',
+        };
+      }
+
+      return undefined;
+    }));
+
+    expect(analyzeShellRunRuleDisposition('pwd > out.txt')).toEqual({
+      decision: 'ask',
+      reason: 'The command `pwd` is configured to always request approval.',
     });
   });
 

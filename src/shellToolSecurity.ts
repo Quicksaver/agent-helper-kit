@@ -51,12 +51,15 @@ type ShellScannerState = {
 
 type ShellScannerStep
   = | {
-    kind: 'consume' | 'whitespace';
-    state: ShellScannerState;
+    direction: 'input' | 'output';
+    kind: 'redirection';
+    skip: number;
     text: string;
   }
   | {
-    kind: 'redirection';
+    kind: 'consume' | 'whitespace';
+    state: ShellScannerState;
+    text: string;
   }
   | {
     kind: 'reject';
@@ -143,6 +146,7 @@ const REGEX_RULE_VALIDATION_TIMEOUT_MS = 250;
 const REGEX_RULE_VALIDATION_RETRY_TIMEOUT_MS = 1000;
 const AMBIGUOUS_TRANSIENT_ENVIRONMENT_ASSIGNMENTS_REASON = 'Transient environment variable parsing was ambiguous, so the command must be risk-assessed before it can run without confirmation.';
 const TRANSIENT_ENVIRONMENT_ASSIGNMENTS_SUPPRESS_ALLOW_REASON = 'Transient environment variable assignments suppress automatic allow rules, so the command must be risk-assessed before it can run without confirmation.';
+const DETECTED_FILE_WRITE_SUPPRESS_ALLOW_REASON = 'Detected file-write redirection suppresses automatic allow rules, so the command must be risk-assessed before it can run without confirmation.';
 const WHITESPACE_CHARACTER_REGEX = /\s/u;
 const TRANSIENT_ENVIRONMENT_VARIABLE_NAME_CHARACTER_REGEX = /[a-zA-Z0-9_]/u;
 let regexRuleValidator: typeof checkSync = checkSync;
@@ -519,11 +523,23 @@ function extractFirstToken(command: string): string | undefined {
   return token.length > 0 ? token : undefined;
 }
 
-function pushSubcommand(subcommands: string[], current: string): void {
+type ParsedShellSubcommand = {
+  hasFileWriteRedirection: boolean;
+  text: string;
+};
+
+function pushParsedSubcommand(
+  subcommands: ParsedShellSubcommand[],
+  current: string,
+  hasFileWriteRedirection: boolean,
+): void {
   const trimmedCommand = current.trim();
 
   if (trimmedCommand.length > 0) {
-    subcommands.push(trimmedCommand);
+    subcommands.push({
+      hasFileWriteRedirection,
+      text: trimmedCommand,
+    });
   }
 }
 
@@ -649,7 +665,39 @@ function scanShellCharacter(command: string, index: number, state: ShellScannerS
   }
 
   if (character === '>' || character === '<') {
-    return { kind: 'redirection' };
+    if (character === '>') {
+      if (nextCharacter === '>') {
+        return {
+          direction: 'output',
+          kind: 'redirection',
+          skip: 1,
+          text: '>>',
+        };
+      }
+
+      if (nextCharacter === '&' || nextCharacter === '|') {
+        return {
+          direction: 'output',
+          kind: 'redirection',
+          skip: 1,
+          text: `${character}${nextCharacter}`,
+        };
+      }
+
+      return {
+        direction: 'output',
+        kind: 'redirection',
+        skip: 0,
+        text: character,
+      };
+    }
+
+    return {
+      direction: 'input',
+      kind: 'redirection',
+      skip: nextCharacter === '<' ? 1 : 0,
+      text: nextCharacter === '<' ? '<<' : '<',
+    };
   }
 
   if (WHITESPACE_CHARACTER_REGEX.test(character)) {
@@ -718,6 +766,10 @@ function parseLeadingTransientEnvironmentAssignment(command: string, startIndex:
 
     if (step.kind === 'whitespace') {
       return index;
+    }
+
+    if (step.kind === 'redirection') {
+      return undefined;
     }
 
     return undefined;
@@ -792,8 +844,18 @@ function stripTransientEnvironmentAssignmentsFromCommandLine(commandLine: string
   for (let index = 0; index < commandLine.length; index += 1) {
     const step = scanShellCharacter(commandLine, index, state);
 
-    if (step.kind === 'reject' || step.kind === 'redirection') {
+    if (step.kind === 'reject') {
       return undefined;
+    }
+
+    if (step.kind === 'redirection') {
+      if (step.direction === 'input') {
+        return undefined;
+      }
+
+      current += step.text;
+      index += step.skip;
+      continue;
     }
 
     if (step.kind === 'separator') {
@@ -932,26 +994,34 @@ function evaluateFullCommandLineAgainstRules(command: string, rules: ApprovalRul
   };
 }
 
-/**
- * Split a shell command line into approval-sized subcommands using a
- * conservative parser. Anything ambiguous, such as substitutions,
- * redirections, dangling escapes, or unterminated quotes, fails closed.
- */
-function splitShellSubcommands(commandLine: string): string[] | undefined {
-  const subcommands: string[] = [];
+function splitShellSubcommandsWithMetadata(commandLine: string): ParsedShellSubcommand[] | undefined {
+  const parsedSubcommands: ParsedShellSubcommand[] = [];
   let current = '';
+  let currentHasFileWriteRedirection = false;
   let state = createShellScannerState();
 
   for (let index = 0; index < commandLine.length; index += 1) {
     const step = scanShellCharacter(commandLine, index, state);
 
-    if (step.kind === 'reject' || step.kind === 'redirection') {
+    if (step.kind === 'reject') {
       return undefined;
     }
 
+    if (step.kind === 'redirection') {
+      if (step.direction === 'input') {
+        return undefined;
+      }
+
+      current += step.text;
+      currentHasFileWriteRedirection = true;
+      index += step.skip;
+      continue;
+    }
+
     if (step.kind === 'separator') {
-      pushSubcommand(subcommands, current);
+      pushParsedSubcommand(parsedSubcommands, current, currentHasFileWriteRedirection);
       current = '';
+      currentHasFileWriteRedirection = false;
       index += step.skip;
 
       continue;
@@ -965,8 +1035,19 @@ function splitShellSubcommands(commandLine: string): string[] | undefined {
     return undefined;
   }
 
-  pushSubcommand(subcommands, current);
-  return subcommands;
+  pushParsedSubcommand(parsedSubcommands, current, currentHasFileWriteRedirection);
+  return parsedSubcommands;
+}
+
+/**
+ * Split a shell command line into approval-sized subcommands using a
+ * conservative parser. Anything ambiguous, such as substitutions,
+ * redirections, dangling escapes, or unterminated quotes, fails closed.
+ */
+function splitShellSubcommands(commandLine: string): string[] | undefined {
+  const parsedSubcommands = splitShellSubcommandsWithMetadata(commandLine);
+
+  return parsedSubcommands?.map(subcommand => subcommand.text);
 }
 
 /**
@@ -1030,9 +1111,9 @@ function evaluateFullCommandLine(command: string, rules: ApprovalRuleMap): Comma
  * then allow, before any model-based risk assessment is considered.
  */
 export function analyzeShellRunRuleDisposition(commandLine: string): CommandRuleDecision {
-  const subcommands = splitShellSubcommands(commandLine);
+  const parsedSubcommands = splitShellSubcommandsWithMetadata(commandLine);
 
-  if (!subcommands || subcommands.length === 0) {
+  if (!parsedSubcommands || parsedSubcommands.length === 0) {
     return {
       decision: 'ask',
       reason: 'The command line could not be parsed safely for approval rules, so explicit approval is required.',
@@ -1040,7 +1121,18 @@ export function analyzeShellRunRuleDisposition(commandLine: string): CommandRule
   }
 
   const rules = getMergedApprovalRules();
-  const subcommandResults = subcommands.map(subcommand => evaluateSingleCommand(subcommand, rules));
+  const subcommandResults = parsedSubcommands.map(subcommand => {
+    const evaluation = evaluateSingleCommand(subcommand.text, rules);
+
+    if (subcommand.hasFileWriteRedirection && evaluation.decision === 'allow') {
+      return {
+        decision: 'defer' as const,
+        reason: DETECTED_FILE_WRITE_SUPPRESS_ALLOW_REASON,
+      };
+    }
+
+    return evaluation;
+  });
   const deferredSubcommandReason = joinUniqueReasons(
     subcommandResults
       .filter(result => result.decision === 'defer')
@@ -1052,7 +1144,14 @@ export function analyzeShellRunRuleDisposition(commandLine: string): CommandRule
     return deniedSubcommandResult;
   }
 
-  const commandLineResult = evaluateFullCommandLine(commandLine, rules);
+  const rawCommandLineResult = evaluateFullCommandLine(commandLine, rules);
+  const commandLineResult = parsedSubcommands.some(subcommand => subcommand.hasFileWriteRedirection)
+    && rawCommandLineResult.decision === 'allow'
+    ? {
+      decision: 'defer' as const,
+      reason: DETECTED_FILE_WRITE_SUPPRESS_ALLOW_REASON,
+    }
+    : rawCommandLineResult;
 
   if (commandLineResult.decision === 'deny') {
     return commandLineResult;
@@ -1252,6 +1351,7 @@ export const shellToolSecurityInternals = {
   resetShellToolSecurityCaches,
   setRegexRuleValidatorForTest,
   splitShellSubcommands,
+  splitShellSubcommandsWithMetadata,
   stripLeadingTransientEnvironmentAssignments,
   stripTransientEnvironmentAssignmentsFromCommandLine,
 };

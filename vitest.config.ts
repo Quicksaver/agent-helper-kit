@@ -19,11 +19,14 @@ export default defineConfig({
       include: [ 'src/**/*.ts' ],
       reporter: [ 'text', 'lcov' ],
       thresholds: {
+        // autoUpdate means thresholds update ONLY if the new coverage is above the current threshold. Higher thresholds
+        // are always acceptable regardless of the task in progress. Lower thresholds are only acceptable with an
+        // extremely good reason; i.e. a new feature contains code that is impossible to hit via automated tests alone.
         autoUpdate: true,
-        branches: 91.09,
-        functions: 98.13,
-        lines: 97.37,
-        statements: 97.32,
+        branches: 91.11,
+        functions: 98.14,
+        lines: 97.4,
+        statements: 97.35,
       },
     },
     globals: false,
