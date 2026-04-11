@@ -22,8 +22,7 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished",
-    "onLanguageModelTool:run_in_sync_shell",
-    "onLanguageModelTool:run_in_async_shell",
+    "onLanguageModelTool:run_in_shell",
     "onLanguageModelTool:await_shell",
     "onLanguageModelTool:get_shell_output",
     "onLanguageModelTool:kill_shell",
@@ -211,129 +210,12 @@
     },
     "languageModelTools": [
       {
-        "name": "run_in_sync_shell",
-        "toolReferenceName": "runInSyncShell",
-        "displayName": "Run Shell Command (Sync)",
+        "name": "run_in_shell",
+        "toolReferenceName": "runInShell",
+        "displayName": "Run Shell Command",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(terminal)",
-        "modelDescription": "Run a shell command synchronously in workspace root (or home if no workspace) unless an optional cwd overrides it. Returns an id and status (shell, exitCode, terminationSignal if any SIG* sent, timedOut if timed out), with optional output via full_output/last_lines/regex. Optimal for single- or multi-step deterministic commands. Compared with built-in run_in_terminal(isBackground:false), pro: reliably detect finished state (and why), read unambiguous/filtered output as needed, smaller context window footprint when only success/failure is needed; con: not interactive, no persisted shell state.",
-        "canBeReferencedInPrompt": true,
-        "inputSchema": {
-          "type": "object",
-          "required": [
-            "command",
-            "explanation",
-            "goal",
-            "riskAssessment",
-            "timeout"
-          ],
-          "properties": {
-            "command": {
-              "type": "string",
-              "description": "Shell command to execute."
-            },
-            "cwd": {
-              "type": "string",
-              "description": "Optional working directory for the command. Relative paths resolve from workspace root (or home if no workspace). Returns an error if the directory does not exist or is inaccessible."
-            },
-            "explanation": {
-              "type": "string",
-              "description": "One-sentence summary of the command."
-            },
-            "goal": {
-              "type": "string",
-              "description": "Short purpose of the command."
-            },
-            "riskAssessment": {
-              "type": "string",
-              "description": "Required brief pre-assessment of the command's risk. Explicitly call out possible destructive side-effects, secrets or sensitive data leakage, loss of work or data, system or account impact, and any other potentially damaging effects."
-            },
-            "riskAssessmentContext": {
-              "type": "array",
-              "description": "Optional list of risk-assessment context entries. Use file paths for scripts or files the command executes, and inline strings for relevant sub-actions or alias expansions that help explain what the command really does.",
-              "items": {
-                "type": "string"
-              }
-            },
-            "shell": {
-              "type": "string",
-              "description": "Optional shell executable path or name. Uses VS Code/default shell when omitted (preferred)."
-            },
-            "columns": {
-              "type": "integer",
-              "description": "Optional terminal width in columns. Overrides any inherited COLUMNS value when provided. Increase this if the command wraps or truncates long lines too aggressively. Must be between 1 and 1000. Defaults to 240.",
-              "minimum": 1,
-              "maximum": 1000
-            },
-            "full_output": {
-              "type": "boolean",
-              "description": "When true, include whole output in response."
-            },
-            "last_lines": {
-              "type": "number",
-              "description": "Optional output trailing line count to include in response; mutually exclusive with full_output/regex.",
-              "minimum": 0
-            },
-            "regex": {
-              "type": "string",
-              "description": "Optional regex filter for output lines included in response; mutually exclusive with full_output/last_lines."
-            },
-            "regex_flags": {
-              "type": "string",
-              "description": "Optional regex flags for regex (for example i, m, s, u); requires regex."
-            },
-            "timeout": {
-              "type": "number",
-              "description": "Timeout in ms; use 0 for no timeout."
-            }
-          },
-          "allOf": [
-            {
-              "not": {
-                "required": [
-                  "last_lines",
-                  "regex"
-                ]
-              }
-            },
-            {
-              "not": {
-                "required": [
-                  "full_output",
-                  "last_lines"
-                ]
-              }
-            },
-            {
-              "not": {
-                "required": [
-                  "full_output",
-                  "regex"
-                ]
-              }
-            },
-            {
-              "if": {
-                "required": [
-                  "regex_flags"
-                ]
-              },
-              "then": {
-                "required": [
-                  "regex"
-                ]
-              }
-            }
-          ]
-        }
-      },
-      {
-        "name": "run_in_async_shell",
-        "toolReferenceName": "runInAsyncShell",
-        "displayName": "Run Shell Command (Async)",
-        "when": "config.agent-helper-kit.shellTools.enabled",
-        "icon": "$(terminal)",
-        "modelDescription": "Run a shell command asynchronously in workspace root (or home if no workspace) unless an optional cwd overrides it. Returns a command id to await status and read output. Optimal for long-running detached jobs plus explicit polling. Compared with built-in run_in_terminal(isBackground:true), pro: reliably detect running vs finished state (and why), read unambiguous/filtered streamed/full output, smaller context window footprint when only success/failure is needed; con: not interactive, no persisted shell state.",
+        "modelDescription": "Run a shell command in a cwd, workspace root, or home if no workspace. Returns an id and status (shell, exitCode, terminationSignal if any SIG* sent). Poll output via id after exit as needed, or include in response via full_output/last_lines/regex. If timeout is reached, returns only id and timedOut for async polling. Compared with built-in run_in_terminal, pro: stable ids, deterministic status, unambiguous/filtered/streamed/full output, smaller context footprint when only success/failure is needed; con: not interactive, no persisted shell state.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -380,8 +262,102 @@
               "description": "Optional terminal width in columns. Overrides any inherited COLUMNS value when provided. Increase this if the command wraps or truncates long lines too aggressively. Must be between 1 and 1000. Defaults to 240.",
               "minimum": 1,
               "maximum": 1000
+            },
+            "full_output": {
+              "type": "boolean",
+              "description": "When true, include whole output in response when not timed out."
+            },
+            "last_lines": {
+              "type": "number",
+              "description": "Optional output trailing line count to include in response when not timed out; mutually exclusive with full_output/regex.",
+              "minimum": 0
+            },
+            "regex": {
+              "type": "string",
+              "description": "Optional regex filter for output lines in response when not timed out; mutually exclusive with full_output/last_lines."
+            },
+            "regex_flags": {
+              "type": "string",
+              "description": "Optional regex flags for regex (for example i, m, s, u); requires regex."
+            },
+            "timeout": {
+              "type": "number",
+              "description": "Optional wait timeout in ms for this tool call. Omit to start async and return id immediately. Use 0 to wait until completion and return status. Command runtime is not affected by timeout, callers must kill explicitly when needed."
             }
-          }
+          },
+          "allOf": [
+            {
+              "not": {
+                "required": [
+                  "last_lines",
+                  "regex"
+                ]
+              }
+            },
+            {
+              "not": {
+                "required": [
+                  "full_output",
+                  "last_lines"
+                ]
+              }
+            },
+            {
+              "not": {
+                "required": [
+                  "full_output",
+                  "regex"
+                ]
+              }
+            },
+            {
+              "if": {
+                "not": {
+                  "required": [
+                    "timeout"
+                  ]
+                }
+              },
+              "then": {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "full_output"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "last_lines"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "regex"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "regex_flags"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "regex_flags"
+                ]
+              },
+              "then": {
+                "required": [
+                  "regex"
+                ]
+              }
+            }
+          ]
         }
       },
       {
@@ -390,7 +366,7 @@
         "displayName": "Await Shell Command",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(clock)",
-        "modelDescription": "Wait for a shell command to finish for an id from run_in_async_shell or run_in_sync_shell, then return status (shell, exitCode, terminationSignal if any SIG* sent, timedOut if timed out); sync ids return immediately.",
+        "modelDescription": "Wait for a shell command id from run_in_shell and return status (shell, exitCode, terminationSignal if any SIG* sent). If timeout is reached, can be re-polled as needed. Use this after starting without timeout or after run_in_shell or await_shell returns timedOut: true.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -401,11 +377,11 @@
           "properties": {
             "id": {
               "type": "string",
-              "description": "Command id from run_in_sync_shell or run_in_async_shell."
+              "description": "Command id from run_in_shell."
             },
             "timeout": {
               "type": "number",
-              "description": "Timeout in ms; use 0 for no timeout."
+              "description": "Timeout in ms for this wait call; use 0 for no timeout."
             }
           }
         }
@@ -416,7 +392,7 @@
         "displayName": "Get Shell Command Output",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(output)",
-        "modelDescription": "Read output and status (shell, exitCode if finished, terminationSignal if any SIG* sent; isRunning if still running); for async commands still running returns only new output since last read by default.",
+        "modelDescription": "Read output and status (shell, exitCode if finished, terminationSignal if any SIG* sent; isRunning if still running) for a command id from run_in_shell. For running commands, returns only new output since last read by default.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -426,7 +402,7 @@
           "properties": {
             "id": {
               "type": "string",
-              "description": "Command id from run_in_sync_shell or run_in_async_shell."
+              "description": "Command id from run_in_shell."
             },
             "full_output": {
               "type": "boolean",
@@ -486,7 +462,7 @@
           "properties": {
             "id": {
               "type": "string",
-              "description": "Command id from run_in_sync_shell or run_in_async_shell."
+              "description": "Command id from run_in_shell."
             }
           }
         }
@@ -507,7 +483,7 @@
           "properties": {
             "id": {
               "type": "string",
-              "description": "Command id from run_in_sync_shell or run_in_async_shell."
+              "description": "Command id from run_in_shell."
             }
           }
         }
@@ -518,7 +494,7 @@
         "displayName": "Get Last Shell Command",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(history)",
-        "modelDescription": "Get the most recent command executed via run_in_sync_shell or run_in_async_shell.",
+        "modelDescription": "Get the most recent command executed via run_in_shell.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",

@@ -217,11 +217,19 @@ vi.mock('node:child_process', () => ({
 
 vi.mock('vscode', () => vscode);
 
+function normalizeRunToolName(toolName: string): string {
+  if (toolName === 'run_in_async_shell' || toolName === 'run_in_sync_shell') {
+    return 'run_in_shell';
+  }
+
+  return toolName;
+}
+
 function withDefaultShellRiskInput<T extends { input: Record<string, unknown> }>(
   toolName: string,
   options: T,
 ): T {
-  if (toolName !== 'run_in_async_shell' && toolName !== 'run_in_sync_shell') {
+  if (normalizeRunToolName(toolName) !== 'run_in_shell') {
     return options;
   }
 
@@ -240,7 +248,8 @@ function getRegisteredTool(name: string) {
       calls: unknown[][];
     };
   };
-  const call = registerToolMock.mock.calls.find(args => args[0] === name);
+  const normalizedName = normalizeRunToolName(name);
+  const call = registerToolMock.mock.calls.find(args => args[0] === normalizedName);
 
   if (!call) {
     throw new Error(`Tool not registered: ${name}`);
@@ -467,8 +476,7 @@ describe('shell tools', () => {
   it('registers all shell tools', () => {
     const registration = registerShellTools();
 
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_sync_shell', expect.any(Object));
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_async_shell', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_shell', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('await_shell', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('get_shell_output', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('get_shell_command', expect.any(Object));
@@ -1307,7 +1315,7 @@ describe('shell tools', () => {
     await runPromise;
   });
 
-  it('marks sync shell runs as timed out after killing the still-running process', async () => {
+  it('returns a timed-out waited shell run without killing the still-running process', async () => {
     vi.useFakeTimers();
 
     try {
@@ -1317,6 +1325,9 @@ describe('shell tools', () => {
       registerShellTools();
 
       const runTool = getRegisteredTool('run_in_sync_shell');
+      const killTool = getRegisteredTool('kill_shell');
+      const getOutputTool = getRegisteredTool('get_shell_output');
+      const awaitTool = getRegisteredTool('await_shell');
       const runPromise = runTool.invoke({
         input: {
           command: 'sleep 10',
@@ -1330,12 +1341,37 @@ describe('shell tools', () => {
       await vi.advanceTimersByTimeAsync(5);
 
       const runPayload = getResultPayload(await runPromise);
-      expect(fakeProcess.kill).toHaveBeenCalledWith('SIGTERM');
-      expect(runPayload.exitCode).toBeNull();
       expect(runPayload.id).toMatch(SHELL_ID_REGEX);
       expect(runPayload.shell).toBe(TEST_DEFAULT_SHELL);
-      expect(runPayload.terminationSignal).toBe('SIGTERM');
       expect(runPayload.timedOut).toBe(true);
+      expect(fakeProcess.kill).not.toHaveBeenCalled();
+
+      const shellId = runPayload.id as string;
+      const runningOutput = await getOutputTool.invoke({
+        input: {
+          id: shellId,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      expect(getResultPayload(runningOutput).isRunning).toBe(true);
+
+      await killTool.invoke({
+        input: { id: shellId },
+        toolInvocationToken: undefined,
+      }, {});
+
+      const completedAwait = await awaitTool.invoke({
+        input: {
+          id: shellId,
+          timeout: 0,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+      const completedPayload = getResultPayload(completedAwait);
+      expect(fakeProcess.kill).toHaveBeenCalledWith('SIGTERM');
+      expect(completedPayload.terminationSignal).toBe('SIGTERM');
+      expect(completedPayload.timedOut).toBeUndefined();
     }
     finally {
       vi.useRealTimers();
@@ -1662,9 +1698,9 @@ describe('shell tools', () => {
     }, {})).resolves.toEqual({
       confirmationMessages: {
         message: 'Command: \nsecond line\n\nCwd: /workspace\n\nExplanation: describe empty command preview\n\nGoal: show confirmation details\n\nRisk pre-assessment: This command only prints output and should not change files.\n\nApproval note: Risk assessment model is disabled via shellTools.riskAssessment.chatModel, so explicit approval is required.',
-        title: 'Run async shell command?',
+        title: 'Run shell command?',
       },
-      invocationMessage: 'Running async shell command: (empty command)',
+      invocationMessage: 'Running shell command: (empty command)',
     });
     await expect(runSyncTool.prepareInvocation({
       input: {
@@ -1676,9 +1712,9 @@ describe('shell tools', () => {
     }, {})).resolves.toEqual({
       confirmationMessages: {
         message: 'Command: echo ok\nnext\n\nCwd: /workspace\n\nExplanation: run a multi-line command preview\n\nGoal: show sync confirmation details\n\nRisk pre-assessment: This command only prints text and should not modify files.\n\nApproval note: Risk assessment model is disabled via shellTools.riskAssessment.chatModel, so explicit approval is required.',
-        title: 'Run sync shell command?',
+        title: 'Run shell command?',
       },
-      invocationMessage: 'Running sync shell command: echo ok',
+      invocationMessage: 'Running shell command: echo ok',
     });
     expect(awaitTool.prepareInvocation({ input: { id: 'abcd1234' } })).toEqual({
       invocationMessage: 'Waiting for shell command abcd1234',
@@ -1716,7 +1752,7 @@ describe('shell tools', () => {
       },
     }, {})).resolves.toEqual({
       confirmationMessages: undefined,
-      invocationMessage: 'Running async shell command: pwd && wc -l README.md',
+      invocationMessage: 'Running shell command: pwd && wc -l README.md',
     });
     await expect(runSyncTool.prepareInvocation({
       input: {
@@ -1727,7 +1763,7 @@ describe('shell tools', () => {
       },
     }, {})).resolves.toEqual({
       confirmationMessages: undefined,
-      invocationMessage: 'Running sync shell command: git status',
+      invocationMessage: 'Running shell command: git status',
     });
   });
 
@@ -1746,9 +1782,9 @@ describe('shell tools', () => {
     }, {})).resolves.toEqual({
       confirmationMessages: {
         message: 'Command: git checkout main\n\nCwd: /workspace\n\nExplanation: switch branches\n\nGoal: move to main\n\nRisk pre-assessment: This may replace files in the working tree and discard staged state.\n\nApproval note: Risk assessment model is disabled via shellTools.riskAssessment.chatModel, so explicit approval is required.',
-        title: 'Run sync shell command?',
+        title: 'Run shell command?',
       },
-      invocationMessage: 'Running sync shell command: git checkout main',
+      invocationMessage: 'Running shell command: git checkout main',
     });
   });
 
@@ -1837,7 +1873,7 @@ describe('shell tools', () => {
       },
     }, {})).resolves.toEqual({
       confirmationMessages: undefined,
-      invocationMessage: 'Running sync shell command: git checkout main',
+      invocationMessage: 'Running shell command: git checkout main',
     });
   });
 
@@ -1856,9 +1892,9 @@ describe('shell tools', () => {
     }, {})).resolves.toEqual({
       confirmationMessages: {
         message: 'Command: echo $(pwd)\n\nCwd: /workspace\n\nExplanation: exercise ambiguous parsing path\n\nGoal: block auto-approval\n\nRisk pre-assessment: This uses command substitution, so the exact executed command is uncertain.\n\nApproval note: The command line could not be parsed safely for approval rules, so explicit approval is required.',
-        title: 'Run sync shell command?',
+        title: 'Run shell command?',
       },
-      invocationMessage: 'Running sync shell command: echo $(pwd)',
+      invocationMessage: 'Running shell command: echo $(pwd)',
     });
   });
 

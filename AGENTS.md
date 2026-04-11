@@ -78,6 +78,7 @@ Agent Skills are in `.github/skills/`, **activate** as many as fit the nature of
 > ```
 
 - **[tools] LM Tool Registration**: Shell tools must stay declared in `package.json` and registered at runtime, and their user-facing metadata should keep coming from the manifest with a safe fallback when parsing fails. See `registerShellTools` in src/shellTools.ts.
+- **[tools] Shell Run Timeout Semantics**: `run_in_shell.timeout` limits only how long the tool waits before responding; if it expires, the command keeps running and callers must await or kill it explicitly. See `runInShellTool` in src/shellTools.ts.
 - **[tools] Prompt Reference Names**: Any LM tool with `canBeReferencedInPrompt: true` also needs `toolReferenceName`, or VS Code rejects registration during activation. See `contributes.languageModelTools` in package.json.
 - **[approval] Read-Only Rule Specificity**: Prefer subcommand-specific regex allow rules for shell approval instead of broad command-name allows; named rules over-approve write-capable variants like `git branch`. See `DEFAULT_APPROVAL_RULES` in src/shellToolSecurity.ts.
 - **[extension] Feature Toggle Completeness**: Disabling a feature requires both runtime disposal and manifest `when`/`enablement` guards; unregistering alone leaves commands or chat tools visible after reload. See `activate` in src/extension.ts.

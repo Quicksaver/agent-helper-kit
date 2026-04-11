@@ -160,11 +160,7 @@ describe('Extension', () => {
     activate(context);
 
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      SHELL_TOOL_NAMES.runInSyncShell,
-      expect.any(Object),
-    );
-    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
-      SHELL_TOOL_NAMES.runInAsyncShell,
+      SHELL_TOOL_NAMES.runInShell,
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(

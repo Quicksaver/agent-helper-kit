@@ -112,6 +112,31 @@ describe('ShellRuntime helpers', () => {
       shell: process.env.SHELL ?? '/bin/bash',
     });
   });
+
+  it('keeps completed-record completion callbacks callable', async () => {
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.createCompletedCommandRecord('echo complete', {
+      exitCode: 0,
+      output: 'complete\n',
+      shell: '/bin/bash',
+      terminationSignal: null,
+      timedOut: false,
+    });
+
+    const { backgroundProcesses } = runtime as unknown as {
+      backgroundProcesses: Map<string, {
+        resolveCompletion: () => void;
+      }>;
+    };
+    const state = backgroundProcesses.get(id);
+
+    expect(state).toBeDefined();
+    expect(() => state?.resolveCompletion()).not.toThrow();
+    await expect(runtime.getCommandDetails(id)).resolves.toMatchObject({
+      output: 'complete\n',
+    });
+  });
 });
 
 describe('ShellRuntime session command list', () => {
@@ -722,5 +747,33 @@ describe('ShellRuntime background execution', () => {
     secondRuntime.startBackgroundCommand('echo env');
 
     expect(getSpawnEnvironment()?.NODE_OPTIONS).toBe(`--title=${terminalWidthShimPath}-copy --require ${JSON.stringify(terminalWidthShimPath)}`);
+  });
+
+  it('preserves escaped characters inside NODE_OPTIONS tokens while appending the shim', () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({
+      shellEnv: {
+        NODE_OPTIONS: '--title=hello\\ world',
+      },
+    });
+
+    runtime.startBackgroundCommand('echo env');
+
+    expect(getSpawnEnvironment()?.NODE_OPTIONS).toBe(`--title=hello\\ world --require ${JSON.stringify(terminalWidthShimPath)}`);
+  });
+
+  it('skips unrelated require options before appending the terminal width shim', () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({
+      shellEnv: {
+        NODE_OPTIONS: '--trace-warnings --require ./other-shim.js',
+      },
+    });
+
+    runtime.startBackgroundCommand('echo env');
+
+    expect(getSpawnEnvironment()?.NODE_OPTIONS).toBe(`--trace-warnings --require ./other-shim.js --require ${JSON.stringify(terminalWidthShimPath)}`);
   });
 });

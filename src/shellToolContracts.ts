@@ -11,8 +11,7 @@ export const SHELL_TOOL_NAMES = {
   getShellCommand: 'get_shell_command',
   getShellOutput: 'get_shell_output',
   killShell: 'kill_shell',
-  runInAsyncShell: 'run_in_async_shell',
-  runInSyncShell: 'run_in_sync_shell',
+  runInShell: 'run_in_shell',
 } as const;
 
 interface ContributedLanguageModelTool {
@@ -165,17 +164,11 @@ export function buildShellToolMetadata(manifest: unknown) {
       ...getToolMetadata(contributedLanguageModelTools, SHELL_TOOL_NAMES.killShell),
       invocationMessage: (id: string) => `Stopping shell command ${id}`,
     },
-    runInAsyncShell: {
+    runInShell: {
       confirmationMessage: (commandPreview: string) => `Run shell command: ${commandPreview}`,
-      confirmationTitle: 'Run async shell command?',
-      ...getToolMetadata(contributedLanguageModelTools, SHELL_TOOL_NAMES.runInAsyncShell),
-      invocationMessage: (commandPreview: string) => `Running async shell command: ${commandPreview}`,
-    },
-    runInSyncShell: {
-      confirmationMessage: (commandPreview: string) => `Run shell command: ${commandPreview}`,
-      confirmationTitle: 'Run sync shell command?',
-      ...getToolMetadata(contributedLanguageModelTools, SHELL_TOOL_NAMES.runInSyncShell),
-      invocationMessage: (commandPreview: string) => `Running sync shell command: ${commandPreview}`,
+      confirmationTitle: 'Run shell command?',
+      ...getToolMetadata(contributedLanguageModelTools, SHELL_TOOL_NAMES.runInShell),
+      invocationMessage: (commandPreview: string) => `Running shell command: ${commandPreview}`,
     },
   } as const;
 }
@@ -209,14 +202,12 @@ export interface RunInShellBaseInput extends ShellRiskAssessmentInput {
   shell?: string;
 }
 
-export type RunInAsyncShellInput = RunInShellBaseInput;
-
-export interface RunInSyncShellInput extends RunInShellBaseInput {
+export interface RunInShellInput extends RunInShellBaseInput {
   full_output?: boolean;
   last_lines?: number;
   regex?: string;
   regex_flags?: string;
-  timeout: number;
+  timeout?: number;
 }
 
 export interface AwaitShellInput {
@@ -266,17 +257,13 @@ const runInShellBaseInputSchema = {
   shell: z.string().optional(),
 } satisfies z.ZodRawShape;
 
-export const runInAsyncShellInputSchema = {
-  ...runInShellBaseInputSchema,
-} satisfies z.ZodRawShape;
-
-export const runInSyncShellInputSchema = {
+export const runInShellInputSchema = {
   ...runInShellBaseInputSchema,
   full_output: z.boolean().optional(),
   last_lines: z.number().int().nonnegative().optional(),
   regex: z.string().optional(),
   regex_flags: z.string().optional(),
-  timeout: z.number(),
+  timeout: z.number().optional(),
 } satisfies z.ZodRawShape;
 
 export const awaitShellInputSchema = {
@@ -304,9 +291,7 @@ const getShellOutputInputValidator = z.object(getShellOutputInputSchema).refine(
   },
 );
 
-const runInAsyncShellInputValidator = z.object(runInAsyncShellInputSchema);
-
-const runInSyncShellInputValidator = z.object(runInSyncShellInputSchema).refine(
+const runInShellInputValidator = z.object(runInShellInputSchema).refine(
   value => !(
     (typeof value.last_lines === 'number' && typeof value.regex === 'string')
     || (value.full_output === true && typeof value.last_lines === 'number')
@@ -319,6 +304,19 @@ const runInSyncShellInputValidator = z.object(runInSyncShellInputSchema).refine(
   value => !(typeof value.regex_flags === 'string' && typeof value.regex !== 'string'),
   {
     message: 'regex_flags requires regex',
+  },
+).refine(
+  value => !(
+    value.timeout === undefined
+    && (
+      value.full_output === true
+      || typeof value.last_lines === 'number'
+      || typeof value.regex === 'string'
+      || typeof value.regex_flags === 'string'
+    )
+  ),
+  {
+    message: 'full_output, last_lines, regex, and regex_flags require timeout',
   },
 );
 
@@ -337,10 +335,6 @@ export function validateGetShellOutputInput(input: GetShellOutputInput): GetShel
   return getShellOutputInputValidator.parse(input);
 }
 
-export function validateRunInAsyncShellInput(input: RunInAsyncShellInput): RunInAsyncShellInput {
-  return runInAsyncShellInputValidator.parse(input);
-}
-
-export function validateRunInSyncShellInput(input: RunInSyncShellInput): RunInSyncShellInput {
-  return runInSyncShellInputValidator.parse(input);
+export function validateRunInShellInput(input: RunInShellInput): RunInShellInput {
+  return runInShellInputValidator.parse(input);
 }

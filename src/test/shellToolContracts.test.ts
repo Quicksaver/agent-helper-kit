@@ -34,20 +34,20 @@ describe('shell tool contracts', () => {
       version: string;
     };
     const shellToolMetadata = buildShellToolMetadata(packageJson);
-    const syncTool = packageJson.contributes.languageModelTools.find(
-      tool => tool.name === SHELL_TOOL_NAMES.runInSyncShell,
+    const runTool = packageJson.contributes.languageModelTools.find(
+      tool => tool.name === SHELL_TOOL_NAMES.runInShell,
     );
     const contributedLanguageModelTools = getContributedLanguageModelToolsFromManifest(packageJson);
 
     expect(getPackageVersion()).toBe(packageJson.version);
     expect(contributedLanguageModelTools).toContainEqual({
-      displayName: syncTool?.displayName,
-      modelDescription: syncTool?.modelDescription,
-      name: SHELL_TOOL_NAMES.runInSyncShell,
+      displayName: runTool?.displayName,
+      modelDescription: runTool?.modelDescription,
+      name: SHELL_TOOL_NAMES.runInShell,
     });
-    expect(shellToolMetadata.runInSyncShell.title).toBe(syncTool?.displayName);
-    expect(shellToolMetadata.runInSyncShell.description).toBe(syncTool?.modelDescription);
-    expect(SHELL_TOOL_METADATA.runInSyncShell.title).toBe(syncTool?.displayName);
+    expect(shellToolMetadata.runInShell.title).toBe(runTool?.displayName);
+    expect(shellToolMetadata.runInShell.description).toBe(runTool?.modelDescription);
+    expect(SHELL_TOOL_METADATA.runInShell.title).toBe(runTool?.displayName);
     expect(shellToolMetadata.awaitShell.invocationMessage('abcd1234')).toBe('Waiting for shell command abcd1234');
     expect(shellToolMetadata.getLastShellCommand.invocationMessage).toBe('Reading most recent shell command');
     expect(shellToolMetadata.getShellCommand.invocationMessage('abcd1234')).toBe('Reading shell command abcd1234');
@@ -55,12 +55,9 @@ describe('shell tool contracts', () => {
     expect(shellToolMetadata.killShell.confirmationMessage('abcd1234')).toBe('Stop shell command abcd1234');
     expect(shellToolMetadata.killShell.confirmationTitle).toBe('Stop running shell command?');
     expect(shellToolMetadata.killShell.invocationMessage('abcd1234')).toBe('Stopping shell command abcd1234');
-    expect(shellToolMetadata.runInAsyncShell.confirmationMessage('echo ok')).toBe('Run shell command: echo ok');
-    expect(shellToolMetadata.runInAsyncShell.confirmationTitle).toBe('Run async shell command?');
-    expect(shellToolMetadata.runInAsyncShell.invocationMessage('echo ok')).toBe('Running async shell command: echo ok');
-    expect(shellToolMetadata.runInSyncShell.confirmationMessage('echo ok')).toBe('Run shell command: echo ok');
-    expect(shellToolMetadata.runInSyncShell.confirmationTitle).toBe('Run sync shell command?');
-    expect(shellToolMetadata.runInSyncShell.invocationMessage('echo ok')).toBe('Running sync shell command: echo ok');
+    expect(shellToolMetadata.runInShell.confirmationMessage('echo ok')).toBe('Run shell command: echo ok');
+    expect(shellToolMetadata.runInShell.confirmationTitle).toBe('Run shell command?');
+    expect(shellToolMetadata.runInShell.invocationMessage('echo ok')).toBe('Running shell command: echo ok');
   });
 
   it('falls back cleanly when package.json cannot be read', async () => {
@@ -79,10 +76,10 @@ describe('shell tool contracts', () => {
     expect(getPackageVersionFromReader(() => {
       throw new Error('unreadable');
     })).toBe('0.0.0');
-    expect(shellToolMetadata.runInSyncShell.title).toBe('run_in_sync_shell');
-    expect(shellToolMetadata.runInSyncShell.description).toBe('');
-    expect(shellToolMetadataFromReader.runInSyncShell.title).toBe('run_in_sync_shell');
-    expect(shellToolMetadataFromReader.runInSyncShell.description).toBe('');
+    expect(shellToolMetadata.runInShell.title).toBe('run_in_shell');
+    expect(shellToolMetadata.runInShell.description).toBe('');
+    expect(shellToolMetadataFromReader.runInShell.title).toBe('run_in_shell');
+    expect(shellToolMetadataFromReader.runInShell.description).toBe('');
   });
 
   it('falls back cleanly when package.json is missing contributes metadata', async () => {
@@ -90,8 +87,8 @@ describe('shell tool contracts', () => {
     const shellToolMetadata = buildShellToolMetadata({ version: '9.9.9' });
 
     expect(getPackageVersionFromManifest({ version: '9.9.9' })).toBe('9.9.9');
-    expect(shellToolMetadata.runInAsyncShell.title).toBe('run_in_async_shell');
-    expect(shellToolMetadata.runInAsyncShell.description).toBe('');
+    expect(shellToolMetadata.runInShell.title).toBe('run_in_shell');
+    expect(shellToolMetadata.runInShell.description).toBe('');
   });
 
   it('falls back cleanly when package.json is valid JSON but not an object', async () => {
@@ -99,8 +96,8 @@ describe('shell tool contracts', () => {
     const shellToolMetadata = buildShellToolMetadata('not-an-object');
 
     expect(getPackageVersionFromManifest('not-an-object')).toBe('0.0.0');
-    expect(shellToolMetadata.runInSyncShell.title).toBe('run_in_sync_shell');
-    expect(shellToolMetadata.runInSyncShell.description).toBe('');
+    expect(shellToolMetadata.runInShell.title).toBe('run_in_shell');
+    expect(shellToolMetadata.runInShell.description).toBe('');
   });
 
   it('falls back cleanly when package.json contributes is not an object', async () => {
@@ -121,7 +118,7 @@ describe('shell tool contracts', () => {
     const manifest = {
       contributes: {
         languageModelTools: {
-          name: 'run_in_sync_shell',
+          name: 'run_in_shell',
         },
       },
       version: '3.0.0',
@@ -156,8 +153,8 @@ describe('shell tool contracts', () => {
       contributes: {
         languageModelTools: [
           {
-            displayName: 'Run Shell Command (Sync)',
-            name: 'run_in_sync_shell',
+            displayName: 'Run Shell Command',
+            name: 'run_in_shell',
           },
         ],
       },
@@ -166,22 +163,20 @@ describe('shell tool contracts', () => {
     const shellToolMetadata = buildShellToolMetadata(manifest);
 
     expect(getPackageVersionFromManifest(manifest)).toBe('1.1.0');
-    expect(shellToolMetadata.runInSyncShell.title).toBe('run_in_sync_shell');
-    expect(shellToolMetadata.runInSyncShell.description).toBe('');
+    expect(shellToolMetadata.runInShell.title).toBe('run_in_shell');
+    expect(shellToolMetadata.runInShell.description).toBe('');
   });
 
-  it('validates async shell inputs', async () => {
+  it('validates async-style shell inputs without timeout', async () => {
     const { MAX_SHELL_COLUMNS } = await import('../shellColumns.js');
-    const {
-      validateRunInAsyncShellInput,
-    } = await import('../shellToolContracts.js');
+    const { validateRunInShellInput } = await import('../shellToolContracts.js');
 
-    expect(validateRunInAsyncShellInput({
+    expect(validateRunInShellInput({
       columns: 320,
       command: 'echo ok',
       cwd: '/workspace',
       explanation: 'print ok',
-      goal: 'test async validation',
+      goal: 'test async-style validation',
       riskAssessment: 'This only prints output.',
       shell: '/bin/zsh',
     })).toEqual({
@@ -189,16 +184,16 @@ describe('shell tool contracts', () => {
       command: 'echo ok',
       cwd: '/workspace',
       explanation: 'print ok',
-      goal: 'test async validation',
+      goal: 'test async-style validation',
       riskAssessment: 'This only prints output.',
       shell: '/bin/zsh',
     });
 
-    expect(() => validateRunInAsyncShellInput({
+    expect(() => validateRunInShellInput({
       columns: MAX_SHELL_COLUMNS + 1,
       command: 'echo ok',
       explanation: 'print ok',
-      goal: 'test async validation',
+      goal: 'test async-style validation',
       riskAssessment: 'This only prints output.',
     })).toThrow(new RegExp(`columns must be less than or equal to ${MAX_SHELL_COLUMNS}`));
   });
@@ -218,56 +213,68 @@ describe('shell tool contracts', () => {
     })).toThrow(/regex_flags requires regex/);
   });
 
-  it('rejects incompatible sync shell output options', async () => {
-    const { validateRunInSyncShellInput } = await import('../shellToolContracts.js');
+  it('rejects waited shell output options without timeout', async () => {
+    const { validateRunInShellInput } = await import('../shellToolContracts.js');
 
-    expect(() => validateRunInSyncShellInput({
+    expect(() => validateRunInShellInput({
+      command: 'echo ok',
+      explanation: 'print ok',
+      full_output: true,
+      goal: 'test validation',
+      riskAssessment: 'This only prints output.',
+    })).toThrow(/full_output, last_lines, regex, and regex_flags require timeout/);
+  });
+
+  it('rejects incompatible waited shell output options', async () => {
+    const { validateRunInShellInput } = await import('../shellToolContracts.js');
+
+    expect(() => validateRunInShellInput({
       columns: 0,
       command: 'echo ok',
       explanation: 'print ok',
-      goal: 'test sync validation',
+      goal: 'test waited validation',
       riskAssessment: 'This only prints output.',
       timeout: 0,
     })).toThrow(/columns must be greater than 0/);
 
-    expect(() => validateRunInSyncShellInput({
+    expect(() => validateRunInShellInput({
       columns: 12.5,
       command: 'echo ok',
       explanation: 'print ok',
-      goal: 'test sync validation',
+      goal: 'test waited validation',
       riskAssessment: 'This only prints output.',
       timeout: 0,
     })).toThrow(/columns must be a whole number/);
 
-    expect(() => validateRunInSyncShellInput({
+    expect(() => validateRunInShellInput({
       command: 'echo ok',
       explanation: 'print ok',
       full_output: true,
-      goal: 'test sync validation',
+      goal: 'test waited validation',
       last_lines: 5,
       riskAssessment: 'This only prints output.',
       timeout: 0,
     })).toThrow(/full_output, last_lines, and regex are mutually exclusive options/);
 
-    expect(() => validateRunInSyncShellInput({
+    expect(() => validateRunInShellInput({
       command: 'echo ok',
       explanation: 'print ok',
-      goal: 'test sync validation',
+      goal: 'test waited validation',
       regex_flags: 'i',
       riskAssessment: 'This only prints output.',
       timeout: 0,
     })).toThrow(/regex_flags requires regex/);
   });
 
-  it('accepts valid sync shell options', async () => {
-    const { validateRunInSyncShellInput } = await import('../shellToolContracts.js');
+  it('accepts valid waited shell options', async () => {
+    const { validateRunInShellInput } = await import('../shellToolContracts.js');
 
-    expect(validateRunInSyncShellInput({
+    expect(validateRunInShellInput({
       columns: 320,
       command: 'echo ok',
       explanation: 'print ok',
       full_output: true,
-      goal: 'test sync validation',
+      goal: 'test waited validation',
       riskAssessment: 'This only prints output.',
       timeout: 1000,
     })).toEqual({
@@ -275,7 +282,7 @@ describe('shell tool contracts', () => {
       command: 'echo ok',
       explanation: 'print ok',
       full_output: true,
-      goal: 'test sync validation',
+      goal: 'test waited validation',
       riskAssessment: 'This only prints output.',
       timeout: 1000,
     });
