@@ -364,8 +364,7 @@ function setupShellTools(fakeProcess: FakeProcess = createFakeProcess()): {
   fakeProcess: FakeProcess;
   getOutputTool: ReturnType<typeof getRegisteredTool>;
   killTool: ReturnType<typeof getRegisteredTool>;
-  runAsyncTool: ReturnType<typeof getRegisteredTool>;
-  runSyncTool: ReturnType<typeof getRegisteredTool>;
+  runTool: ReturnType<typeof getRegisteredTool>;
 } {
   spawn.mockReturnValue(fakeProcess);
   registerShellTools();
@@ -375,8 +374,7 @@ function setupShellTools(fakeProcess: FakeProcess = createFakeProcess()): {
     fakeProcess,
     getOutputTool: getRegisteredTool('get_shell_output'),
     killTool: getRegisteredTool('kill_shell'),
-    runAsyncTool: getRegisteredTool('run_in_shell'),
-    runSyncTool: getRegisteredTool('run_in_shell'),
+    runTool: getRegisteredTool('run_in_shell'),
   };
 }
 
@@ -679,10 +677,10 @@ describe('shell tools', () => {
       awaitTool,
       fakeProcess,
       getOutputTool,
-      runAsyncTool,
+      runTool,
     } = setupShellTools();
 
-    const runResult = await runAsyncTool.invoke({
+    const runResult = await runTool.invoke({
       input: {
         command: 'echo keep',
         explanation: 'sigint behavior test',
@@ -726,10 +724,10 @@ describe('shell tools', () => {
       fakeProcess,
       getOutputTool,
       killTool,
-      runAsyncTool,
+      runTool,
     } = setupShellTools();
 
-    const runResult = await runAsyncTool.invoke({
+    const runResult = await runTool.invoke({
       input: {
         command: 'echo controlled-failure',
         explanation: 'exit without close test',
@@ -784,10 +782,10 @@ describe('shell tools', () => {
       awaitTool,
       fakeProcess,
       getOutputTool,
-      runAsyncTool,
+      runTool,
     } = setupShellTools();
 
-    const runResult = await runAsyncTool.invoke({
+    const runResult = await runTool.invoke({
       input: {
         command: 'echo exit-drain',
         explanation: 'exit drain test',
@@ -839,10 +837,10 @@ describe('shell tools', () => {
       fakeProcess,
       getOutputTool,
       killTool,
-      runAsyncTool,
+      runTool,
     } = setupShellTools();
 
-    const runResult = await runAsyncTool.invoke({
+    const runResult = await runTool.invoke({
       input: {
         command: 'echo close-first',
         explanation: 'close before exit test',
@@ -904,10 +902,10 @@ describe('shell tools', () => {
     const {
       awaitTool,
       killTool,
-      runAsyncTool,
+      runTool,
     } = setupShellTools(fakeProcess);
 
-    const runResult = await runAsyncTool.invoke({
+    const runResult = await runTool.invoke({
       input: {
         command: 'echo almost-done',
         explanation: 'kill false fallback test',
@@ -944,10 +942,10 @@ describe('shell tools', () => {
     const {
       fakeProcess,
       getOutputTool,
-      runSyncTool,
+      runTool,
     } = setupShellTools();
 
-    const runPromise = runSyncTool.invoke({
+    const runPromise = runTool.invoke({
       input: {
         command: 'echo foreground',
         explanation: 'foreground id-only behavior',
@@ -1666,10 +1664,10 @@ describe('shell tools', () => {
   });
 
   it('rejects missing cwd before spawning an async command', async () => {
-    const { runAsyncTool } = setupShellTools();
+    const { runTool } = setupShellTools();
     const missingCwd = `${os.tmpdir()}/agent-helper-kit-missing-cwd-${Date.now()}`;
 
-    await expect(runAsyncTool.invoke({
+    await expect(runTool.invoke({
       input: {
         command: 'echo missing cwd',
         cwd: missingCwd,
@@ -1683,9 +1681,9 @@ describe('shell tools', () => {
   });
 
   it('rejects empty cwd before spawning a command', async () => {
-    const { runAsyncTool } = setupShellTools();
+    const { runTool } = setupShellTools();
 
-    await expect(runAsyncTool.invoke({
+    await expect(runTool.invoke({
       input: {
         command: 'echo empty cwd',
         cwd: '   ',
@@ -1699,11 +1697,11 @@ describe('shell tools', () => {
   });
 
   it('rejects cwd values that point to files instead of directories', async () => {
-    const { runSyncTool } = setupShellTools();
+    const { runTool } = setupShellTools();
     const fileCwd = path.join(createTemporaryDirectory('agent-helper-kit-file-cwd-'), 'file.txt');
     fs.writeFileSync(fileCwd, 'not a directory', { encoding: 'utf8' });
 
-    await expect(runSyncTool.invoke({
+    await expect(runTool.invoke({
       input: {
         command: 'echo file cwd',
         cwd: fileCwd,
@@ -1739,15 +1737,14 @@ describe('shell tools', () => {
   it('exposes prepareInvocation metadata for registered shell tools', async () => {
     registerShellTools();
 
-    const runAsyncTool = getRegisteredToolWithPrepare('run_in_shell');
-    const runSyncTool = getRegisteredToolWithPrepare('run_in_shell');
+    const runTool = getRegisteredToolWithPrepare('run_in_shell');
     const awaitTool = getRegisteredToolWithPrepare('await_shell');
     const getOutputTool = getRegisteredToolWithPrepare('get_shell_output');
     const getShellCommandTool = getRegisteredToolWithPrepare('get_shell_command');
     const getLastShellCommandTool = getRegisteredToolWithPrepare('get_last_shell_command');
     const killTool = getRegisteredToolWithPrepare('kill_shell');
 
-    await expect(runAsyncTool.prepareInvocation({
+    await expect(runTool.prepareInvocation({
       input: {
         command: '\nsecond line',
         explanation: 'describe empty command preview',
@@ -1761,7 +1758,7 @@ describe('shell tools', () => {
       },
       invocationMessage: 'Running shell command: (empty command)',
     });
-    await expect(runSyncTool.prepareInvocation({
+    await expect(runTool.prepareInvocation({
       input: {
         command: 'echo ok\nnext',
         explanation: 'run a multi-line command preview',
@@ -1799,10 +1796,9 @@ describe('shell tools', () => {
   it('runs explicitly allowlisted commands without prompting', async () => {
     registerShellTools();
 
-    const runAsyncTool = getRegisteredToolWithPrepare('run_in_shell');
-    const runSyncTool = getRegisteredToolWithPrepare('run_in_shell');
+    const runTool = getRegisteredToolWithPrepare('run_in_shell');
 
-    await expect(runAsyncTool.prepareInvocation({
+    await expect(runTool.prepareInvocation({
       input: {
         command: 'pwd && wc -l README.md',
         explanation: 'inspect workspace files',
@@ -1813,7 +1809,7 @@ describe('shell tools', () => {
       confirmationMessages: undefined,
       invocationMessage: 'Running shell command: pwd && wc -l README.md',
     });
-    await expect(runSyncTool.prepareInvocation({
+    await expect(runTool.prepareInvocation({
       input: {
         command: 'git status',
         explanation: 'inspect repository status',
@@ -1958,7 +1954,7 @@ describe('shell tools', () => {
   });
 
   it('rejects inaccessible cwd before spawning a sync command', async () => {
-    const { runSyncTool } = setupShellTools();
+    const { runTool } = setupShellTools();
     const inaccessibleCwd = createTemporaryDirectory('agent-helper-kit-inaccessible-cwd-');
 
     if (os.platform() === 'win32') {
@@ -1968,7 +1964,7 @@ describe('shell tools', () => {
     fs.chmodSync(inaccessibleCwd, 0o000);
 
     try {
-      await expect(runSyncTool.invoke({
+      await expect(runTool.invoke({
         input: {
           command: 'echo inaccessible cwd',
           cwd: inaccessibleCwd,
@@ -1989,8 +1985,7 @@ describe('shell tools', () => {
   it('strips ANSI escape sequences from tool output payloads while preserving captured output', async () => {
     registerShellTools();
 
-    const runSyncTool = getRegisteredTool('run_in_shell');
-    const runAsyncTool = getRegisteredTool('run_in_shell');
+    const runTool = getRegisteredTool('run_in_shell');
     const getOutputTool = getRegisteredTool('get_shell_output');
     const awaitTool = getRegisteredTool('await_shell');
     const ansiDecoratedOutput = '\u001B[1m\u001B[46m RUN \u001B[49m\u001B[22m \u001B[36mv4.0.18\u001B[39m\n';
@@ -1998,7 +1993,7 @@ describe('shell tools', () => {
     const syncProcess = createFakeProcess();
     spawn.mockReturnValueOnce(syncProcess);
 
-    const runSyncPromise = runSyncTool.invoke({
+    const runSyncPromise = runTool.invoke({
       input: {
         command: 'vitest run',
         explanation: 'strip ansi codes from sync output',
@@ -2031,7 +2026,7 @@ describe('shell tools', () => {
     const asyncProcess = createFakeProcess();
     spawn.mockReturnValueOnce(asyncProcess);
 
-    const runAsyncResult = await runAsyncTool.invoke({
+    const runAsyncResult = await runTool.invoke({
       input: {
         command: 'vitest run --watch=false',
         explanation: 'strip ansi codes from async output',

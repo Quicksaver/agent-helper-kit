@@ -4,6 +4,7 @@ import * as path from 'node:path';
 
 import {
   afterEach,
+  beforeEach,
   describe,
   expect,
   it,
@@ -110,9 +111,13 @@ vi.mock('@/shellToolSecurity', () => ({
   })),
 }));
 
-const shellOutputTestDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-helper-kit-shellToolsPlatform-test-'));
+let shellOutputTestDirectory = '';
 const previousComSpec = process.env.ComSpec;
 const previousShellOutputDirectory = process.env[SHELL_OUTPUT_DIR_ENV_VAR];
+
+beforeEach(() => {
+  shellOutputTestDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-helper-kit-shellToolsPlatform-test-'));
+});
 
 function getRegisteredTool(name: string) {
   const registerToolMock = vscode.lm.registerTool as unknown as {
