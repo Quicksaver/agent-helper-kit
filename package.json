@@ -215,7 +215,7 @@
         "displayName": "Run Shell Command",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(terminal)",
-        "modelDescription": "Run a shell command in a cwd, workspace root, or home if no workspace. Returns an id and status (shell, exitCode, terminationSignal if any SIG* sent). Poll output via id after exit as needed, or include in response via full_output/last_lines/regex. If timeout is reached, returns only id and timedOut for async polling. Compared with built-in run_in_terminal, pro: stable ids, deterministic status, unambiguous/filtered/streamed/full output, smaller context footprint when only success/failure is needed; con: not interactive, no persisted shell state.",
+        "modelDescription": "Run a shell command in a cwd, workspace root, or home if no workspace. Returns an id and status (shell, exitCode, terminationSignal if any SIG* sent); poll output via id after exit as needed, or include in response via full_output/last_lines/regex. Returns the id immediately for async polling when timeout is omitted, or when timeout is reached. Compared with built-in run_in_terminal, pro: stable ids, deterministic status, unambiguous/filtered/streamed/full output, smaller context footprint when only success/failure is needed; con: not interactive, no persisted shell state.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -282,7 +282,8 @@
             },
             "timeout": {
               "type": "number",
-              "description": "Optional wait timeout in ms for this tool call. Omit to start async and return id immediately. Use 0 to wait until completion and return status. Command runtime is not affected by timeout, callers must kill explicitly when needed."
+              "description": "Optional wait timeout in ms for this tool call. Omit to start async and return id immediately. Use 0 to wait until completion and return status. Command runtime is not affected by timeout, callers must kill explicitly when needed.",
+              "minimum": 0
             }
           },
           "allOf": [
@@ -381,7 +382,8 @@
             },
             "timeout": {
               "type": "number",
-              "description": "Timeout in ms for this wait call; use 0 for no timeout."
+              "description": "Timeout in ms for this wait call; use 0 for no timeout.",
+              "minimum": 0
             }
           }
         }

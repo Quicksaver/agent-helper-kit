@@ -263,12 +263,12 @@ export const runInShellInputSchema = {
   last_lines: z.number().int().nonnegative().optional(),
   regex: z.string().optional(),
   regex_flags: z.string().optional(),
-  timeout: z.number().optional(),
+  timeout: z.number().nonnegative().optional(),
 } satisfies z.ZodRawShape;
 
 export const awaitShellInputSchema = {
   id: z.string(),
-  timeout: z.number(),
+  timeout: z.number().nonnegative(),
 } satisfies z.ZodRawShape;
 
 export const getShellOutputInputSchema = {
@@ -290,6 +290,8 @@ const getShellOutputInputValidator = z.object(getShellOutputInputSchema).refine(
     message: 'regex_flags requires regex',
   },
 );
+
+const awaitShellInputValidator = z.object(awaitShellInputSchema);
 
 const runInShellInputValidator = z.object(runInShellInputSchema).refine(
   value => !(
@@ -333,6 +335,10 @@ export const getLastShellCommandInputSchema = {
 
 export function validateGetShellOutputInput(input: GetShellOutputInput): GetShellOutputInput {
   return getShellOutputInputValidator.parse(input);
+}
+
+export function validateAwaitShellInput(input: AwaitShellInput): AwaitShellInput {
+  return awaitShellInputValidator.parse(input);
 }
 
 export function validateRunInShellInput(input: RunInShellInput): RunInShellInput {

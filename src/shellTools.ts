@@ -26,6 +26,7 @@ import {
   type RunInShellInput,
   SHELL_TOOL_METADATA,
   SHELL_TOOL_NAMES,
+  validateAwaitShellInput,
   validateRunInShellInput,
 } from '@/shellToolContracts';
 import {
@@ -143,10 +144,6 @@ function resolveCommandCwd(inputCwd?: string): string {
 }
 
 function toYamlScalar(value: unknown): string {
-  if (value === undefined) {
-    return 'null';
-  }
-
   if (typeof value === 'string') {
     return JSON.stringify(value);
   }
@@ -154,12 +151,15 @@ function toYamlScalar(value: unknown): string {
   if (
     typeof value === 'number'
     || typeof value === 'boolean'
-    || value === null
   ) {
     return String(value);
   }
 
-  return JSON.stringify(value);
+  const serialized = JSON.stringify(value);
+
+  return typeof serialized === 'string'
+    ? serialized
+    : 'null';
 }
 
 function toYaml(payload: Record<string, unknown>): string {
@@ -267,9 +267,9 @@ function hasRunOutputOverrides(input: {
 
 /**
  * Choose the explicit shell override when provided, otherwise fall back to the
- * user's VS Code default shell.
+ * same shell resolution the runtime will use for execution.
  */
-function getRequestedOrDefaultShell(inputShell?: string): string | undefined {
+function getRequestedOrDefaultShell(inputShell?: string): string {
   if (typeof inputShell === 'string' && inputShell.trim().length > 0) {
     return inputShell.trim();
   }
@@ -280,7 +280,11 @@ function getRequestedOrDefaultShell(inputShell?: string): string | undefined {
     return vscodeDefaultShell.trim();
   }
 
-  return undefined;
+  if (os.platform() === 'win32') {
+    return globalThis.process.env.ComSpec ?? 'cmd.exe';
+  }
+
+  return globalThis.process.env.SHELL ?? '/bin/bash';
 }
 
 const runInShellTool: vscode.LanguageModelTool<RunInShellInput> = {
@@ -299,19 +303,24 @@ const runInShellTool: vscode.LanguageModelTool<RunInShellInput> = {
     }
 
     const resolvedCwd = resolveCommandCwd(input.cwd);
-    const id = getShellRuntime().startBackgroundCommand(input.command, {
+    const shellRuntimeInstance = getShellRuntime();
+    const selectedShell = getRequestedOrDefaultShell(input.shell);
+    const id = shellRuntimeInstance.startBackgroundCommand(input.command, {
       columns: input.columns,
       cwd: resolvedCwd,
-      shell: getRequestedOrDefaultShell(input.shell),
+      shell: selectedShell,
     });
 
     const publicId = toPublicCommandId(id);
 
     if (input.timeout === undefined) {
-      return buildYamlToolResult({ id: publicId });
+      return buildYamlToolResult({
+        id: publicId,
+        shell: selectedShell,
+      });
     }
 
-    const result = await getShellRuntime().awaitBackgroundCommand({
+    const result = await shellRuntimeInstance.awaitBackgroundCommand({
       id,
       timeout: input.timeout,
     });
@@ -402,7 +411,8 @@ const awaitShellTool: vscode.LanguageModelTool<AwaitShellInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<AwaitShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
-    const result = await getShellRuntime().awaitBackgroundCommand(options.input);
+    const input = validateAwaitShellInput(options.input);
+    const result = await getShellRuntime().awaitBackgroundCommand(input);
 
     return buildYamlToolResult(addOptionalCompletionMetadata({
       exitCode: result.exitCode,

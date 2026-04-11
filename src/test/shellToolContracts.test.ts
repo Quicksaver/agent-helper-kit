@@ -169,7 +169,7 @@ describe('shell tool contracts', () => {
 
   it('validates async-style shell inputs without timeout', async () => {
     const { MAX_SHELL_COLUMNS } = await import('../shellColumns.js');
-    const { validateRunInShellInput } = await import('../shellToolContracts.js');
+    const { validateAwaitShellInput, validateRunInShellInput } = await import('../shellToolContracts.js');
 
     expect(validateRunInShellInput({
       columns: 320,
@@ -196,6 +196,19 @@ describe('shell tool contracts', () => {
       goal: 'test async-style validation',
       riskAssessment: 'This only prints output.',
     })).toThrow(new RegExp(`columns must be less than or equal to ${MAX_SHELL_COLUMNS}`));
+
+    expect(() => validateRunInShellInput({
+      command: 'echo ok',
+      explanation: 'print ok',
+      goal: 'reject negative run timeout',
+      riskAssessment: 'This only prints output.',
+      timeout: -1,
+    })).toThrow(/expected number to be >=0/);
+
+    expect(() => validateAwaitShellInput({
+      id: 'abcd1234',
+      timeout: -1,
+    })).toThrow(/expected number to be >=0/);
   });
 
   it('rejects incompatible get shell output options', async () => {

@@ -66,7 +66,7 @@ When using `run_in_shell`, provide:
 - `riskAssessment`: a brief pre-assessment of possible destructive effects, sensitive-data leakage, data loss, or system impact.
 - `riskAssessmentContext` (optional): additional risk context. Use file paths for scripts the command executes, and inline strings for relevant sub-actions, package scripts, alias expansions, or fetched-content details that help explain what the command ultimately runs.
 
-Use `timeout` only to control how long the tool waits before replying. It does not limit or kill the underlying process. Omit `timeout` to start the command asynchronously, use `0` to wait without a limit, and call `kill_shell` yourself if a long-running command should stop.
+Use `timeout` only to control how long the tool waits before replying. It does not limit or kill the underlying process. Omit `timeout` to start the command asynchronously and get back the id plus selected shell immediately, use `0` to wait without a limit, and call `kill_shell` yourself if a long-running command should stop.
 
 Transient env-var prefixes such as `FOO=bar cmd` do not automatically force manual approval in this extension. Instead, the approval engine strips those prefixes for rule matching, preserves matching `ask` and `deny` rules, and downgrades matching `allow` rules to model-based risk assessment.
 

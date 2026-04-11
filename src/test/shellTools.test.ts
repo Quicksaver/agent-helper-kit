@@ -217,19 +217,11 @@ vi.mock('node:child_process', () => ({
 
 vi.mock('vscode', () => vscode);
 
-function normalizeRunToolName(toolName: string): string {
-  if (toolName === 'run_in_async_shell' || toolName === 'run_in_sync_shell') {
-    return 'run_in_shell';
-  }
-
-  return toolName;
-}
-
 function withDefaultShellRiskInput<T extends { input: Record<string, unknown> }>(
   toolName: string,
   options: T,
 ): T {
-  if (normalizeRunToolName(toolName) !== 'run_in_shell') {
+  if (toolName !== 'run_in_shell') {
     return options;
   }
 
@@ -248,8 +240,7 @@ function getRegisteredTool(name: string) {
       calls: unknown[][];
     };
   };
-  const normalizedName = normalizeRunToolName(name);
-  const call = registerToolMock.mock.calls.find(args => args[0] === normalizedName);
+  const call = registerToolMock.mock.calls.find(args => args[0] === name);
 
   if (!call) {
     throw new Error(`Tool not registered: ${name}`);
@@ -384,8 +375,8 @@ function setupShellTools(fakeProcess: FakeProcess = createFakeProcess()): {
     fakeProcess,
     getOutputTool: getRegisteredTool('get_shell_output'),
     killTool: getRegisteredTool('kill_shell'),
-    runAsyncTool: getRegisteredTool('run_in_async_shell'),
-    runSyncTool: getRegisteredTool('run_in_sync_shell'),
+    runAsyncTool: getRegisteredTool('run_in_shell'),
+    runSyncTool: getRegisteredTool('run_in_shell'),
   };
 }
 
@@ -425,7 +416,7 @@ async function expectSyncRunNodeOptions(options: {
   try {
     registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_sync_shell');
+    const runTool = getRegisteredTool('run_in_shell');
 
     const runPromise = runTool.invoke({
       input: {
@@ -492,7 +483,7 @@ describe('shell tools', () => {
 
     registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_async_shell');
+    const runTool = getRegisteredTool('run_in_shell');
     const getOutputTool = getRegisteredTool('get_shell_output');
     const awaitTool = getRegisteredTool('await_shell');
     const killTool = getRegisteredTool('kill_shell');
@@ -518,6 +509,7 @@ describe('shell tools', () => {
     const runPayload = getResultPayload(runResult);
     const shellId = runPayload.id as string;
     expect(shellId).toMatch(SHELL_ID_REGEX);
+    expect(runPayload.shell).toBe(TEST_DEFAULT_SHELL);
 
     fakeProcess.stdout.emit('data', '\u001B[31mhello\u001B[0m\n\n   \n');
 
@@ -996,7 +988,7 @@ describe('shell tools', () => {
   it('returns opt-in foreground output when full_output, last_lines, or regex is provided', async () => {
     registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_sync_shell');
+    const runTool = getRegisteredTool('run_in_shell');
 
     const fullOutputProcess = createFakeProcess();
     spawn.mockReturnValueOnce(fullOutputProcess);
@@ -1141,7 +1133,7 @@ describe('shell tools', () => {
 
     registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_async_shell');
+    const runTool = getRegisteredTool('run_in_shell');
     const selectedShell = os.platform() === 'win32' ? 'pwsh.exe' : '/bin/bash';
     const customCwd = createTemporaryDirectory('agent-helper-kit-cwd-');
 
@@ -1158,6 +1150,7 @@ describe('shell tools', () => {
 
     const runPayload = getResultPayload(runResult);
     expect(runPayload.id).toMatch(SHELL_ID_REGEX);
+    expect(runPayload.shell).toBe(selectedShell);
     expect(spawn).toHaveBeenCalledWith(
       selectedShell,
       [ ...expectedShellArgs(selectedShell), 'echo with shell' ],
@@ -1173,7 +1166,7 @@ describe('shell tools', () => {
 
     registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_sync_shell');
+    const runTool = getRegisteredTool('run_in_shell');
     const defaultShell = TEST_DEFAULT_SHELL;
     vscode.env.shell = defaultShell;
 
@@ -1205,7 +1198,7 @@ describe('shell tools', () => {
 
     registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_sync_shell');
+    const runTool = getRegisteredTool('run_in_shell');
     const previousShell = vscode.env.shell;
     const expectedShell = os.platform() === 'win32'
       ? (process.env.ComSpec ?? 'cmd.exe')
@@ -1255,7 +1248,7 @@ describe('shell tools', () => {
     try {
       registerShellTools();
 
-      const runTool = getRegisteredTool('run_in_sync_shell');
+      const runTool = getRegisteredTool('run_in_shell');
 
       const runPromise = runTool.invoke({
         input: {
@@ -1289,7 +1282,7 @@ describe('shell tools', () => {
 
     registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_sync_shell');
+    const runTool = getRegisteredTool('run_in_shell');
     const customCwd = createTemporaryDirectory('agent-helper-kit-sync-cwd-');
 
     const runPromise = runTool.invoke({
@@ -1324,7 +1317,7 @@ describe('shell tools', () => {
 
       registerShellTools();
 
-      const runTool = getRegisteredTool('run_in_sync_shell');
+      const runTool = getRegisteredTool('run_in_shell');
       const killTool = getRegisteredTool('kill_shell');
       const getOutputTool = getRegisteredTool('get_shell_output');
       const awaitTool = getRegisteredTool('await_shell');
@@ -1378,6 +1371,72 @@ describe('shell tools', () => {
     }
   });
 
+  it('allows a timed-out waited shell run to complete successfully via await_shell later', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fakeProcess = createFakeProcess();
+      spawn.mockReturnValue(fakeProcess);
+
+      registerShellTools();
+
+      const runTool = getRegisteredTool('run_in_shell');
+      const awaitTool = getRegisteredTool('await_shell');
+      const getOutputTool = getRegisteredTool('get_shell_output');
+      const runPromise = runTool.invoke({
+        input: {
+          command: 'sleep 1 && echo done',
+          explanation: 'verify timeout can be followed by successful completion',
+          goal: 'tool-level timeout recovery coverage',
+          timeout: 5,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      await vi.advanceTimersByTimeAsync(5);
+
+      const runPayload = getResultPayload(await runPromise);
+      expect(runPayload.id).toMatch(SHELL_ID_REGEX);
+      expect(runPayload.shell).toBe(TEST_DEFAULT_SHELL);
+      expect(runPayload.timedOut).toBe(true);
+      expect(fakeProcess.kill).not.toHaveBeenCalled();
+
+      const shellId = runPayload.id as string;
+      fakeProcess.stdout.emit('data', 'done\n');
+      fakeProcess.emit('close', 0, null);
+
+      const completedAwait = await awaitTool.invoke({
+        input: {
+          id: shellId,
+          timeout: 0,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      const completedPayload = getResultPayload(completedAwait);
+      expect(completedPayload.exitCode).toBe(0);
+      expect(completedPayload.shell).toBe(TEST_DEFAULT_SHELL);
+      expect(completedPayload.timedOut).toBeUndefined();
+
+      const outputResult = await getOutputTool.invoke({
+        input: {
+          full_output: true,
+          id: shellId,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      expect(getResultPayload(outputResult)).toMatchObject({
+        exitCode: 0,
+        output: 'done\n',
+        shell: TEST_DEFAULT_SHELL,
+      });
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('defaults spawned commands to color-capable shell env vars', async () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
@@ -1393,7 +1452,7 @@ describe('shell tools', () => {
     try {
       registerShellTools();
 
-      const runTool = getRegisteredTool('run_in_sync_shell');
+      const runTool = getRegisteredTool('run_in_shell');
 
       const runPromise = runTool.invoke({
         input: {
@@ -1435,7 +1494,7 @@ describe('shell tools', () => {
     try {
       registerShellTools();
 
-      const runTool = getRegisteredTool('run_in_sync_shell');
+      const runTool = getRegisteredTool('run_in_shell');
 
       const runPromise = runTool.invoke({
         input: {
@@ -1517,7 +1576,7 @@ describe('shell tools', () => {
     try {
       registerShellTools();
 
-      const runTool = getRegisteredTool('run_in_sync_shell');
+      const runTool = getRegisteredTool('run_in_shell');
 
       const runPromise = runTool.invoke({
         input: {
@@ -1547,7 +1606,7 @@ describe('shell tools', () => {
 
     registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_async_shell');
+    const runTool = getRegisteredTool('run_in_shell');
 
     await runTool.invoke({
       input: {
@@ -1576,7 +1635,7 @@ describe('shell tools', () => {
     try {
       registerShellTools();
 
-      const runTool = getRegisteredTool('run_in_sync_shell');
+      const runTool = getRegisteredTool('run_in_shell');
 
       const runPromise = runTool.invoke({
         input: {
@@ -1680,8 +1739,8 @@ describe('shell tools', () => {
   it('exposes prepareInvocation metadata for registered shell tools', async () => {
     registerShellTools();
 
-    const runAsyncTool = getRegisteredToolWithPrepare('run_in_async_shell');
-    const runSyncTool = getRegisteredToolWithPrepare('run_in_sync_shell');
+    const runAsyncTool = getRegisteredToolWithPrepare('run_in_shell');
+    const runSyncTool = getRegisteredToolWithPrepare('run_in_shell');
     const awaitTool = getRegisteredToolWithPrepare('await_shell');
     const getOutputTool = getRegisteredToolWithPrepare('get_shell_output');
     const getShellCommandTool = getRegisteredToolWithPrepare('get_shell_command');
@@ -1740,8 +1799,8 @@ describe('shell tools', () => {
   it('runs explicitly allowlisted commands without prompting', async () => {
     registerShellTools();
 
-    const runAsyncTool = getRegisteredToolWithPrepare('run_in_async_shell');
-    const runSyncTool = getRegisteredToolWithPrepare('run_in_sync_shell');
+    const runAsyncTool = getRegisteredToolWithPrepare('run_in_shell');
+    const runSyncTool = getRegisteredToolWithPrepare('run_in_shell');
 
     await expect(runAsyncTool.prepareInvocation({
       input: {
@@ -1770,7 +1829,7 @@ describe('shell tools', () => {
   it('keeps confirmation for unknown commands when the risk model is disabled', async () => {
     registerShellTools();
 
-    const runSyncTool = getRegisteredToolWithPrepare('run_in_sync_shell');
+    const runSyncTool = getRegisteredToolWithPrepare('run_in_shell');
 
     await expect(runSyncTool.prepareInvocation({
       input: {
@@ -1791,7 +1850,7 @@ describe('shell tools', () => {
   it('denies commands matched by deny rules before prompting', async () => {
     registerShellTools();
 
-    const runAsyncTool = getRegisteredToolWithPrepare('run_in_async_shell');
+    const runAsyncTool = getRegisteredToolWithPrepare('run_in_shell');
 
     await expect(runAsyncTool.prepareInvocation({
       input: {
@@ -1806,7 +1865,7 @@ describe('shell tools', () => {
   it('denies sync commands matched by deny rules before prompting', async () => {
     registerShellTools();
 
-    const runSyncTool = getRegisteredToolWithPrepare('run_in_sync_shell');
+    const runSyncTool = getRegisteredToolWithPrepare('run_in_shell');
 
     await expect(runSyncTool.prepareInvocation({
       input: {
@@ -1821,7 +1880,7 @@ describe('shell tools', () => {
   it('re-checks deny rules during async invocation', async () => {
     registerShellTools();
 
-    const runAsyncTool = getRegisteredTool('run_in_async_shell');
+    const runAsyncTool = getRegisteredTool('run_in_shell');
 
     await expect(runAsyncTool.invoke({
       input: {
@@ -1837,7 +1896,7 @@ describe('shell tools', () => {
   it('re-checks deny rules during sync invocation', async () => {
     registerShellTools();
 
-    const runSyncTool = getRegisteredTool('run_in_sync_shell');
+    const runSyncTool = getRegisteredTool('run_in_shell');
 
     await expect(runSyncTool.invoke({
       input: {
@@ -1862,7 +1921,7 @@ describe('shell tools', () => {
 
     registerShellTools();
 
-    const runSyncTool = getRegisteredToolWithPrepare('run_in_sync_shell');
+    const runSyncTool = getRegisteredToolWithPrepare('run_in_shell');
 
     await expect(runSyncTool.prepareInvocation({
       input: {
@@ -1880,7 +1939,7 @@ describe('shell tools', () => {
   it('always prompts when parsing is ambiguous for rule evaluation', async () => {
     registerShellTools();
 
-    const runSyncTool = getRegisteredToolWithPrepare('run_in_sync_shell');
+    const runSyncTool = getRegisteredToolWithPrepare('run_in_shell');
 
     await expect(runSyncTool.prepareInvocation({
       input: {
@@ -1930,8 +1989,8 @@ describe('shell tools', () => {
   it('strips ANSI escape sequences from tool output payloads while preserving captured output', async () => {
     registerShellTools();
 
-    const runSyncTool = getRegisteredTool('run_in_sync_shell');
-    const runAsyncTool = getRegisteredTool('run_in_async_shell');
+    const runSyncTool = getRegisteredTool('run_in_shell');
+    const runAsyncTool = getRegisteredTool('run_in_shell');
     const getOutputTool = getRegisteredTool('get_shell_output');
     const awaitTool = getRegisteredTool('await_shell');
     const ansiDecoratedOutput = '\u001B[1m\u001B[46m RUN \u001B[49m\u001B[22m \u001B[36mv4.0.18\u001B[39m\n';
@@ -2018,7 +2077,7 @@ describe('shell tools', () => {
 
       registerShellTools();
 
-      const runTool = getRegisteredTool('run_in_async_shell');
+      const runTool = getRegisteredTool('run_in_shell');
       const awaitTool = getRegisteredTool('await_shell');
       const getOutputTool = getRegisteredTool('get_shell_output');
 
@@ -2085,7 +2144,7 @@ describe('shell tools', () => {
 
     registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_async_shell');
+    const runTool = getRegisteredTool('run_in_shell');
     const getOutputTool = getRegisteredTool('get_shell_output');
 
     const runResult = await runTool.invoke({
@@ -2139,7 +2198,7 @@ describe('shell tools', () => {
 
     registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_async_shell');
+    const runTool = getRegisteredTool('run_in_shell');
     const getOutputTool = getRegisteredTool('get_shell_output');
 
     const runResult = await runTool.invoke({
@@ -2189,7 +2248,7 @@ describe('shell tools', () => {
 
     registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_async_shell');
+    const runTool = getRegisteredTool('run_in_shell');
     const getOutputTool = getRegisteredTool('get_shell_output');
 
     const runResult = await runTool.invoke({
@@ -2235,7 +2294,7 @@ describe('shell tools', () => {
 
     registerShellTools();
 
-    const runTool = getRegisteredTool('run_in_async_shell');
+    const runTool = getRegisteredTool('run_in_shell');
     const getOutputTool = getRegisteredTool('get_shell_output');
 
     const runResult = await runTool.invoke({
