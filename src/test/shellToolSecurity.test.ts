@@ -303,7 +303,37 @@ describe('shell tool security', () => {
     expect(shellToolSecurityInternals.splitShellSubcommands('echo hi >| out.txt')).toEqual([
       'echo hi >| out.txt',
     ]);
+    expect(shellToolSecurityInternals.splitShellSubcommands('pwd & echo ok')).toEqual([
+      'pwd',
+      'echo ok',
+    ]);
     expect(shellToolSecurityInternals.splitShellSubcommands('echo "unterminated')).toBeUndefined();
+  });
+
+  it('tracks file-write redirection metadata without flagging descriptor duplication', () => {
+    expect(shellToolSecurityInternals.splitShellSubcommandsWithMetadata('pwd >&1 && git status > status.txt && echo ok 2>&1')).toEqual([
+      {
+        hasFileWriteRedirection: false,
+        text: 'pwd >&1',
+      },
+      {
+        hasFileWriteRedirection: true,
+        text: 'git status > status.txt',
+      },
+      {
+        hasFileWriteRedirection: false,
+        text: 'echo ok 2>&1',
+      },
+    ]);
+  });
+
+  it('classifies descriptor duplication targets separately from file targets', () => {
+    expect(shellToolSecurityInternals.isDescriptorDuplicationRedirectionTarget('>&', 2)).toBe(false);
+    expect(shellToolSecurityInternals.isDescriptorDuplicationRedirectionTarget('>&   ', 2)).toBe(false);
+    expect(shellToolSecurityInternals.isDescriptorDuplicationRedirectionTarget('>&-', 2)).toBe(true);
+    expect(shellToolSecurityInternals.isDescriptorDuplicationRedirectionTarget('>&1', 2)).toBe(true);
+    expect(shellToolSecurityInternals.isDescriptorDuplicationRedirectionTarget('>&1 | cat', 2)).toBe(true);
+    expect(shellToolSecurityInternals.isDescriptorDuplicationRedirectionTarget('>&status.txt', 2)).toBe(false);
   });
 
   it('covers additional cwd preview and shell parser edge cases', () => {
@@ -323,6 +353,7 @@ describe('shell tool security', () => {
       'cat',
     ]);
     expect(shellToolSecurityInternals.splitShellSubcommands('echo hi < input.txt')).toBeUndefined();
+    expect(shellToolSecurityInternals.splitShellSubcommands('cat <<EOF')).toBeUndefined();
     expect(shellToolSecurityInternals.splitShellSubcommands('echo "bad `subshell`"')).toBeUndefined();
     expect(shellToolSecurityInternals.splitShellSubcommands('echo "bad $(subshell)"')).toBeUndefined();
     expect(shellToolSecurityInternals.splitShellSubcommands('echo `pwd`')).toBeUndefined();
@@ -538,6 +569,10 @@ describe('shell tool security', () => {
       decision: 'defer',
       reason: 'Detected file-write redirection suppresses automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
     });
+    expect(analyzeShellRunRuleDisposition('pwd && git status > status.txt')).toEqual({
+      decision: 'defer',
+      reason: 'Detected file-write redirection suppresses automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
+    });
   });
 
   it('preserves ask and deny rules when file-write redirections are present', () => {
@@ -562,6 +597,21 @@ describe('shell tool security', () => {
     });
   });
 
+  it('does not suppress allow rules for descriptor duplication or bare redirected env assignments', () => {
+    expect(analyzeShellRunRuleDisposition('pwd >&1')).toEqual({
+      decision: 'allow',
+      reason: 'Every parsed subcommand matched an allow rule.',
+    });
+    expect(analyzeShellRunRuleDisposition('pwd 2>&1')).toEqual({
+      decision: 'allow',
+      reason: 'Every parsed subcommand matched an allow rule.',
+    });
+    expect(analyzeShellRunRuleDisposition('FOO=bar > out.txt')).toEqual({
+      decision: 'defer',
+      reason: 'Transient environment variable assignments suppress automatic allow rules, so the command must be risk-assessed before it can run without confirmation.',
+    });
+  });
+
   it('treats conflicting case-variant named rules as ask', () => {
     getConfiguration.mockReturnValue(createConfiguration(key => {
       if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
@@ -577,6 +627,24 @@ describe('shell tool security', () => {
     expect(analyzeShellRunRuleDisposition('FOO README.md')).toEqual({
       decision: 'ask',
       reason: 'The command `FOO` is configured to always request approval.',
+    });
+  });
+
+  it('keeps same-value case-variant named rules allowable', () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
+        return {
+          FoO: 'allow',
+          fOo: 'allow',
+        };
+      }
+
+      return undefined;
+    }));
+
+    expect(analyzeShellRunRuleDisposition('FOO README.md')).toEqual({
+      decision: 'allow',
+      reason: 'Every parsed subcommand matched an allow rule.',
     });
   });
 
@@ -723,6 +791,26 @@ describe('shell tool security', () => {
   });
 
   it('ignores non-record configured approval rules', () => {
+    const validator = vi.fn().mockImplementationOnce(() => {
+      throw 'validator exploded as a string' as unknown as Error;
+    });
+
+    shellToolSecurityInternals.setRegexRuleValidatorForTest(validator as never);
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
+        return {
+          '/^safe$/': 'allow',
+        };
+      }
+
+      return undefined;
+    }));
+
+    expect(shellToolSecurityInternals.getConfiguredApprovalRules()).toEqual({});
+    expect(logWarn).toHaveBeenCalledWith(
+      'Ignoring configured shell approval regex rule /^safe$/ because validation failed: unknown error.',
+    );
+
     getConfiguration.mockReturnValue(createConfiguration(key => {
       if (key === SHELL_TOOLS_APPROVAL_RULES_KEY) {
         return 'not-an-object';

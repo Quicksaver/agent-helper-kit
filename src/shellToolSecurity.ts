@@ -55,6 +55,7 @@ type ShellScannerStep
     kind: 'redirection';
     skip: number;
     text: string;
+    writesToFile: boolean;
   }
   | {
     kind: 'consume' | 'whitespace';
@@ -554,6 +555,43 @@ function isShellScannerComplete(state: ShellScannerState): boolean {
   return !state.escapeNext && state.quote === undefined;
 }
 
+function isDescriptorDuplicationRedirectionTarget(command: string, indexAfterOperator: number): boolean {
+  let index = indexAfterOperator;
+
+  while (index < command.length && WHITESPACE_CHARACTER_REGEX.test(command[index])) {
+    index += 1;
+  }
+
+  if (index >= command.length) {
+    return false;
+  }
+
+  const character = command[index];
+
+  if (character === '-') {
+    return true;
+  }
+
+  if (!/[0-9]/u.test(character)) {
+    return false;
+  }
+
+  while (index < command.length && /[0-9]/u.test(command[index])) {
+    index += 1;
+  }
+
+  if (index >= command.length) {
+    return true;
+  }
+
+  const trailingCharacter = command[index];
+
+  return WHITESPACE_CHARACTER_REGEX.test(trailingCharacter)
+    || trailingCharacter === ';'
+    || trailingCharacter === '&'
+    || trailingCharacter === '|';
+}
+
 function scanShellCharacter(command: string, index: number, state: ShellScannerState): ShellScannerStep {
   const character = command[index];
   const nextCharacter = command[index + 1];
@@ -672,6 +710,7 @@ function scanShellCharacter(command: string, index: number, state: ShellScannerS
           kind: 'redirection',
           skip: 1,
           text: '>>',
+          writesToFile: true,
         };
       }
 
@@ -681,6 +720,8 @@ function scanShellCharacter(command: string, index: number, state: ShellScannerS
           kind: 'redirection',
           skip: 1,
           text: `${character}${nextCharacter}`,
+          writesToFile: nextCharacter === '|'
+            || !isDescriptorDuplicationRedirectionTarget(command, index + 2),
         };
       }
 
@@ -689,6 +730,7 @@ function scanShellCharacter(command: string, index: number, state: ShellScannerS
         kind: 'redirection',
         skip: 0,
         text: character,
+        writesToFile: true,
       };
     }
 
@@ -697,6 +739,7 @@ function scanShellCharacter(command: string, index: number, state: ShellScannerS
       kind: 'redirection',
       skip: nextCharacter === '<' ? 1 : 0,
       text: nextCharacter === '<' ? '<<' : '<',
+      writesToFile: false,
     };
   }
 
@@ -1013,7 +1056,7 @@ function splitShellSubcommandsWithMetadata(commandLine: string): ParsedShellSubc
       }
 
       current += step.text;
-      currentHasFileWriteRedirection = true;
+      currentHasFileWriteRedirection ||= step.writesToFile;
       index += step.skip;
       continue;
     }
@@ -1345,6 +1388,7 @@ export const shellToolSecurityInternals = {
   getConfiguredApprovalRules,
   getMergedApprovalRules,
   getPreviewCwd,
+  isDescriptorDuplicationRedirectionTarget,
   parseApprovalRegexRule,
   parseLeadingTransientEnvironmentAssignment,
   parseRegexRule,

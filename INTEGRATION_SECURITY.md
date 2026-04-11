@@ -544,12 +544,14 @@ This extension intentionally implements a narrower file-write policy than core.
 
 It detects output redirections conservatively during approval parsing, but it does not use file-write location analysis to force a dedicated approval outcome.
 
-When a command includes a detected output redirection:
+When a command includes a detected file-target output redirection:
 
 - matching `deny` and `ask` rules are preserved
 - matching `allow` rules are ignored instead of auto-running the command
 - unresolved commands continue through model-based risk assessment unless the YOLO override is enabled
 - if risk assessment is disabled, times out, errors, or requests review, the command falls back to explicit approval
+
+Descriptor duplication such as `2>&1` stays eligible for normal rule matching; only redirections that still target a file path after conservative parsing suppress `allow`.
 
 ### Core Reference Snippet
 
