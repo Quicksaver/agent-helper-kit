@@ -768,35 +768,48 @@ describe('ShellRuntime background execution', () => {
     });
   });
 
-  it('falls back to in-memory state when persisted send_to_shell log removal cannot overwrite the file', () => {
+  it('falls back to in-memory state when persisted send_to_shell log removal cannot overwrite the file', async () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
-    const runtime = new ShellRuntime({ outputLimitBytes: 1 });
-    const runtimeAccess = runtime as unknown as {
-      backgroundProcesses: Map<string, {
-        output: string;
-        outputBytes: number;
-        outputInFile: boolean;
-      }>;
-      removeTrailingBackgroundOutput: (id: string, state: {
-        output: string;
-        outputBytes: number;
-        outputInFile: boolean;
-      }, chunk: string) => boolean;
-    };
-    const chunk = '[send_to_shell] answer\n';
-    const id = runtime.startBackgroundCommand('read value');
+    vi.resetModules();
+    vi.doMock('../shellOutputStore.js', async () => {
+      const actual = await vi.importActual<typeof import('../shellOutputStore.js')>('../shellOutputStore.js');
 
-    fakeProcess.stdout.emit('data', chunk);
+      return {
+        ...actual,
+        overwriteShellOutput: (shellId: string, output: string) => {
+          if (shellId.startsWith('shell-') && output.length === 0) {
+            return false;
+          }
 
-    const state = runtimeAccess.backgroundProcesses.get(id);
-    const outputFilePath = getShellOutputFilePath(id);
-
-    expect(state?.outputInFile).toBe(true);
+          return actual.overwriteShellOutput(shellId, output);
+        },
+      };
+    });
 
     try {
-      fs.chmodSync(outputFilePath, 0o444);
+      const { ShellRuntime: MockedShellRuntime } = await import('../shellRuntime.js');
+      const runtime = new MockedShellRuntime({ outputLimitBytes: 1 });
+      const runtimeAccess = runtime as unknown as {
+        backgroundProcesses: Map<string, {
+          output: string;
+          outputBytes: number;
+          outputInFile: boolean;
+        }>;
+        removeTrailingBackgroundOutput: (id: string, state: {
+          output: string;
+          outputBytes: number;
+          outputInFile: boolean;
+        }, chunk: string) => boolean;
+      };
+      const chunk = '[send_to_shell] answer\n';
+      const id = runtime.startBackgroundCommand('read value');
 
+      fakeProcess.stdout.emit('data', chunk);
+
+      const state = runtimeAccess.backgroundProcesses.get(id);
+
+      expect(state?.outputInFile).toBe(true);
       expect(runtimeAccess.removeTrailingBackgroundOutput(id, state as {
         output: string;
         outputBytes: number;
@@ -809,9 +822,8 @@ describe('ShellRuntime background execution', () => {
       });
     }
     finally {
-      if (fs.existsSync(outputFilePath)) {
-        fs.chmodSync(outputFilePath, 0o644);
-      }
+      vi.doUnmock('../shellOutputStore.js');
+      vi.resetModules();
     }
   });
 
