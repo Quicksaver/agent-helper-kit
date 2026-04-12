@@ -1518,6 +1518,8 @@ describe('shell tools', () => {
       toolInvocationToken: undefined,
     }, {});
 
+    // Background runs resolve with an id before process completion, so close
+    // intentionally fires after the tool returns.
     const shellId = getResultPayload(await runPromise).id as string;
     fakeProcess.emit('close', 0, null);
 

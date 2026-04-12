@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Added shell tool approval prompts for commands that are not explicitly allowed, so model-triggered shell runs no longer execute unchecked by default.
 - Added configurable shell approval rules (`allow`, `ask`, `deny`), optional model-based risk assessment, and a model picker command so trusted command patterns can skip repeated prompts without disabling review entirely.
+- Added `send_to_shell` so a running `run_in_shell` command can receive one piped stdin reply at a time, including an empty line to simulate pressing Enter.
 
 ### Changed
 
