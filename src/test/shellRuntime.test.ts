@@ -440,6 +440,103 @@ describe('ShellRuntime background execution', () => {
     });
   });
 
+  it('supports public ids for sending stdin to a running command', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.startBackgroundCommand('read value');
+
+    await expect(runtime.sendInputToBackgroundCommand({
+      command: 'answer',
+      id: toPublicCommandId(id),
+    })).resolves.toEqual({
+      isRunning: true,
+      sent: true,
+      shell: process.env.SHELL ?? '/bin/bash',
+    });
+
+    expect(fakeProcess.stdin.write).toHaveBeenCalledWith('answer\n', expect.any(Function));
+  });
+
+  it('returns a stable failure when stdin is no longer writable', async () => {
+    const fakeProcess = createFakeProcess();
+    fakeProcess.stdin.writableEnded = true;
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.startBackgroundCommand('read value');
+
+    await expect(runtime.sendInputToBackgroundCommand({
+      command: 'answer',
+      id,
+    })).resolves.toEqual({
+      isRunning: true,
+      reason: 'shell stdin is not writable',
+      sent: false,
+      shell: process.env.SHELL ?? '/bin/bash',
+    });
+
+    fakeProcess.emit('close', 0, null);
+
+    await expect(runtime.sendInputToBackgroundCommand({
+      command: '',
+      id,
+    })).resolves.toEqual({
+      isRunning: false,
+      reason: 'shell command is no longer running',
+      sent: false,
+      shell: process.env.SHELL ?? '/bin/bash',
+    });
+  });
+
+  it('treats stdin error events as a send failure without throwing', async () => {
+    const fakeProcess = createFakeProcess();
+    fakeProcess.stdin.write.mockImplementation((_: string, callback?: (error?: Error | null) => void) => {
+      const writeError = new Error('stdin failed');
+
+      fakeProcess.stdin.emit('error', writeError);
+      callback?.(writeError);
+
+      return false;
+    });
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.startBackgroundCommand('read value');
+
+    await expect(runtime.sendInputToBackgroundCommand({
+      command: 'answer',
+      id,
+    })).resolves.toEqual({
+      isRunning: true,
+      reason: 'shell stdin is not writable',
+      sent: false,
+      shell: process.env.SHELL ?? '/bin/bash',
+    });
+  });
+
+  it('treats thrown stdin writes as a send failure without throwing', async () => {
+    const fakeProcess = createFakeProcess();
+    fakeProcess.stdin.write.mockImplementation(() => {
+      throw new Error('stdin crashed');
+    });
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.startBackgroundCommand('read value');
+
+    await expect(runtime.sendInputToBackgroundCommand({
+      command: 'answer',
+      id,
+    })).resolves.toEqual({
+      isRunning: true,
+      reason: 'shell stdin is not writable',
+      sent: false,
+      shell: process.env.SHELL ?? '/bin/bash',
+    });
+  });
+
   it('captures stderr output in the command details', async () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);

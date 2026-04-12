@@ -34,11 +34,13 @@ Compared with built-in terminal tools, these extension tools are optimized for a
 - Approval flow that combines explicit allow/ask/deny rules with optional model-based risk assessment, while treating transient env-var prefixes and detected file-target output redirections conservatively.
 - `run_in_shell` is optimal for both deterministic commands, and long-running detached jobs: omit `timeout` to start immediately and poll later, or provide `timeout` to wait for completion up to that many milliseconds.
 - If that wait times out, the tool returns `timedOut: true` with the command id and leaves the process running until it exits naturally or you call `kill_shell`.
+- `send_to_shell` can write one stdin reply at a time to a still-running `run_in_shell` command, including sending just Enter with an empty or whitespace payload.
 
 **Tradeoffs:**
 
 - No interactive terminal session (these are command-execution APIs, not full terminal UIs).
 - No state/environment persistence between command runs, each command runs in a fresh shell instance.
+- Input sent with `send_to_shell` goes only to piped stdin. Prompts that require a real terminal or PTY, such as many `ssh` or `sudo` password prompts, still will not work here.
 
 **Recommendation:** for development flows where most or all commands are non-interactive and require no environment state persistency, you can disable the built-in terminal tools.
 
@@ -67,6 +69,8 @@ When using `run_in_shell`, provide:
 - `riskAssessmentContext` (optional): additional risk context. Use file paths for scripts the command executes, and inline strings for relevant sub-actions, package scripts, alias expansions, or fetched-content details that help explain what the command ultimately runs.
 
 Use `timeout` only to control how long the tool waits before replying. It does not limit or kill the underlying process. Omit `timeout` to start the command asynchronously and get back the id plus selected shell immediately, use `0` to wait without a limit, and call `kill_shell` yourself if a long-running command should stop.
+
+If a running command is waiting for stdin, call `send_to_shell` with exactly one answer, then read the updated output with `get_shell_output` before sending anything else.
 
 Transient env-var prefixes such as `FOO=bar cmd` do not automatically force manual approval in this extension. Instead, the approval engine strips those prefixes for rule matching, preserves matching `ask` and `deny` rules, and downgrades matching `allow` rules to model-based risk assessment.
 

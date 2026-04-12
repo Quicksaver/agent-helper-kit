@@ -365,6 +365,7 @@ function setupShellTools(fakeProcess: FakeProcess = createFakeProcess()): {
   getOutputTool: ReturnType<typeof getRegisteredTool>;
   killTool: ReturnType<typeof getRegisteredTool>;
   runTool: ReturnType<typeof getRegisteredTool>;
+  sendTool: ReturnType<typeof getRegisteredTool>;
 } {
   spawn.mockReturnValue(fakeProcess);
   registerShellTools();
@@ -375,6 +376,7 @@ function setupShellTools(fakeProcess: FakeProcess = createFakeProcess()): {
     getOutputTool: getRegisteredTool('get_shell_output'),
     killTool: getRegisteredTool('kill_shell'),
     runTool: getRegisteredTool('run_in_shell'),
+    sendTool: getRegisteredTool('send_to_shell'),
   };
 }
 
@@ -468,6 +470,7 @@ describe('shell tools', () => {
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('run_in_shell', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('await_shell', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('get_shell_output', expect.any(Object));
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith('send_to_shell', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('get_shell_command', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('get_last_shell_command', expect.any(Object));
     expect(vscode.lm.registerTool).toHaveBeenCalledWith('kill_shell', expect.any(Object));
@@ -1435,6 +1438,105 @@ describe('shell tools', () => {
     }
   });
 
+  it('sends stdin to a timed-out running shell command and supports Enter-only replies', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fakeProcess = createFakeProcess();
+      spawn.mockReturnValue(fakeProcess);
+
+      registerShellTools();
+
+      const runTool = getRegisteredTool('run_in_shell');
+      const sendTool = getRegisteredTool('send_to_shell');
+      const runPromise = runTool.invoke({
+        input: {
+          command: 'read value && printf "%s" "$value"',
+          explanation: 'verify stdin follow-up after timeout',
+          goal: 'send stdin to background shell command',
+          timeout: 5,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      await vi.advanceTimersByTimeAsync(5);
+
+      const runPayload = getResultPayload(await runPromise);
+      const shellId = runPayload.id as string;
+
+      const firstSend = await sendTool.invoke({
+        input: {
+          command: 'answer',
+          id: shellId,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      expect(getResultPayload(firstSend)).toEqual({
+        isRunning: true,
+        reason: null,
+        sent: true,
+        shell: TEST_DEFAULT_SHELL,
+      });
+      expect(fakeProcess.stdin.write).toHaveBeenCalledWith('answer\n', expect.any(Function));
+
+      const secondSend = await sendTool.invoke({
+        input: {
+          command: '   ',
+          id: shellId,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      expect(getResultPayload(secondSend)).toEqual({
+        isRunning: true,
+        reason: null,
+        sent: true,
+        shell: TEST_DEFAULT_SHELL,
+      });
+      expect(fakeProcess.stdin.write).toHaveBeenLastCalledWith('\n', expect.any(Function));
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('returns a non-throwing failure when send_to_shell targets a completed command', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_shell');
+    const sendTool = getRegisteredTool('send_to_shell');
+    const runPromise = runTool.invoke({
+      input: {
+        command: 'echo done',
+        explanation: 'verify completed send handling',
+        goal: 'completed send safety',
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    const shellId = getResultPayload(await runPromise).id as string;
+    fakeProcess.emit('close', 0, null);
+
+    const result = await sendTool.invoke({
+      input: {
+        command: 'answer',
+        id: shellId,
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    expect(getResultPayload(result)).toEqual({
+      isRunning: false,
+      reason: 'shell command is no longer running',
+      sent: false,
+      shell: TEST_DEFAULT_SHELL,
+    });
+  });
+
   it('defaults spawned commands to color-capable shell env vars', async () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);
@@ -1740,6 +1842,7 @@ describe('shell tools', () => {
     const runTool = getRegisteredToolWithPrepare('run_in_shell');
     const awaitTool = getRegisteredToolWithPrepare('await_shell');
     const getOutputTool = getRegisteredToolWithPrepare('get_shell_output');
+    const sendTool = getRegisteredToolWithPrepare('send_to_shell');
     const getShellCommandTool = getRegisteredToolWithPrepare('get_shell_command');
     const getLastShellCommandTool = getRegisteredToolWithPrepare('get_last_shell_command');
     const killTool = getRegisteredToolWithPrepare('kill_shell');
@@ -1777,6 +1880,27 @@ describe('shell tools', () => {
     });
     expect(getOutputTool.prepareInvocation({ input: { id: 'abcd1234' } })).toEqual({
       invocationMessage: 'Reading output for shell command abcd1234',
+    });
+    expect(sendTool.prepareInvocation({ input: { command: 'yes', id: 'abcd1234' } })).toEqual({
+      confirmationMessages: {
+        message: 'Send input to shell command abcd1234: yes',
+        title: 'Send input to running shell command?',
+      },
+      invocationMessage: 'Sending input to shell command abcd1234',
+    });
+    expect(sendTool.prepareInvocation({ input: { command: '\nanswer', id: 'abcd1234' } })).toEqual({
+      confirmationMessages: {
+        message: 'Send input to shell command abcd1234: answer',
+        title: 'Send input to running shell command?',
+      },
+      invocationMessage: 'Sending input to shell command abcd1234',
+    });
+    expect(sendTool.prepareInvocation({ input: { command: '   ', id: 'abcd1234' } })).toEqual({
+      confirmationMessages: {
+        message: 'Press Enter for shell command abcd1234',
+        title: 'Send input to running shell command?',
+      },
+      invocationMessage: 'Sending input to shell command abcd1234',
     });
     expect(getShellCommandTool.prepareInvocation({ input: { id: 'abcd1234' } })).toEqual({
       invocationMessage: 'Reading shell command abcd1234',

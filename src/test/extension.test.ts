@@ -172,6 +172,10 @@ describe('Extension', () => {
       expect.any(Object),
     );
     expect(vscode.lm.registerTool).toHaveBeenCalledWith(
+      SHELL_TOOL_NAMES.sendToShell,
+      expect.any(Object),
+    );
+    expect(vscode.lm.registerTool).toHaveBeenCalledWith(
       SHELL_TOOL_NAMES.killShell,
       expect.any(Object),
     );

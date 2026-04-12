@@ -221,11 +221,24 @@ export interface ReadBackgroundOutputInput extends ShellOutputFilterInput {
   id: string;
 }
 
+export interface SendInputToBackgroundInput {
+  command: string;
+  id: string;
+}
+
 interface ShellRuntimeOptions {
   memoryToFileDelayMs?: number;
   outputLimitBytes?: number;
   shellEnv?: NodeJS.ProcessEnv;
   startupPurgeMaxAgeMs?: number;
+}
+
+function normalizeShellInputForWrite(command: string): string {
+  if (command.trim().length === 0) {
+    return '\n';
+  }
+
+  return `${command.replace(/\r?\n$/u, '')}\n`;
 }
 
 /**
@@ -453,6 +466,81 @@ export class ShellRuntime {
       output,
       shell: state.shell,
       terminationSignal: state.completed ? state.signal : null,
+    };
+  }
+
+  async sendInputToBackgroundCommand(input: SendInputToBackgroundInput): Promise<{
+    isRunning: boolean;
+    reason?: string;
+    sent: boolean;
+    shell: string;
+  }> {
+    const { state } = this.getBackgroundState(input.id);
+
+    if (state.completed || !state.childProc) {
+      return {
+        isRunning: false,
+        reason: 'shell command is no longer running',
+        sent: false,
+        shell: state.shell,
+      };
+    }
+
+    const { stdin } = state.childProc;
+
+    if (stdin.destroyed || stdin.writableEnded) {
+      return {
+        isRunning: !state.completed,
+        reason: 'shell stdin is not writable',
+        sent: false,
+        shell: state.shell,
+      };
+    }
+
+    const commandText = normalizeShellInputForWrite(input.command);
+    const sent = await new Promise<boolean>(resolve => {
+      let settled = false;
+      let onError = null as unknown as () => void;
+
+      const settle = (value: boolean): void => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        stdin.off('error', onError);
+        resolve(value);
+      };
+
+      onError = (): void => {
+        settle(false);
+      };
+
+      stdin.once('error', onError);
+
+      try {
+        stdin.write(commandText, error => {
+          settle(error == null);
+        });
+      }
+      catch {
+        settle(false);
+      }
+    });
+
+    if (!sent) {
+      return {
+        isRunning: !state.completed,
+        reason: 'shell stdin is not writable',
+        sent: false,
+        shell: state.shell,
+      };
+    }
+
+    return {
+      isRunning: !state.completed,
+      sent: true,
+      shell: state.shell,
     };
   }
 

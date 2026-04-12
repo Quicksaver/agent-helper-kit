@@ -12,6 +12,7 @@ export const SHELL_TOOL_NAMES = {
   getShellOutput: 'get_shell_output',
   killShell: 'kill_shell',
   runInShell: 'run_in_shell',
+  sendToShell: 'send_to_shell',
 } as const;
 
 interface ContributedLanguageModelTool {
@@ -170,6 +171,14 @@ export function buildShellToolMetadata(manifest: unknown) {
       ...getToolMetadata(contributedLanguageModelTools, SHELL_TOOL_NAMES.runInShell),
       invocationMessage: (commandPreview: string) => `Running shell command: ${commandPreview}`,
     },
+    sendToShell: {
+      confirmationMessage: (id: string, commandPreview?: string) => (commandPreview && commandPreview.trim().length > 0
+        ? `Send input to shell command ${id}: ${commandPreview}`
+        : `Press Enter for shell command ${id}`),
+      confirmationTitle: 'Send input to running shell command?',
+      ...getToolMetadata(contributedLanguageModelTools, SHELL_TOOL_NAMES.sendToShell),
+      invocationMessage: (id: string) => `Sending input to shell command ${id}`,
+    },
   } as const;
 }
 
@@ -227,6 +236,11 @@ export interface KillShellInput {
   id: string;
 }
 
+export interface SendToShellInput {
+  command: string;
+  id: string;
+}
+
 export interface GetShellCommandInput {
   id: string;
 }
@@ -279,6 +293,11 @@ export const getShellOutputInputSchema = {
   regex_flags: z.string().optional(),
 } satisfies z.ZodRawShape;
 
+export const sendToShellInputSchema = {
+  command: z.string(),
+  id: z.string(),
+} satisfies z.ZodRawShape;
+
 const getShellOutputInputValidator = z.object(getShellOutputInputSchema).refine(
   value => !(typeof value.last_lines === 'number' && typeof value.regex === 'string'),
   {
@@ -292,6 +311,7 @@ const getShellOutputInputValidator = z.object(getShellOutputInputSchema).refine(
 );
 
 const awaitShellInputValidator = z.object(awaitShellInputSchema);
+const sendToShellInputValidator = z.object(sendToShellInputSchema);
 
 const runInShellInputValidator = z.object(runInShellInputSchema).refine(
   value => !(
@@ -339,6 +359,10 @@ export function validateGetShellOutputInput(input: GetShellOutputInput): GetShel
 
 export function validateAwaitShellInput(input: AwaitShellInput): AwaitShellInput {
   return awaitShellInputValidator.parse(input);
+}
+
+export function validateSendToShellInput(input: SendToShellInput): SendToShellInput {
+  return sendToShellInputValidator.parse(input);
 }
 
 export function validateRunInShellInput(input: RunInShellInput): RunInShellInput {

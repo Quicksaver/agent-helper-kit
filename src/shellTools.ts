@@ -24,10 +24,12 @@ import {
   type GetShellOutputInput,
   type KillShellInput,
   type RunInShellInput,
+  type SendToShellInput,
   SHELL_TOOL_METADATA,
   SHELL_TOOL_NAMES,
   validateAwaitShellInput,
   validateRunInShellInput,
+  validateSendToShellInput,
 } from '@/shellToolContracts';
 import {
   analyzeShellRunRuleDisposition,
@@ -287,6 +289,16 @@ function getRequestedOrDefaultShell(inputShell?: string): string {
   return globalThis.process.env.SHELL ?? '/bin/bash';
 }
 
+function getShellInputPreview(input: string): string | undefined {
+  const trimmedInput = input.trim();
+
+  if (trimmedInput.length === 0) {
+    return undefined;
+  }
+
+  return input.split('\n')[0]?.trim() || trimmedInput;
+}
+
 const runInShellTool: vscode.LanguageModelTool<RunInShellInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<RunInShellInput>,
@@ -490,6 +502,36 @@ const killShellTool: vscode.LanguageModelTool<KillShellInput> = {
   },
 };
 
+const sendToShellTool: vscode.LanguageModelTool<SendToShellInput> = {
+  async invoke(
+    options: vscode.LanguageModelToolInvocationOptions<SendToShellInput>,
+  ): Promise<vscode.LanguageModelToolResult> {
+    const input = validateSendToShellInput(options.input);
+    const result = await getShellRuntime().sendInputToBackgroundCommand(input);
+
+    return buildYamlToolResult({
+      isRunning: result.isRunning,
+      reason: result.reason ?? null,
+      sent: result.sent,
+      shell: result.shell,
+    });
+  },
+  prepareInvocation(
+    options: vscode.LanguageModelToolInvocationPrepareOptions<SendToShellInput>,
+  ): vscode.PreparedToolInvocation {
+    const input = validateSendToShellInput(options.input);
+    const commandPreview = getShellInputPreview(input.command);
+
+    return {
+      confirmationMessages: {
+        message: SHELL_TOOL_METADATA.sendToShell.confirmationMessage(input.id, commandPreview),
+        title: SHELL_TOOL_METADATA.sendToShell.confirmationTitle,
+      },
+      invocationMessage: SHELL_TOOL_METADATA.sendToShell.invocationMessage(input.id),
+    };
+  },
+};
+
 const getShellCommandTool: vscode.LanguageModelTool<GetShellCommandInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<GetShellCommandInput>,
@@ -539,6 +581,7 @@ export function registerShellTools(extensionUri?: vscode.Uri): vscode.Disposable
     vscode.lm.registerTool(SHELL_TOOL_NAMES.runInShell, runInShellTool),
     vscode.lm.registerTool(SHELL_TOOL_NAMES.awaitShell, awaitShellTool),
     vscode.lm.registerTool(SHELL_TOOL_NAMES.getShellOutput, getShellOutputTool),
+    vscode.lm.registerTool(SHELL_TOOL_NAMES.sendToShell, sendToShellTool),
     vscode.lm.registerTool(SHELL_TOOL_NAMES.getShellCommand, getShellCommandTool),
     vscode.lm.registerTool(SHELL_TOOL_NAMES.getLastShellCommand, getLastShellCommandTool),
     vscode.lm.registerTool(SHELL_TOOL_NAMES.killShell, killShellTool),

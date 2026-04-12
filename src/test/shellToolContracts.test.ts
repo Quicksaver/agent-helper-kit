@@ -37,6 +37,9 @@ describe('shell tool contracts', () => {
     const runTool = packageJson.contributes.languageModelTools.find(
       tool => tool.name === SHELL_TOOL_NAMES.runInShell,
     );
+    const sendTool = packageJson.contributes.languageModelTools.find(
+      tool => tool.name === SHELL_TOOL_NAMES.sendToShell,
+    );
     const contributedLanguageModelTools = getContributedLanguageModelToolsFromManifest(packageJson);
 
     expect(getPackageVersion()).toBe(packageJson.version);
@@ -58,6 +61,12 @@ describe('shell tool contracts', () => {
     expect(shellToolMetadata.runInShell.confirmationMessage('echo ok')).toBe('Run shell command: echo ok');
     expect(shellToolMetadata.runInShell.confirmationTitle).toBe('Run shell command?');
     expect(shellToolMetadata.runInShell.invocationMessage('echo ok')).toBe('Running shell command: echo ok');
+    expect(shellToolMetadata.sendToShell.title).toBe(sendTool?.displayName);
+    expect(shellToolMetadata.sendToShell.description).toBe(sendTool?.modelDescription);
+    expect(shellToolMetadata.sendToShell.confirmationMessage('abcd1234', 'yes')).toBe('Send input to shell command abcd1234: yes');
+    expect(shellToolMetadata.sendToShell.confirmationMessage('abcd1234')).toBe('Press Enter for shell command abcd1234');
+    expect(shellToolMetadata.sendToShell.confirmationTitle).toBe('Send input to running shell command?');
+    expect(shellToolMetadata.sendToShell.invocationMessage('abcd1234')).toBe('Sending input to shell command abcd1234');
   });
 
   it('falls back cleanly when package.json cannot be read', async () => {
@@ -169,7 +178,11 @@ describe('shell tool contracts', () => {
 
   it('validates async-style shell inputs without timeout', async () => {
     const { MAX_SHELL_COLUMNS } = await import('../shellColumns.js');
-    const { validateAwaitShellInput, validateRunInShellInput } = await import('../shellToolContracts.js');
+    const {
+      validateAwaitShellInput,
+      validateRunInShellInput,
+      validateSendToShellInput,
+    } = await import('../shellToolContracts.js');
 
     expect(validateRunInShellInput({
       columns: 320,
@@ -209,6 +222,14 @@ describe('shell tool contracts', () => {
       id: 'abcd1234',
       timeout: -1,
     })).toThrow(/expected number to be >=0/);
+
+    expect(validateSendToShellInput({
+      command: 'yes',
+      id: 'abcd1234',
+    })).toEqual({
+      command: 'yes',
+      id: 'abcd1234',
+    });
   });
 
   it('rejects incompatible get shell output options', async () => {

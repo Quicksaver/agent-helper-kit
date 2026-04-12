@@ -25,6 +25,7 @@
     "onLanguageModelTool:run_in_shell",
     "onLanguageModelTool:await_shell",
     "onLanguageModelTool:get_shell_output",
+    "onLanguageModelTool:send_to_shell",
     "onLanguageModelTool:kill_shell",
     "onLanguageModelTool:get_shell_command",
     "onLanguageModelTool:get_last_shell_command"
@@ -215,7 +216,7 @@
         "displayName": "Run Shell Command",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(terminal)",
-        "modelDescription": "Run a shell command in a cwd, workspace root, or home if no workspace. Returns an id and status (shell, exitCode, terminationSignal if any SIG* sent); poll output via id after exit as needed, or include in response via full_output/last_lines/regex. Returns the id immediately for async polling when timeout is omitted, or when timeout is reached. Compared with built-in run_in_terminal, pro: stable ids, deterministic status, unambiguous/filtered/streamed/full output, smaller context footprint when only success/failure is needed; con: not interactive, no persisted shell state.",
+        "modelDescription": "Run a shell command in a cwd, workspace root, or home if no workspace. Returns an id and status (shell, exitCode, terminationSignal if any SIG* sent); poll output via id after exit as needed, or include in response via full_output/last_lines/regex. Returns the id immediately for async polling when timeout is omitted, or when timeout is reached. If a running command is waiting for stdin, use send_to_shell to send exactly one answer, then call get_shell_output again. Compared with built-in run_in_terminal, pro: stable ids, deterministic status, unambiguous/filtered/streamed/full output, smaller context footprint when only success/failure is needed; con: not interactive, no persisted shell state, no PTY-backed prompts.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -359,6 +360,32 @@
               }
             }
           ]
+        }
+      },
+      {
+        "name": "send_to_shell",
+        "toolReferenceName": "sendToShell",
+        "displayName": "Send to Shell",
+        "when": "config.agent-helper-kit.shellTools.enabled",
+        "icon": "$(terminal)",
+        "modelDescription": "Send input text to the piped stdin of a running shell command started by run_in_shell. The command field may be empty or whitespace to press Enter. Send exactly one answer at a time, then call get_shell_output to inspect the next prompt or output. This is stdin-only and does not allocate a terminal or PTY, so terminal-bound prompts such as many SSH, sudo, or full-screen interactive programs may still not work.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "required": [
+            "id",
+            "command"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "The shell command id returned by run_in_shell. This may be the public 8-character id shown by the tool."
+            },
+            "command": {
+              "type": "string",
+              "description": "The input text to send to the running shell command. The text is sent followed by Enter. Provide an empty or whitespace string to send just Enter."
+            }
+          }
         }
       },
       {
