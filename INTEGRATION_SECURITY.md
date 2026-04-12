@@ -54,6 +54,7 @@ If you cannot replicate everything, prioritize in this order:
 17. Sandboxing -- as above
 18. TBD
 19. **Output sanitization and truncation**: Implemented with a deliberate divergence from core. The runtime preserves display-oriented ANSI SGR styling for the Shell Runs panel, strips non-display control sequences during normalization, and strips all remaining control sequences before output is returned in LM tool results.
+20. **Telemetry sanitization**: Not currently applicable. The extension does not currently emit remote telemetry for shell tool usage; current diagnostics use a local VS Code output channel rather than a telemetry pipeline. If telemetry is added later, raw command text should be treated as sensitive input and sanitized before emission.
 
 ## Third-Party Extension Divergence Notes
 
@@ -1344,6 +1345,10 @@ Telemetry should describe behavior without storing arbitrary raw command strings
 ### Third-Party Extension Guidance
 
 If your extension emits telemetry about tool usage, treat command text as sensitive input.
+
+### Current Extension Note
+
+Not currently applicable. This extension does not currently emit remote telemetry for shell tool usage. Its current diagnostics use a local VS Code output channel rather than a telemetry pipeline. If telemetry is added later, raw command text should be treated as sensitive input and sanitized before emission.
 
 ### Core Reference Snippet
 
