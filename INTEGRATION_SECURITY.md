@@ -35,7 +35,7 @@ If you cannot replicate everything, prioritize in this order:
 
 ## Progress
 
-The current extension implementation covers the first five priorities in this document, and it also implements the transient environment-variable handling described in section 6, as follows:
+The current extension implementation covers sections 1-9 as described below. Sections 10-16 are intentionally not implemented for now because sandboxing and sandbox-driven retry paths would be counter-productive for many commands this extension is expected to run, and that tradeoff may be revisited later. Section 17 is not directly applicable to the current spawned-shell execution model.
 
 1. **Default confirmation gate**: Implemented. Shell tools build confirmation messages in `prepareInvocation` and include command, cwd, explanation, goal, and the required caller-supplied risk summary.
 2. **Auto-approval gating**: Implemented with a different scope. The previous double opt-in design was intentionally removed in favor of explicit `allow`/`ask`/`deny` rules, optional model-based risk assessment, and a single explicit YOLO override.
@@ -747,6 +747,14 @@ if (
 - Symbol: module constants and `analyze`
 - Approx lines: `26-34`, `177-181`
 
+## Sandboxing Status in This Extension
+
+Sections 10-16 below describe the current VS Code core sandbox model.
+
+This extension does not currently implement sandbox wrapping, sandbox-aware unsandbox retry paths, sandbox domain or filesystem policy enforcement, or sandbox-specific failure analysis.
+
+That is intentional for now. In this extension's current spawned-shell workflow, these controls would be counter-productive for many expected commands and would add significant friction for limited practical benefit. They may be revisited if the runtime model changes or if the command mix materially shifts.
+
 ## 10. Sandbox Wrapping Should Be the Strongest Runtime Guard
 
 ### Why
@@ -765,6 +773,10 @@ Approval logic only protects the pre-execution phase. Sandbox wrapping is what c
 ### Third-Party Extension Guidance
 
 If you can use an OS-level sandbox, do it. If you cannot, document that your extension is offering approval controls, not runtime isolation. If you do support sandboxing, handle missing prerequisites and pre-execution blocked-domain escalation explicitly.
+
+### Current Extension Note
+
+Not implemented for now. This extension currently relies on approval controls and spawned-shell execution rather than runtime sandboxing, and introducing sandbox wrapping in the current workflow would be counter-productive for many expected commands. This may be revisited later.
 
 ### Core Reference Snippet
 
@@ -843,6 +855,10 @@ If you embed the user command inside an outer wrapper shell invocation, quoting 
 
 Mirror this exactly if you use a shell-based wrapper. In current core, the same quoting helper is also used when the sandbox path falls back to an unsandboxed shell wrapper that preserves `TMPDIR`.
 
+### Current Extension Note
+
+Not implemented for now. Because this extension does not currently wrap commands in a sandbox runtime, there is no sandbox-wrapper quoting path to mirror at this time. This may be revisited later if sandbox execution is introduced.
+
 ### Core Reference Snippet
 
 ```ts
@@ -882,6 +898,10 @@ Leaving the sandbox is a security-sensitive state transition. It needs more than
 ### Third-Party Extension Guidance
 
 Do not hide this behind a silent retry. Make it explicit in both tool parameters and UI. If your policy engine can infer that a command needs to leave containment, surface that as the same elevated confirmation path.
+
+### Current Extension Note
+
+Not implemented for now. This extension has no sandbox-to-unsandbox transition flow because it does not currently run commands inside a sandbox. Adding that state machine in the current workflow would be counter-productive for many expected commands. This may be revisited later.
 
 ### Core Reference Snippet
 
@@ -941,6 +961,10 @@ Remote network access is often the highest-risk side effect for shell tools. Cor
 ### Third-Party Extension Guidance
 
 If your runtime supports domain filtering, mirror this structure exactly. If it does not, at least parse obvious URLs, SSH remotes, and host-like arguments before execution so you can prompt or deny before the command runs.
+
+### Current Extension Note
+
+Not implemented for now. This extension does not currently enforce sandbox network allowlists or denylists because it does not ship a sandboxed execution runtime. That tradeoff is intentional in the current workflow and may be revisited later.
 
 ### Core Reference Snippet
 
@@ -1024,6 +1048,10 @@ The shell tool often needs to write within the workspace, but unrestricted write
 
 If your sandbox supports only allow-write paths, start there. The important behavior is that the workspace is allowed and everything else is denied unless explicitly opened.
 
+### Current Extension Note
+
+Not implemented for now. This extension does not currently enforce sandbox filesystem policy because it does not run commands inside a sandbox. Adding those constraints in the current workflow would be counter-productive for many expected commands. This may be revisited later.
+
 ### Core Reference Snippet
 
 ```ts
@@ -1068,6 +1096,10 @@ If the command is running inside containment, core allows that path to proceed m
 
 This is a useful pattern if your sandbox is strong enough to justify lower confirmation friction for contained commands.
 
+### Current Extension Note
+
+Not implemented for now. Because this extension does not currently execute commands in a sandbox, it has no sandbox-only auto-approval path and no separate escape-hatch treatment to model here. This may be revisited later.
+
 ### Core Reference Snippet
 
 ```ts
@@ -1105,6 +1137,10 @@ When a command fails due to sandbox restrictions, the model should not keep blin
 ### Third-Party Extension Guidance
 
 If you have a sandbox, you also need sandbox-specific failure handling. Otherwise the model will thrash on denied actions.
+
+### Current Extension Note
+
+Not implemented for now. This extension does not currently analyze output for sandbox-specific failures because it does not run commands in a sandboxed mode. This may be revisited later if sandboxing is introduced.
 
 ### Core Reference Snippet
 
@@ -1152,6 +1188,12 @@ Replicate both parts:
 2. command rewriting
 
 Only doing one of them is incomplete.
+
+### Current Extension Note
+
+Not directly applicable in the current implementation. This extension runs shell tools through spawned non-interactive shells rather than a tool-owned interactive terminal with shell integration, so the core `VSCODE_PREVENT_SHELL_HISTORY` wiring and leading-space rewrite do not map cleanly to this runtime.
+
+In practice, the more relevant local persistence surface here is the extension's own temporary shell metadata and output store, not the user's interactive shell history. If the runtime later moves toward integrated interactive terminals, this section should be revisited.
 
 ### Core Reference Snippet
 
