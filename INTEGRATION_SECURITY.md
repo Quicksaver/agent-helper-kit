@@ -55,6 +55,7 @@ If you cannot replicate everything, prioritize in this order:
 18. TBD
 19. **Output sanitization and truncation**: Implemented with a deliberate divergence from core. The runtime preserves display-oriented ANSI SGR styling for the Shell Runs panel, strips non-display control sequences during normalization, and strips all remaining control sequences before output is returned in LM tool results.
 20. **Telemetry sanitization**: Not currently applicable. The extension does not currently emit remote telemetry for shell tool usage; current diagnostics use a local VS Code output channel rather than a telemetry pipeline. If telemetry is added later, raw command text should be treated as sensitive input and sanitized before emission.
+21. **Specialized-tool routing instead of shell execution**: Not currently applicable. This extension does not currently supply alternate structured tools for shell-adjacent requests, and it intentionally leaves tool selection to the agent rather than trying to override that decision inside the extension. This may be revisited in the future.
 
 ## Third-Party Extension Divergence Notes
 
@@ -1407,6 +1408,10 @@ The safest shell command is the one you never run. Core has a hook for replacing
 ### Third-Party Extension Guidance
 
 If your extension provides both shell tools and structured tools, prefer the structured tool whenever you can satisfy the intent without a shell.
+
+### Current Extension Note
+
+Not currently applicable. This extension does not currently supply alternate structured tools for shell-adjacent requests, and it intentionally leaves tool selection to the agent rather than trying to override that decision inside the extension. This may be revisited in the future.
 
 ### Core Reference Snippet
 
