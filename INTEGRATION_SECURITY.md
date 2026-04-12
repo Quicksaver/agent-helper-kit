@@ -35,8 +35,6 @@ If you cannot replicate everything, prioritize in this order:
 
 ## Progress
 
-The current extension implementation covers sections 1-9 as described below. Sections 10-16 are intentionally not implemented for now because sandboxing and sandbox-driven retry paths would be counter-productive for many commands this extension is expected to run, and that tradeoff may be revisited later. Section 17 is not directly applicable to the current spawned-shell execution model.
-
 1. **Default confirmation gate**: Implemented. Shell tools build confirmation messages in `prepareInvocation` and include command, cwd, explanation, goal, and the required caller-supplied risk summary.
 2. **Auto-approval gating**: Implemented with a different scope. The previous double opt-in design was intentionally removed in favor of explicit `allow`/`ask`/`deny` rules, optional model-based risk assessment, and a single explicit YOLO override.
 3. **Default allowlist and denylist rules**: Implemented. Safe read-oriented commands can run without prompting, dangerous commands are denied outright, and undecided commands fall through to model review or manual confirmation.
@@ -46,6 +44,16 @@ The current extension implementation covers sections 1-9 as described below. Sec
 7. **File-write detection**: Implemented with a deliberate divergence from core. Detected output redirections suppress matching `allow` rules in the same way transient prefixes do, but they preserve `ask` and `deny` outcomes and otherwise fall through to model review or explicit confirmation.
 8. **Workspace-only package scripts**: Intentionally not implemented. Instead, callers should pass relevant script definitions or alias expansions through `riskAssessmentContext`, and the risk-assessment prompt explicitly requests manual confirmation when that context is insufficient.
 9. **Prompt-injection and script-injection review**: Implemented with a different UX. The extension does not show a separate disclaimer message for web fetchers; instead, default deny rules cover obvious fetchers and the risk-assessment prompt explicitly asks the model to review fetched-content and script-injection hazards.
+10. **Sandboxing and unsandboxed retry paths**: Intentionally not implemented for now. The extension does not currently implement sandboxing and sandbox-driven retry flows because many of the commands it is expected to run would be blocked by a strict sandbox, and the added friction of sandbox-driven retries would be counterproductive for the current use cases. This tradeoff may be revisited in the future.
+11. Sandboxing -- as above
+12. Sandboxing -- as above
+13. Sandboxing -- as above
+14. Sandboxing -- as above
+15. Sandboxing -- as above
+16. Sandboxing -- as above
+17. Sandboxing -- as above
+18. TBD
+19. **Output sanitization and truncation**: Implemented with a deliberate divergence from core. The runtime preserves display-oriented ANSI SGR styling for the Shell Runs panel, strips non-display control sequences during normalization, and strips all remaining control sequences before output is returned in LM tool results.
 
 ## Third-Party Extension Divergence Notes
 
@@ -1286,6 +1294,12 @@ This is not a secrets scanner, but it does reduce accidental leakage and context
 ### Third-Party Extension Guidance
 
 Adopt the same pipeline even if your transport differs.
+
+### Current Extension Note
+
+Implemented with a different boundary than core. This extension preserves display-oriented ANSI SGR styling in normalized runtime output so the Shell Runs panel can retain colors and formatting, but it strips non-display terminal control sequences during normalization and strips all remaining control sequences before output is returned in LM tool results.
+
+That means ANSI styling is retained for the Shell Runs panel, but not for model-visible tool output.
 
 ### Core Reference Snippet
 
