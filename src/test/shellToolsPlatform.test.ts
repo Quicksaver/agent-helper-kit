@@ -212,6 +212,98 @@ describe('shell tools platform fallbacks', () => {
     await expect(runPromise).resolves.toBeDefined();
   });
 
+  it('falls back to /bin/bash when neither vscode nor the process provides a shell on non-Windows', async () => {
+    const previousShell = process.env.SHELL;
+
+    try {
+      process.env[SHELL_OUTPUT_DIR_ENV_VAR] = shellOutputTestDirectory;
+      delete process.env.SHELL;
+      spawn.mockReturnValue(createFakeProcess());
+
+      const { registerShellTools } = await importShellToolsForPlatform('darwin');
+      registerShellTools();
+
+      const runTool = getRegisteredTool('run_in_shell');
+      const runPromise = runTool.invoke({
+        input: {
+          command: 'echo fallback',
+          explanation: 'verify /bin/bash fallback',
+          goal: 'cover non-Windows shell fallback',
+          riskAssessment: 'This only prints output.',
+          timeout: 0,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      expect(spawn).toHaveBeenCalledWith(
+        '/bin/bash',
+        [ '-lc', 'echo fallback' ],
+        expect.objectContaining({
+          cwd: '/workspace',
+        }),
+      );
+
+      const fakeProcess = spawn.mock.results[0]?.value as ReturnType<typeof createFakeProcess>;
+      fakeProcess.emit('close', 0, null);
+
+      await expect(runPromise).resolves.toBeDefined();
+    }
+    finally {
+      if (previousShell === undefined) {
+        delete process.env.SHELL;
+      }
+      else {
+        process.env.SHELL = previousShell;
+      }
+    }
+  });
+
+  it('falls back to cmd.exe when neither vscode nor ComSpec provides a shell on Windows', async () => {
+    const previousTestComSpec = process.env.ComSpec;
+
+    try {
+      process.env[SHELL_OUTPUT_DIR_ENV_VAR] = shellOutputTestDirectory;
+      delete process.env.ComSpec;
+      spawn.mockReturnValue(createFakeProcess());
+
+      const { registerShellTools } = await importShellToolsForPlatform('win32');
+      registerShellTools();
+
+      const runTool = getRegisteredTool('run_in_shell');
+      const runPromise = runTool.invoke({
+        input: {
+          command: 'echo windows fallback',
+          explanation: 'verify cmd.exe fallback',
+          goal: 'cover Windows shell fallback without ComSpec',
+          riskAssessment: 'This only prints output.',
+          timeout: 0,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      expect(spawn).toHaveBeenCalledWith(
+        'cmd.exe',
+        [ '/d', '/s', '/c', 'echo windows fallback' ],
+        expect.objectContaining({
+          cwd: '/workspace',
+        }),
+      );
+
+      const fakeProcess = spawn.mock.results[0]?.value as ReturnType<typeof createFakeProcess>;
+      fakeProcess.emit('close', 0, null);
+
+      await expect(runPromise).resolves.toBeDefined();
+    }
+    finally {
+      if (previousTestComSpec === undefined) {
+        delete process.env.ComSpec;
+      }
+      else {
+        process.env.ComSpec = previousTestComSpec;
+      }
+    }
+  });
+
   it('uses the default deny message when invoke re-checks a deny without a reason', async () => {
     process.env[SHELL_OUTPUT_DIR_ENV_VAR] = shellOutputTestDirectory;
     securityState.analyzeDecision = 'deny';

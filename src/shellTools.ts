@@ -22,6 +22,7 @@ import {
   type GetLastShellCommandInput,
   type GetShellCommandInput,
   type GetShellOutputInput,
+  HIDDEN_SHELL_INPUT_LOG_PLACEHOLDER,
   type KillShellInput,
   type RunInShellInput,
   type SendToShellInput,
@@ -289,11 +290,17 @@ function getRequestedOrDefaultShell(inputShell?: string): string {
   return globalThis.process.env.SHELL ?? '/bin/bash';
 }
 
-function getShellInputPreview(input: string): string | undefined {
+function getShellInputPreview(input: string, options?: {
+  secret?: boolean;
+}): string | undefined {
   const trimmedInput = input.trim();
 
   if (trimmedInput.length === 0) {
     return undefined;
+  }
+
+  if (options?.secret === true) {
+    return HIDDEN_SHELL_INPUT_LOG_PLACEHOLDER;
   }
 
   return trimmedInput.split('\n')[0];
@@ -520,11 +527,15 @@ const sendToShellTool: vscode.LanguageModelTool<SendToShellInput> = {
     options: vscode.LanguageModelToolInvocationPrepareOptions<SendToShellInput>,
   ): vscode.PreparedToolInvocation {
     const input = validateSendToShellInput(options.input);
-    const commandPreview = getShellInputPreview(input.command);
+    const commandPreview = getShellInputPreview(input.command, {
+      secret: input.secret,
+    });
 
     return {
       confirmationMessages: {
-        message: SHELL_TOOL_METADATA.sendToShell.confirmationMessage(input.id, commandPreview),
+        message: SHELL_TOOL_METADATA.sendToShell.confirmationMessage(input.id, commandPreview, {
+          secret: input.secret,
+        }),
         title: SHELL_TOOL_METADATA.sendToShell.confirmationTitle,
       },
       invocationMessage: SHELL_TOOL_METADATA.sendToShell.invocationMessage(input.id),

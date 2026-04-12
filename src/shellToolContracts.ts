@@ -172,9 +172,19 @@ export function buildShellToolMetadata(manifest: unknown) {
       invocationMessage: (commandPreview: string) => `Running shell command: ${commandPreview}`,
     },
     sendToShell: {
-      confirmationMessage: (id: string, commandPreview?: string) => (commandPreview && commandPreview.trim().length > 0
-        ? `Send input to shell command ${id}: ${commandPreview}`
-        : `Press Enter for shell command ${id}`),
+      confirmationMessage: (id: string, commandPreview?: string, options?: {
+        secret?: boolean;
+      }) => {
+        if (!commandPreview || commandPreview.trim().length === 0) {
+          return `Press Enter for shell command ${id}`;
+        }
+
+        if (options?.secret === true) {
+          return `Send secret input to shell command ${id}: ${commandPreview}`;
+        }
+
+        return `Send input to shell command ${id}: ${commandPreview}`;
+      },
       confirmationTitle: 'Send input to running shell command?',
       ...getToolMetadata(contributedLanguageModelTools, SHELL_TOOL_NAMES.sendToShell),
       invocationMessage: (id: string) => `Sending input to shell command ${id}`,
@@ -236,9 +246,12 @@ export interface KillShellInput {
   id: string;
 }
 
+export const HIDDEN_SHELL_INPUT_LOG_PLACEHOLDER = '[hidden sensitive input]';
+
 export interface SendToShellInput {
   command: string;
   id: string;
+  secret?: boolean;
 }
 
 export const MAX_SEND_TO_SHELL_INPUT_LENGTH = 16 * 1024;
@@ -302,6 +315,7 @@ export const sendToShellInputSchema = {
     message: 'command must be a single line; Enter is added automatically',
   }),
   id: z.string(),
+  secret: z.boolean().optional(),
 } satisfies z.ZodRawShape;
 
 const getShellOutputInputValidator = z.object(getShellOutputInputSchema).refine(

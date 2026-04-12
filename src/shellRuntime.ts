@@ -24,6 +24,7 @@ import {
   removeShellOutputFile,
   writeShellCommandMetadata,
 } from '@/shellOutputStore';
+import { HIDDEN_SHELL_INPUT_LOG_PLACEHOLDER } from '@/shellToolContracts';
 
 const DEFAULT_OUTPUT_LIMIT_BYTES = 512 * 1024;
 const DEFAULT_MEMORY_TO_FILE_DELAY_MS = 2 * 60 * 1000;
@@ -39,6 +40,8 @@ const NON_INTERACTIVE_GIT_EDITOR = ':';
 const NON_INTERACTIVE_GIT_MERGE_AUTOEDIT = 'no';
 const NON_INTERACTIVE_GIT_PAGER = 'cat';
 const NON_INTERACTIVE_GIT_TERMINAL_PROMPT = '0';
+const SHELL_INPUT_LOG_PREFIX = '[send_to_shell] ';
+const SHELL_INPUT_ENTER_PLACEHOLDER = '[Enter]';
 let hasNodeTerminalSizeShimFile: boolean | undefined;
 
 interface CompletionInfo {
@@ -224,6 +227,7 @@ export interface ReadBackgroundOutputInput extends ShellOutputFilterInput {
 export interface SendInputToBackgroundInput {
   command: string;
   id: string;
+  secret?: boolean;
 }
 
 interface ShellRuntimeOptions {
@@ -239,6 +243,18 @@ function normalizeShellInputForWrite(command: string): string {
   }
 
   return `${command}\n`;
+}
+
+function formatShellInputLogEntry(command: string, secret?: boolean): string {
+  if (command.trim().length === 0) {
+    return `${SHELL_INPUT_LOG_PREFIX}${SHELL_INPUT_ENTER_PLACEHOLDER}\n`;
+  }
+
+  if (secret) {
+    return `${SHELL_INPUT_LOG_PREFIX}${HIDDEN_SHELL_INPUT_LOG_PLACEHOLDER}\n`;
+  }
+
+  return `${SHELL_INPUT_LOG_PREFIX}${command}\n`;
 }
 
 /**
@@ -475,10 +491,11 @@ export class ShellRuntime {
     sent: boolean;
     shell: string;
   }> {
+    let resolvedId: string;
     let state: BackgroundProcessState;
 
     try {
-      ({ state } = this.getBackgroundState(input.id));
+      ({ resolvedId, state } = this.getBackgroundState(input.id));
     }
     catch {
       return {
@@ -510,6 +527,10 @@ export class ShellRuntime {
     }
 
     const commandText = normalizeShellInputForWrite(input.command);
+    const logEntry = formatShellInputLogEntry(input.command, input.secret);
+
+    this.appendBackgroundOutput(resolvedId, state, logEntry);
+
     const sent = await new Promise<boolean>(resolve => {
       let settled = false;
       let onError!: () => void;
@@ -541,6 +562,8 @@ export class ShellRuntime {
     });
 
     if (!sent) {
+      this.removeTrailingBackgroundOutput(resolvedId, state, logEntry);
+
       return {
         isRunning: !state.completed,
         reason: 'shell stdin is not writable',
@@ -953,6 +976,41 @@ export class ShellRuntime {
       signal,
     };
     this.schedulePendingExitCompletion(id, state);
+  }
+
+  private removeTrailingBackgroundOutput(id: string, state: BackgroundProcessState, chunk: string): boolean {
+    if (chunk.length === 0) {
+      return true;
+    }
+
+    if (state.outputInFile) {
+      const persistedOutput = readShellOutputSync(id);
+
+      if (!persistedOutput?.endsWith(chunk)) {
+        return false;
+      }
+
+      const trimmedOutput = persistedOutput.slice(0, -chunk.length);
+
+      if (overwriteShellOutput(id, trimmedOutput)) {
+        state.outputBytes = Buffer.byteLength(trimmedOutput, 'utf8');
+        return true;
+      }
+
+      state.output = trimmedOutput;
+      state.outputBytes = Buffer.byteLength(trimmedOutput, 'utf8');
+      state.outputInFile = false;
+      this.scheduleMemoryToFileSpill(id, state);
+      return true;
+    }
+
+    if (!state.output.endsWith(chunk)) {
+      return false;
+    }
+
+    state.output = state.output.slice(0, -chunk.length);
+    state.outputBytes = Buffer.byteLength(state.output, 'utf8');
+    return true;
   }
 
   private resolveShellExecutable(preferredShell?: string): string {

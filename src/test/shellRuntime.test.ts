@@ -457,6 +457,67 @@ describe('ShellRuntime background execution', () => {
     });
 
     expect(fakeProcess.stdin.write).toHaveBeenCalledWith('answer\n', expect.any(Function));
+    await expect(runtime.readBackgroundOutput({
+      full_output: true,
+      id,
+    })).resolves.toMatchObject({
+      isRunning: true,
+      output: '[send_to_shell] answer\n',
+    });
+  });
+
+  it('logs a redacted placeholder when send_to_shell input is marked secret', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.startBackgroundCommand('read secret');
+
+    await expect(runtime.sendInputToBackgroundCommand({
+      command: 'super-secret-token',
+      id,
+      secret: true,
+    })).resolves.toEqual({
+      isRunning: true,
+      sent: true,
+      shell: process.env.SHELL ?? '/bin/bash',
+    });
+
+    expect(fakeProcess.stdin.write).toHaveBeenCalledWith('super-secret-token\n', expect.any(Function));
+    await expect(runtime.readBackgroundOutput({
+      full_output: true,
+      id,
+    })).resolves.toMatchObject({
+      isRunning: true,
+      output: '[send_to_shell] [hidden sensitive input]\n',
+    });
+  });
+
+  it('keeps Enter visible when a secret send_to_shell input is whitespace only', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.startBackgroundCommand('read secret');
+
+    await expect(runtime.sendInputToBackgroundCommand({
+      command: '   ',
+      id,
+      secret: true,
+    })).resolves.toEqual({
+      isRunning: true,
+      sent: true,
+      shell: process.env.SHELL ?? '/bin/bash',
+    });
+
+    expect(fakeProcess.stdin.write).toHaveBeenCalledWith('\n', expect.any(Function));
+    await expect(runtime.readBackgroundOutput({
+      full_output: true,
+      id,
+    })).resolves.toMatchObject({
+      isRunning: true,
+      output: '[send_to_shell] [Enter]\n',
+    });
   });
 
   it('returns a stable failure when send_to_shell targets an unknown id', async () => {
@@ -570,6 +631,14 @@ describe('ShellRuntime background execution', () => {
       sent: false,
       shell: process.env.SHELL ?? '/bin/bash',
     });
+
+    await expect(runtime.readBackgroundOutput({
+      full_output: true,
+      id,
+    })).resolves.toMatchObject({
+      isRunning: true,
+      output: '',
+    });
   });
 
   it('treats thrown stdin writes as a send failure without throwing', async () => {
@@ -591,6 +660,159 @@ describe('ShellRuntime background execution', () => {
       sent: false,
       shell: process.env.SHELL ?? '/bin/bash',
     });
+  });
+
+  it('removes a prelogged send_to_shell entry from file-backed output when stdin delivery fails', async () => {
+    const fakeProcess = createFakeProcess();
+    fakeProcess.stdin.write.mockImplementation((_: string, callback?: (error?: Error | null) => void) => {
+      callback?.(new Error('stdin callback failed'));
+      return false;
+    });
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({ outputLimitBytes: 1 });
+
+    const id = runtime.startBackgroundCommand('read value');
+
+    await expect(runtime.sendInputToBackgroundCommand({
+      command: 'answer',
+      id,
+    })).resolves.toEqual({
+      isRunning: true,
+      reason: 'shell stdin is not writable',
+      sent: false,
+      shell: process.env.SHELL ?? '/bin/bash',
+    });
+
+    await expect(runtime.readBackgroundOutput({
+      full_output: true,
+      id,
+    })).resolves.toMatchObject({
+      isRunning: true,
+      output: '',
+    });
+  });
+
+  it('treats empty trailing-output removals as a no-op success', () => {
+    const runtime = new ShellRuntime({});
+    const runtimeAccess = runtime as unknown as {
+      removeTrailingBackgroundOutput: (id: string, state: {
+        output: string;
+        outputBytes: number;
+        outputInFile: boolean;
+      }, chunk: string) => boolean;
+    };
+    const state = {
+      output: 'value',
+      outputBytes: Buffer.byteLength('value', 'utf8'),
+      outputInFile: false,
+    };
+
+    expect(runtimeAccess.removeTrailingBackgroundOutput('shell-abc12345', state, '')).toBe(true);
+    expect(state).toEqual({
+      output: 'value',
+      outputBytes: Buffer.byteLength('value', 'utf8'),
+      outputInFile: false,
+    });
+  });
+
+  it('returns false when spilled output does not end with the send_to_shell log entry being removed', () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({ outputLimitBytes: 1 });
+    const runtimeAccess = runtime as unknown as {
+      backgroundProcesses: Map<string, {
+        output: string;
+        outputBytes: number;
+        outputInFile: boolean;
+      }>;
+      removeTrailingBackgroundOutput: (id: string, state: {
+        output: string;
+        outputBytes: number;
+        outputInFile: boolean;
+      }, chunk: string) => boolean;
+    };
+
+    const id = runtime.startBackgroundCommand('read value');
+    fakeProcess.stdout.emit('data', 'existing output\n');
+
+    const state = runtimeAccess.backgroundProcesses.get(id);
+
+    expect(state?.outputInFile).toBe(true);
+    expect(runtimeAccess.removeTrailingBackgroundOutput(id, state as {
+      output: string;
+      outputBytes: number;
+      outputInFile: boolean;
+    }, '[send_to_shell] answer\n')).toBe(false);
+  });
+
+  it('returns false when in-memory output does not end with the send_to_shell log entry being removed', () => {
+    const runtime = new ShellRuntime({});
+    const runtimeAccess = runtime as unknown as {
+      removeTrailingBackgroundOutput: (id: string, state: {
+        output: string;
+        outputBytes: number;
+        outputInFile: boolean;
+      }, chunk: string) => boolean;
+    };
+    const state = {
+      output: 'existing output\n',
+      outputBytes: Buffer.byteLength('existing output\n', 'utf8'),
+      outputInFile: false,
+    };
+
+    expect(runtimeAccess.removeTrailingBackgroundOutput('shell-abc12345', state, '[send_to_shell] answer\n')).toBe(false);
+    expect(state).toEqual({
+      output: 'existing output\n',
+      outputBytes: Buffer.byteLength('existing output\n', 'utf8'),
+      outputInFile: false,
+    });
+  });
+
+  it('falls back to in-memory state when persisted send_to_shell log removal cannot overwrite the file', () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({ outputLimitBytes: 1 });
+    const runtimeAccess = runtime as unknown as {
+      backgroundProcesses: Map<string, {
+        output: string;
+        outputBytes: number;
+        outputInFile: boolean;
+      }>;
+      removeTrailingBackgroundOutput: (id: string, state: {
+        output: string;
+        outputBytes: number;
+        outputInFile: boolean;
+      }, chunk: string) => boolean;
+    };
+    const chunk = '[send_to_shell] answer\n';
+    const id = runtime.startBackgroundCommand('read value');
+
+    fakeProcess.stdout.emit('data', chunk);
+
+    const state = runtimeAccess.backgroundProcesses.get(id);
+    const outputFilePath = getShellOutputFilePath(id);
+
+    expect(state?.outputInFile).toBe(true);
+
+    try {
+      fs.chmodSync(outputFilePath, 0o444);
+
+      expect(runtimeAccess.removeTrailingBackgroundOutput(id, state as {
+        output: string;
+        outputBytes: number;
+        outputInFile: boolean;
+      }, chunk)).toBe(true);
+      expect(state).toMatchObject({
+        output: '',
+        outputBytes: 0,
+        outputInFile: false,
+      });
+    }
+    finally {
+      if (fs.existsSync(outputFilePath)) {
+        fs.chmodSync(outputFilePath, 0o644);
+      }
+    }
   });
 
   it('captures stderr output in the command details', async () => {

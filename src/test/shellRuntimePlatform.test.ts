@@ -118,6 +118,36 @@ describe('ShellRuntime platform-specific shell invocation', () => {
     }
   });
 
+  it('falls back to cmd.exe when ComSpec is unavailable on Windows', async () => {
+    const originalComSpec = process.env.ComSpec;
+
+    try {
+      delete process.env.ComSpec;
+      process.env[SHELL_OUTPUT_DIR_ENV_VAR] = shellOutputTestDirectory;
+      spawn.mockReturnValue(createFakeProcess());
+      const { ShellRuntime } = await importShellRuntimeForPlatform('win32', 'C:\\Users\\tester');
+
+      const runtime = new ShellRuntime({});
+      runtime.startBackgroundCommand('echo windows');
+
+      expect(spawn).toHaveBeenCalledWith(
+        'cmd.exe',
+        [ '/d', '/s', '/c', 'echo windows' ],
+        expect.objectContaining({
+          cwd: 'C:\\Users\\tester',
+        }),
+      );
+    }
+    finally {
+      if (originalComSpec === undefined) {
+        delete process.env.ComSpec;
+      }
+      else {
+        process.env.ComSpec = originalComSpec;
+      }
+    }
+  });
+
   it('uses PowerShell arguments on Windows when pwsh is requested', async () => {
     process.env[SHELL_OUTPUT_DIR_ENV_VAR] = shellOutputTestDirectory;
     spawn.mockReturnValue(createFakeProcess());

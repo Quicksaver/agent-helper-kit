@@ -2,7 +2,7 @@
   "name": "agent-helper-kit",
   "displayName": "Agent Helper Kit",
   "description": "VS Code extension for review-to-chat workflows and agent-friendly shell tools",
-  "version": "1.3.0-alpha3",
+  "version": "1.3.0-alpha4",
   "publisher": "Quicksaver",
   "license": "MIT",
   "repository": {
@@ -12,7 +12,7 @@
   "private": true,
   "engines": {
     "node": "^22.13.0 || >=24.0.0",
-    "vscode": "^1.110.0"
+    "vscode": "^1.115.0"
   },
   "categories": [
     "Chat",
@@ -368,7 +368,7 @@
         "displayName": "Send to Shell",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(terminal)",
-        "modelDescription": "Send a single line of input text to the piped stdin of a running shell command started by run_in_shell. The command field may be empty or whitespace to press Enter. The tool appends Enter automatically, so send exactly one answer at a time, then call get_shell_output to inspect the next prompt or output. This is stdin-only and does not allocate a terminal or PTY, so terminal-bound prompts such as many SSH, sudo, or full-screen interactive programs may still not work.",
+        "modelDescription": "Send a single line of input text to the piped stdin of a running shell command started by run_in_shell. Sent text is logged into the shell run output as marked input entries so the interaction history stays visible. The command field may be empty or whitespace to press Enter. The tool appends Enter automatically, so send exactly one answer at a time, then call get_shell_output to inspect the next prompt or output. Use the optional secret property for secrets, API keys, credentials, or anything even slightly sensitive; when true, logs store a hidden placeholder instead of the actual input text. This is stdin-only and does not allocate a terminal or PTY, so terminal-bound prompts such as many SSH, sudo, or full-screen interactive programs may still not work.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -383,9 +383,14 @@
             },
             "command": {
               "type": "string",
-              "description": "The single-line input text to send to the running shell command. The tool sends the text followed by Enter. Provide an empty or whitespace string to send just Enter.",
+              "description": "The single-line input text to send to the running shell command. The tool sends the text followed by Enter and logs it as marked input unless secret is true. Provide an empty or whitespace string to send just Enter.",
               "maxLength": 16384,
               "pattern": "^[^\\r\\n]*$"
+            },
+            "secret": {
+              "type": "boolean",
+              "default": false,
+              "description": "Set true for secrets, API keys, credentials, or anything even slightly sensitive. When true, the shell run log records a hidden placeholder instead of the actual input text."
             }
           }
         }

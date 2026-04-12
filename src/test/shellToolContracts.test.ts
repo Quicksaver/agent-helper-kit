@@ -64,6 +64,7 @@ describe('shell tool contracts', () => {
     expect(shellToolMetadata.sendToShell.title).toBe(sendTool?.displayName);
     expect(shellToolMetadata.sendToShell.description).toBe(sendTool?.modelDescription);
     expect(shellToolMetadata.sendToShell.confirmationMessage('abcd1234', 'yes')).toBe('Send input to shell command abcd1234: yes');
+    expect(shellToolMetadata.sendToShell.confirmationMessage('abcd1234', '[hidden sensitive input]', { secret: true })).toBe('Send secret input to shell command abcd1234: [hidden sensitive input]');
     expect(shellToolMetadata.sendToShell.confirmationMessage('abcd1234')).toBe('Press Enter for shell command abcd1234');
     expect(shellToolMetadata.sendToShell.confirmationTitle).toBe('Send input to running shell command?');
     expect(shellToolMetadata.sendToShell.invocationMessage('abcd1234')).toBe('Sending input to shell command abcd1234');
@@ -227,9 +228,11 @@ describe('shell tool contracts', () => {
     expect(validateSendToShellInput({
       command: 'yes',
       id: 'abcd1234',
+      secret: true,
     })).toEqual({
       command: 'yes',
       id: 'abcd1234',
+      secret: true,
     });
 
     expect(() => validateSendToShellInput({

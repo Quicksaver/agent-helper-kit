@@ -1448,6 +1448,7 @@ describe('shell tools', () => {
       registerShellTools();
 
       const runTool = getRegisteredTool('run_in_shell');
+      const getOutputTool = getRegisteredTool('get_shell_output');
       const sendTool = getRegisteredTool('send_to_shell');
       const runPromise = runTool.invoke({
         input: {
@@ -1493,6 +1494,142 @@ describe('shell tools', () => {
         shell: TEST_DEFAULT_SHELL,
       });
       expect(fakeProcess.stdin.write).toHaveBeenLastCalledWith('\n', expect.any(Function));
+
+      const outputResult = await getOutputTool.invoke({
+        input: {
+          full_output: true,
+          id: shellId,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      expect(getResultPayload(outputResult)).toEqual({
+        isRunning: true,
+        output: '[send_to_shell] answer\n[send_to_shell] [Enter]\n',
+        shell: TEST_DEFAULT_SHELL,
+      });
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('redacts logged input when send_to_shell is marked secret', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fakeProcess = createFakeProcess();
+      spawn.mockReturnValue(fakeProcess);
+
+      registerShellTools();
+
+      const runTool = getRegisteredTool('run_in_shell');
+      const getOutputTool = getRegisteredTool('get_shell_output');
+      const sendTool = getRegisteredTool('send_to_shell');
+      const runPromise = runTool.invoke({
+        input: {
+          command: 'read secret && printf done',
+          explanation: 'verify secret stdin logging',
+          goal: 'hide sensitive send_to_shell input from logs',
+          timeout: 5,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      await vi.advanceTimersByTimeAsync(5);
+
+      const shellId = getResultPayload(await runPromise).id as string;
+
+      const sendResult = await sendTool.invoke({
+        input: {
+          command: 'super-secret-token',
+          id: shellId,
+          secret: true,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      expect(getResultPayload(sendResult)).toEqual({
+        isRunning: true,
+        sent: true,
+        shell: TEST_DEFAULT_SHELL,
+      });
+      expect(fakeProcess.stdin.write).toHaveBeenCalledWith('super-secret-token\n', expect.any(Function));
+
+      const outputResult = await getOutputTool.invoke({
+        input: {
+          full_output: true,
+          id: shellId,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      expect(getResultPayload(outputResult)).toEqual({
+        isRunning: true,
+        output: '[send_to_shell] [hidden sensitive input]\n',
+        shell: TEST_DEFAULT_SHELL,
+      });
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps Enter visible when secret send_to_shell input is whitespace only', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fakeProcess = createFakeProcess();
+      spawn.mockReturnValue(fakeProcess);
+
+      registerShellTools();
+
+      const runTool = getRegisteredTool('run_in_shell');
+      const getOutputTool = getRegisteredTool('get_shell_output');
+      const sendTool = getRegisteredTool('send_to_shell');
+      const runPromise = runTool.invoke({
+        input: {
+          command: 'read secret && printf done',
+          explanation: 'verify whitespace secret stdin logging',
+          goal: 'preserve Enter semantics for secret send_to_shell input',
+          timeout: 5,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      await vi.advanceTimersByTimeAsync(5);
+
+      const shellId = getResultPayload(await runPromise).id as string;
+
+      const sendResult = await sendTool.invoke({
+        input: {
+          command: '   ',
+          id: shellId,
+          secret: true,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      expect(getResultPayload(sendResult)).toEqual({
+        isRunning: true,
+        sent: true,
+        shell: TEST_DEFAULT_SHELL,
+      });
+      expect(fakeProcess.stdin.write).toHaveBeenCalledWith('\n', expect.any(Function));
+
+      const outputResult = await getOutputTool.invoke({
+        input: {
+          full_output: true,
+          id: shellId,
+        },
+        toolInvocationToken: undefined,
+      }, {});
+
+      expect(getResultPayload(outputResult)).toEqual({
+        isRunning: true,
+        output: '[send_to_shell] [Enter]\n',
+        shell: TEST_DEFAULT_SHELL,
+      });
     }
     finally {
       vi.useRealTimers();
@@ -1950,8 +2087,22 @@ describe('shell tools', () => {
       },
       invocationMessage: 'Sending input to shell command abcd1234',
     });
+    expect(sendTool.prepareInvocation({ input: { command: 'super-secret-token', id: 'abcd1234', secret: true } })).toEqual({
+      confirmationMessages: {
+        message: 'Send secret input to shell command abcd1234: [hidden sensitive input]',
+        title: 'Send input to running shell command?',
+      },
+      invocationMessage: 'Sending input to shell command abcd1234',
+    });
     expect(() => sendTool.prepareInvocation({ input: { command: '\nanswer', id: 'abcd1234' } })).toThrow('command must be a single line; Enter is added automatically');
     expect(sendTool.prepareInvocation({ input: { command: '   ', id: 'abcd1234' } })).toEqual({
+      confirmationMessages: {
+        message: 'Press Enter for shell command abcd1234',
+        title: 'Send input to running shell command?',
+      },
+      invocationMessage: 'Sending input to shell command abcd1234',
+    });
+    expect(sendTool.prepareInvocation({ input: { command: '   ', id: 'abcd1234', secret: true } })).toEqual({
       confirmationMessages: {
         message: 'Press Enter for shell command abcd1234',
         title: 'Send input to running shell command?',
