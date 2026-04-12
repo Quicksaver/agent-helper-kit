@@ -632,12 +632,35 @@ describe('ShellRuntime background execution', () => {
       CLICOLOR: '1',
       COLORTERM: 'truecolor',
       COLUMNS: '240',
+      GIT_EDITOR: ':',
+      GIT_MERGE_AUTOEDIT: 'no',
+      GIT_PAGER: 'cat',
       LINES: '80',
       NO_COLOR: '1',
       TERM: 'xterm-256color',
     });
     expect(spawnEnvironment?.CLICOLOR_FORCE).toBeUndefined();
     expect(spawnEnvironment?.FORCE_COLOR).toBeUndefined();
+  });
+
+  it('overrides inherited interactive git environment variables with non-interactive defaults', () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({
+      shellEnv: {
+        GIT_EDITOR: 'vim',
+        GIT_MERGE_AUTOEDIT: 'yes',
+        GIT_PAGER: 'less',
+      },
+    });
+
+    runtime.startBackgroundCommand('git diff');
+
+    expect(getSpawnEnvironment()).toMatchObject({
+      GIT_EDITOR: ':',
+      GIT_MERGE_AUTOEDIT: 'no',
+      GIT_PAGER: 'cat',
+    });
   });
 
   it('overrides COLUMNS when a caller requests a custom terminal width', () => {

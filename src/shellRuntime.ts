@@ -35,6 +35,9 @@ const SHELL_ID_GENERATION_MAX_ATTEMPTS = 8;
 const MAX_MEMORY_TO_FILE_RETRY_ATTEMPTS = 3;
 const DEFAULT_SHELL_ROWS = 80;
 const NODE_TERMINAL_SIZE_SHIM_PATH = path.resolve(__dirname, '..', 'resources', 'node-terminal-width-shim.cjs');
+const NON_INTERACTIVE_GIT_EDITOR = ':';
+const NON_INTERACTIVE_GIT_MERGE_AUTOEDIT = 'no';
+const NON_INTERACTIVE_GIT_PAGER = 'cat';
 let hasNodeTerminalSizeShimFile: boolean | undefined;
 
 interface CompletionInfo {
@@ -594,6 +597,11 @@ export class ShellRuntime {
     if (typeof environment.CLICOLOR !== 'string' || environment.CLICOLOR.length === 0) {
       environment.CLICOLOR = '1';
     }
+
+    // Keep git-based tool runs deterministic by disabling pagers and editor prompts.
+    environment.GIT_EDITOR = NON_INTERACTIVE_GIT_EDITOR;
+    environment.GIT_MERGE_AUTOEDIT = NON_INTERACTIVE_GIT_MERGE_AUTOEDIT;
+    environment.GIT_PAGER = NON_INTERACTIVE_GIT_PAGER;
 
     if (typeof environment.NO_COLOR === 'string' && environment.NO_COLOR.length > 0) {
       delete environment.CLICOLOR_FORCE;
