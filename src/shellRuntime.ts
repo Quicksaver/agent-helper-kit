@@ -238,7 +238,7 @@ function normalizeShellInputForWrite(command: string): string {
     return '\n';
   }
 
-  return `${command.replace(/\r?\n$/u, '')}\n`;
+  return `${command}\n`;
 }
 
 /**
@@ -475,7 +475,19 @@ export class ShellRuntime {
     sent: boolean;
     shell: string;
   }> {
-    const { state } = this.getBackgroundState(input.id);
+    let state: BackgroundProcessState;
+
+    try {
+      ({ state } = this.getBackgroundState(input.id));
+    }
+    catch {
+      return {
+        isRunning: false,
+        reason: 'shell command was not found',
+        sent: false,
+        shell: this.resolveShellExecutable(),
+      };
+    }
 
     if (state.completed || !state.childProc) {
       return {
@@ -488,7 +500,7 @@ export class ShellRuntime {
 
     const { stdin } = state.childProc;
 
-    if (stdin.destroyed || stdin.writableEnded) {
+    if (stdin.destroyed || !stdin.writable || stdin.writableEnded) {
       return {
         isRunning: !state.completed,
         reason: 'shell stdin is not writable',
@@ -500,9 +512,9 @@ export class ShellRuntime {
     const commandText = normalizeShellInputForWrite(input.command);
     const sent = await new Promise<boolean>(resolve => {
       let settled = false;
-      let onError = null as unknown as () => void;
+      let onError!: () => void;
 
-      const settle = (value: boolean): void => {
+      function settle(value: boolean): void {
         if (settled) {
           return;
         }
@@ -510,7 +522,7 @@ export class ShellRuntime {
         settled = true;
         stdin.off('error', onError);
         resolve(value);
-      };
+      }
 
       onError = (): void => {
         settle(false);
@@ -520,7 +532,7 @@ export class ShellRuntime {
 
       try {
         stdin.write(commandText, error => {
-          settle(error == null);
+          settle(!error);
         });
       }
       catch {
@@ -564,13 +576,17 @@ export class ShellRuntime {
         env: this.buildShellEnv(options.columns),
       },
     );
+    let resolveCompletion!: () => void;
+    const completion = new Promise<void>(resolve => {
+      resolveCompletion = resolve;
+    });
 
     const state: BackgroundProcessState = {
       childProc,
       command,
       completed: false,
       completedAt: null,
-      completion: Promise.resolve(),
+      completion,
       completionTimer: undefined,
       cwd: commandCwd,
       exitCode: null,
@@ -583,15 +599,11 @@ export class ShellRuntime {
       outputInFile: false,
       pendingExit: undefined,
       readsSinceCompletion: 0,
-      resolveCompletion: () => undefined,
+      resolveCompletion,
       shell: shellInvocation.shell,
       signal: null,
       startedAt: new Date().toISOString(),
     };
-
-    state.completion = new Promise<void>(resolve => {
-      state.resolveCompletion = resolve;
-    });
 
     this.scheduleMemoryToFileSpill(id, state);
     this.backgroundProcesses.set(id, state);

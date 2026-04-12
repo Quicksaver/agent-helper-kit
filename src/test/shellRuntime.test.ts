@@ -459,6 +459,20 @@ describe('ShellRuntime background execution', () => {
     expect(fakeProcess.stdin.write).toHaveBeenCalledWith('answer\n', expect.any(Function));
   });
 
+  it('returns a stable failure when send_to_shell targets an unknown id', async () => {
+    const runtime = new ShellRuntime({});
+
+    await expect(runtime.sendInputToBackgroundCommand({
+      command: 'answer',
+      id: 'deadbeef',
+    })).resolves.toEqual({
+      isRunning: false,
+      reason: 'shell command was not found',
+      sent: false,
+      shell: process.env.SHELL ?? '/bin/bash',
+    });
+  });
+
   it('returns a stable failure when stdin is no longer writable', async () => {
     const fakeProcess = createFakeProcess();
     fakeProcess.stdin.writableEnded = true;
@@ -490,6 +504,26 @@ describe('ShellRuntime background execution', () => {
     });
   });
 
+  it('returns a stable failure when stdin is marked not writable', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.startBackgroundCommand('read value');
+
+    fakeProcess.stdin.writable = false;
+
+    await expect(runtime.sendInputToBackgroundCommand({
+      command: 'answer',
+      id,
+    })).resolves.toEqual({
+      isRunning: true,
+      reason: 'shell stdin is not writable',
+      sent: false,
+      shell: process.env.SHELL ?? '/bin/bash',
+    });
+  });
+
   it('treats stdin error events as a send failure without throwing', async () => {
     const fakeProcess = createFakeProcess();
     fakeProcess.stdin.write.mockImplementation((_: string, callback?: (error?: Error | null) => void) => {
@@ -498,6 +532,28 @@ describe('ShellRuntime background execution', () => {
       fakeProcess.stdin.emit('error', writeError);
       callback?.(writeError);
 
+      return false;
+    });
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.startBackgroundCommand('read value');
+
+    await expect(runtime.sendInputToBackgroundCommand({
+      command: 'answer',
+      id,
+    })).resolves.toEqual({
+      isRunning: true,
+      reason: 'shell stdin is not writable',
+      sent: false,
+      shell: process.env.SHELL ?? '/bin/bash',
+    });
+  });
+
+  it('treats stdin callback errors as a send failure without throwing', async () => {
+    const fakeProcess = createFakeProcess();
+    fakeProcess.stdin.write.mockImplementation((_: string, callback?: (error?: Error | null) => void) => {
+      callback?.(new Error('stdin callback failed'));
       return false;
     });
     spawn.mockReturnValue(fakeProcess);
@@ -663,6 +719,30 @@ describe('ShellRuntime background execution', () => {
     await expect(runtime.getCommandDetails(id)).resolves.toMatchObject({
       isRunning: false,
       output: 'Error: boom\n',
+    });
+  });
+
+  it('clears pending exit completion when a later process error finalizes the command', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.startBackgroundCommand('echo delayed-error');
+    fakeProcess.emit('exit', 1, null);
+    fakeProcess.emit('error', new Error('boom after exit'));
+    fakeProcess.emit('close', 1, null);
+
+    await expect(runtime.awaitBackgroundCommand({
+      id,
+      timeout: 0,
+    })).resolves.toMatchObject({
+      exitCode: null,
+      terminationSignal: null,
+    });
+
+    await expect(runtime.getCommandDetails(id)).resolves.toMatchObject({
+      isRunning: false,
+      output: 'Error: boom after exit\n',
     });
   });
 

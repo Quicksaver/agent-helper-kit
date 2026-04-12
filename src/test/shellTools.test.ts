@@ -1474,7 +1474,6 @@ describe('shell tools', () => {
 
       expect(getResultPayload(firstSend)).toEqual({
         isRunning: true,
-        reason: null,
         sent: true,
         shell: TEST_DEFAULT_SHELL,
       });
@@ -1490,7 +1489,6 @@ describe('shell tools', () => {
 
       expect(getResultPayload(secondSend)).toEqual({
         isRunning: true,
-        reason: null,
         sent: true,
         shell: TEST_DEFAULT_SHELL,
       });
@@ -1537,6 +1535,54 @@ describe('shell tools', () => {
       sent: false,
       shell: TEST_DEFAULT_SHELL,
     });
+  });
+
+  it('returns a non-throwing failure when send_to_shell targets an unknown command', async () => {
+    registerShellTools();
+
+    const sendTool = getRegisteredTool('send_to_shell');
+    const result = await sendTool.invoke({
+      input: {
+        command: 'answer',
+        id: 'deadbeef',
+      },
+      toolInvocationToken: undefined,
+    }, {});
+
+    expect(getResultPayload(result)).toEqual({
+      isRunning: false,
+      reason: 'shell command was not found',
+      sent: false,
+      shell: TEST_DEFAULT_SHELL,
+    });
+  });
+
+  it('rejects multi-line send_to_shell input before writing to stdin', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_shell');
+    const sendTool = getRegisteredTool('send_to_shell');
+    const shellId = getResultPayload(await runTool.invoke({
+      input: {
+        command: 'read value',
+        explanation: 'start stdin test command',
+        goal: 'validate send_to_shell input shape',
+      },
+      toolInvocationToken: undefined,
+    }, {})).id as string;
+
+    await expect(sendTool.invoke({
+      input: {
+        command: 'answer\nextra',
+        id: shellId,
+      },
+      toolInvocationToken: undefined,
+    }, {})).rejects.toThrow('command must be a single line; Enter is added automatically');
+
+    expect(fakeProcess.stdin.write).not.toHaveBeenCalled();
   });
 
   it('defaults spawned commands to color-capable shell env vars', async () => {
@@ -1861,6 +1907,20 @@ describe('shell tools', () => {
         message: 'Command: \nsecond line\n\nCwd: /workspace\n\nExplanation: describe empty command preview\n\nGoal: show confirmation details\n\nRisk pre-assessment: This command only prints output and should not change files.\n\nApproval note: Risk assessment model is disabled via shellTools.riskAssessment.chatModel, so explicit approval is required.',
         title: 'Run shell command?',
       },
+      invocationMessage: 'Running shell command: second line',
+    });
+    await expect(runTool.prepareInvocation({
+      input: {
+        command: '   ',
+        explanation: 'describe whitespace-only command preview',
+        goal: 'show empty preview details',
+        riskAssessment: 'This command only prints output and should not change files.',
+      },
+    }, {})).resolves.toEqual({
+      confirmationMessages: {
+        message: 'Command:    \n\nCwd: /workspace\n\nExplanation: describe whitespace-only command preview\n\nGoal: show empty preview details\n\nRisk pre-assessment: This command only prints output and should not change files.\n\nApproval note: The command line could not be parsed safely for approval rules, so explicit approval is required.',
+        title: 'Run shell command?',
+      },
       invocationMessage: 'Running shell command: (empty command)',
     });
     await expect(runTool.prepareInvocation({
@@ -1890,13 +1950,7 @@ describe('shell tools', () => {
       },
       invocationMessage: 'Sending input to shell command abcd1234',
     });
-    expect(sendTool.prepareInvocation({ input: { command: '\nanswer', id: 'abcd1234' } })).toEqual({
-      confirmationMessages: {
-        message: 'Send input to shell command abcd1234: answer',
-        title: 'Send input to running shell command?',
-      },
-      invocationMessage: 'Sending input to shell command abcd1234',
-    });
+    expect(() => sendTool.prepareInvocation({ input: { command: '\nanswer', id: 'abcd1234' } })).toThrow('command must be a single line; Enter is added automatically');
     expect(sendTool.prepareInvocation({ input: { command: '   ', id: 'abcd1234' } })).toEqual({
       confirmationMessages: {
         message: 'Press Enter for shell command abcd1234',

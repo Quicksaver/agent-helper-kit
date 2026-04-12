@@ -241,6 +241,8 @@ export interface SendToShellInput {
   id: string;
 }
 
+export const MAX_SEND_TO_SHELL_INPUT_LENGTH = 16 * 1024;
+
 export interface GetShellCommandInput {
   id: string;
 }
@@ -294,7 +296,11 @@ export const getShellOutputInputSchema = {
 } satisfies z.ZodRawShape;
 
 export const sendToShellInputSchema = {
-  command: z.string(),
+  command: z.string().max(MAX_SEND_TO_SHELL_INPUT_LENGTH, {
+    message: `command must be less than or equal to ${MAX_SEND_TO_SHELL_INPUT_LENGTH} characters`,
+  }).refine(value => !/[\r\n]/u.test(value), {
+    message: 'command must be a single line; Enter is added automatically',
+  }),
   id: z.string(),
 } satisfies z.ZodRawShape;
 

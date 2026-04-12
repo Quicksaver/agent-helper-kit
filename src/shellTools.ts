@@ -296,7 +296,7 @@ function getShellInputPreview(input: string): string | undefined {
     return undefined;
   }
 
-  return input.split('\n')[0]?.trim() || trimmedInput;
+  return trimmedInput.split('\n')[0];
 }
 
 const runInShellTool: vscode.LanguageModelTool<RunInShellInput> = {
@@ -384,7 +384,7 @@ const runInShellTool: vscode.LanguageModelTool<RunInShellInput> = {
     options: vscode.LanguageModelToolInvocationPrepareOptions<RunInShellInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.PreparedToolInvocation> {
-    const commandPreview = options.input.command.split('\n')[0]?.trim() || '(empty command)';
+    const commandPreview = getShellInputPreview(options.input.command) ?? '(empty command)';
     const resolvedCwd = resolveCommandCwd(options.input.cwd);
     const approvalDecision = await decideShellRunApproval({
       command: options.input.command,
@@ -511,9 +511,9 @@ const sendToShellTool: vscode.LanguageModelTool<SendToShellInput> = {
 
     return buildYamlToolResult({
       isRunning: result.isRunning,
-      reason: result.reason ?? null,
       sent: result.sent,
       shell: result.shell,
+      ...(result.reason === undefined ? {} : { reason: result.reason }),
     });
   },
   prepareInvocation(

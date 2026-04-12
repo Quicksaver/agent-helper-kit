@@ -179,6 +179,7 @@ describe('shell tool contracts', () => {
   it('validates async-style shell inputs without timeout', async () => {
     const { MAX_SHELL_COLUMNS } = await import('../shellColumns.js');
     const {
+      MAX_SEND_TO_SHELL_INPUT_LENGTH,
       validateAwaitShellInput,
       validateRunInShellInput,
       validateSendToShellInput,
@@ -230,6 +231,16 @@ describe('shell tool contracts', () => {
       command: 'yes',
       id: 'abcd1234',
     });
+
+    expect(() => validateSendToShellInput({
+      command: 'yes\nno',
+      id: 'abcd1234',
+    })).toThrow(/command must be a single line; Enter is added automatically/);
+
+    expect(() => validateSendToShellInput({
+      command: 'a'.repeat(MAX_SEND_TO_SHELL_INPUT_LENGTH + 1),
+      id: 'abcd1234',
+    })).toThrow(new RegExp(`command must be less than or equal to ${MAX_SEND_TO_SHELL_INPUT_LENGTH} characters`));
   });
 
   it('rejects incompatible get shell output options', async () => {

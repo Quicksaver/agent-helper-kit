@@ -368,7 +368,7 @@
         "displayName": "Send to Shell",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(terminal)",
-        "modelDescription": "Send input text to the piped stdin of a running shell command started by run_in_shell. The command field may be empty or whitespace to press Enter. Send exactly one answer at a time, then call get_shell_output to inspect the next prompt or output. This is stdin-only and does not allocate a terminal or PTY, so terminal-bound prompts such as many SSH, sudo, or full-screen interactive programs may still not work.",
+        "modelDescription": "Send a single line of input text to the piped stdin of a running shell command started by run_in_shell. The command field may be empty or whitespace to press Enter. The tool appends Enter automatically, so send exactly one answer at a time, then call get_shell_output to inspect the next prompt or output. This is stdin-only and does not allocate a terminal or PTY, so terminal-bound prompts such as many SSH, sudo, or full-screen interactive programs may still not work.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -383,7 +383,9 @@
             },
             "command": {
               "type": "string",
-              "description": "The input text to send to the running shell command. The text is sent followed by Enter. Provide an empty or whitespace string to send just Enter."
+              "description": "The single-line input text to send to the running shell command. The tool sends the text followed by Enter. Provide an empty or whitespace string to send just Enter.",
+              "maxLength": 16384,
+              "pattern": "^[^\\r\\n]*$"
             }
           }
         }

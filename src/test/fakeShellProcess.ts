@@ -6,6 +6,7 @@ export type FakeReadable = EventEmitter;
 
 export interface FakeWritable extends EventEmitter {
   destroyed: boolean;
+  writable: boolean;
   writableEnded: boolean;
   write: ReturnType<typeof vi.fn>;
 }
@@ -23,6 +24,7 @@ export function createFakeProcess(options: { emitCloseOnKill?: boolean } = {}): 
   const processEmitter = new EventEmitter();
   const stdin = Object.assign(new EventEmitter(), {
     destroyed: false,
+    writable: true,
     writableEnded: false,
     write: vi.fn((_: string, callback?: (error?: Error | null) => void) => {
       callback?.(null);
