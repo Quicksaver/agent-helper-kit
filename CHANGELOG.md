@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Consolidated `run_in_sync_shell` and `run_in_async_shell` into `run_in_shell`. Callers should now omit `timeout` for the old async-start behavior or provide `timeout` for the old sync-wait behavior.
 
+### Fixed
+
+- Fixed `run_in_shell` Git commands that could hang by handing control to a pager, editor, or terminal credential prompt instead of returning a result to the tool.
+
 ## [1.2.2] - 2026-03-23
 
 ### Fixed

@@ -35,6 +35,7 @@ Compared with built-in terminal tools, these extension tools are optimized for a
 - `run_in_shell` is optimal for both deterministic commands, and long-running detached jobs: omit `timeout` to start immediately and poll later, or provide `timeout` to wait for completion up to that many milliseconds.
 - If that wait times out, the tool returns `timedOut: true` with the command id and leaves the process running until it exits naturally or you call `kill_shell`.
 - `send_to_shell` can write one stdin reply at a time to a still-running `run_in_shell` command, including sending just Enter with an empty or whitespace payload.
+- Git commands are forced into a non-interactive mode, so they cannot open a pager, editor, or terminal credential prompt and block the tool run.
 
 **Tradeoffs:**
 
