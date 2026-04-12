@@ -38,6 +38,7 @@ const NODE_TERMINAL_SIZE_SHIM_PATH = path.resolve(__dirname, '..', 'resources', 
 const NON_INTERACTIVE_GIT_EDITOR = ':';
 const NON_INTERACTIVE_GIT_MERGE_AUTOEDIT = 'no';
 const NON_INTERACTIVE_GIT_PAGER = 'cat';
+const NON_INTERACTIVE_GIT_TERMINAL_PROMPT = '0';
 let hasNodeTerminalSizeShimFile: boolean | undefined;
 
 interface CompletionInfo {
@@ -598,10 +599,11 @@ export class ShellRuntime {
       environment.CLICOLOR = '1';
     }
 
-    // Keep git-based tool runs deterministic by disabling pagers and editor prompts.
+    // Keep git-based tool runs deterministic by disabling pagers, editor prompts, and terminal credential prompts.
     environment.GIT_EDITOR = NON_INTERACTIVE_GIT_EDITOR;
     environment.GIT_MERGE_AUTOEDIT = NON_INTERACTIVE_GIT_MERGE_AUTOEDIT;
     environment.GIT_PAGER = NON_INTERACTIVE_GIT_PAGER;
+    environment.GIT_TERMINAL_PROMPT = NON_INTERACTIVE_GIT_TERMINAL_PROMPT;
 
     if (typeof environment.NO_COLOR === 'string' && environment.NO_COLOR.length > 0) {
       delete environment.CLICOLOR_FORCE;

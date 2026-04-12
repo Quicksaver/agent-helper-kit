@@ -35,6 +35,8 @@ If you cannot replicate everything, prioritize in this order:
 
 ## Progress
 
+The following items summarize this extension's current implementation status for each priority in this guide.
+
 1. **Default confirmation gate**: Implemented. Shell tools build confirmation messages in `prepareInvocation` and include command, cwd, explanation, goal, and the required caller-supplied risk summary.
 2. **Auto-approval gating**: Implemented with a different scope. The previous double opt-in design was intentionally removed in favor of explicit `allow`/`ask`/`deny` rules, optional model-based risk assessment, and a single explicit YOLO override.
 3. **Default allowlist and denylist rules**: Implemented. Safe read-oriented commands can run without prompting, dangerous commands are denied outright, and undecided commands fall through to model review or manual confirmation.
@@ -45,14 +47,14 @@ If you cannot replicate everything, prioritize in this order:
 8. **Workspace-only package scripts**: Intentionally not implemented. Instead, callers should pass relevant script definitions or alias expansions through `riskAssessmentContext`, and the risk-assessment prompt explicitly requests manual confirmation when that context is insufficient.
 9. **Prompt-injection and script-injection review**: Implemented with a different UX. The extension does not show a separate disclaimer message for web fetchers; instead, default deny rules cover obvious fetchers and the risk-assessment prompt explicitly asks the model to review fetched-content and script-injection hazards.
 10. **Sandboxing and unsandboxed retry paths**: Intentionally not implemented for now. The extension does not currently implement sandboxing and sandbox-driven retry flows because many of the commands it is expected to run would be blocked by a strict sandbox, and the added friction of sandbox-driven retries would be counterproductive for the current use cases. This tradeoff may be revisited in the future.
-11. Sandboxing -- as above
-12. Sandboxing -- as above
-13. Sandboxing -- as above
-14. Sandboxing -- as above
-15. Sandboxing -- as above
-16. Sandboxing -- as above
-17. Sandboxing -- as above
-18. **Non-interactive Git environment hardening**: Implemented. `ShellRuntime` now forces `GIT_PAGER=cat`, `GIT_MERGE_AUTOEDIT=no`, and `GIT_EDITOR=:` for spawned shell runs so Git commands stay deterministic and cannot hand control to an interactive pager or editor prompt.
+11. **Sandbox-wrapper quoting**: Intentionally not implemented for now. Because the extension does not currently wrap commands in a sandbox runtime, there is no sandbox-wrapper quoting path to mirror at this time.
+12. **Unsandboxed retry confirmation**: Intentionally not implemented for now. The extension does not currently model a sandbox-to-unsandbox transition flow because it does not run commands inside a sandbox.
+13. **Sandbox network policy**: Intentionally not implemented for now. The extension does not currently enforce sandbox network allowlists or denylists because it does not ship a sandboxed execution runtime.
+14. **Sandbox filesystem policy**: Intentionally not implemented for now. The extension does not currently enforce sandbox filesystem policy because it does not run commands inside a sandbox.
+15. **Sandbox-only auto-approval**: Intentionally not implemented for now. Because the extension does not currently execute commands in a sandbox, it has no sandbox-only auto-approval path or separate escape-hatch treatment.
+16. **Sandbox failure analysis**: Intentionally not implemented for now. The extension does not currently analyze output for sandbox-specific failures because it does not run commands in a sandboxed mode.
+17. **Shell-history suppression**: Not directly applicable in the current implementation. This extension runs shell tools through spawned non-interactive shells, so VS Code core's interactive shell-history suppression model does not map cleanly to this runtime.
+18. **Non-interactive Git environment hardening**: Implemented. `ShellRuntime` now forces `GIT_PAGER=cat`, `GIT_MERGE_AUTOEDIT=no`, `GIT_EDITOR=:`, and `GIT_TERMINAL_PROMPT=0` for spawned shell runs so Git commands stay deterministic and cannot hand control to an interactive pager, editor, or credential prompt.
 19. **Output sanitization and truncation**: Implemented with a deliberate divergence from core. The runtime preserves display-oriented ANSI SGR styling for the Shell Runs panel, strips non-display control sequences during normalization, and strips all remaining control sequences before output is returned in LM tool results.
 20. **Telemetry sanitization**: Not currently applicable. The extension does not currently emit remote telemetry for shell tool usage; current diagnostics use a local VS Code output channel rather than a telemetry pipeline. If telemetry is added later, raw command text should be treated as sensitive input and sanitized before emission.
 21. **Specialized-tool routing instead of shell execution**: Not currently applicable. This extension does not currently supply alternate structured tools for shell-adjacent requests, and it intentionally leaves tool selection to the agent rather than trying to override that decision inside the extension. This may be revisited in the future.

@@ -635,6 +635,7 @@ describe('ShellRuntime background execution', () => {
       GIT_EDITOR: ':',
       GIT_MERGE_AUTOEDIT: 'no',
       GIT_PAGER: 'cat',
+      GIT_TERMINAL_PROMPT: '0',
       LINES: '80',
       NO_COLOR: '1',
       TERM: 'xterm-256color',
@@ -651,6 +652,7 @@ describe('ShellRuntime background execution', () => {
         GIT_EDITOR: 'vim',
         GIT_MERGE_AUTOEDIT: 'yes',
         GIT_PAGER: 'less',
+        GIT_TERMINAL_PROMPT: '1',
       },
     });
 
@@ -660,6 +662,7 @@ describe('ShellRuntime background execution', () => {
       GIT_EDITOR: ':',
       GIT_MERGE_AUTOEDIT: 'no',
       GIT_PAGER: 'cat',
+      GIT_TERMINAL_PROMPT: '0',
     });
   });
 

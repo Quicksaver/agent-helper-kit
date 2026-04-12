@@ -25,7 +25,7 @@ export default defineConfig({
         autoUpdate: true,
         branches: 91.74,
         functions: 98.4,
-        lines: 97.76,
+        lines: 97.77,
         statements: 97.71,
       },
     },
