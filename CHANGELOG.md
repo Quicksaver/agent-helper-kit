@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-04-13
+
 ### Added
 
 - Added shell tool approval prompts for commands that are not explicitly allowed, so model-triggered shell runs no longer execute unchecked by default.
