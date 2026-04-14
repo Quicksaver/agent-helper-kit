@@ -31,6 +31,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function normalizeRequiredDescription(value: unknown): string | undefined {
+  return typeof value === 'string'
+    ? value.trim()
+    : undefined;
+}
+
+function normalizeOptionalDescription(value: unknown): string | undefined {
+  const normalizedDescription = normalizeRequiredDescription(value);
+
+  return normalizedDescription && normalizedDescription.length > 0
+    ? normalizedDescription
+    : undefined;
+}
+
 let packageJsonManifestCache: unknown;
 
 function readPackageJsonManifest(): unknown {
@@ -96,15 +110,13 @@ export function getContributedLanguageModelToolsFromManifest(manifest: unknown):
 
     const { name } = tool;
     const { displayName } = tool;
-    const { modelDescription } = tool;
-    const userDescription = typeof tool.userDescription === 'string' && tool.userDescription.trim().length > 0
-      ? tool.userDescription.trim()
-      : undefined;
+    const modelDescription = normalizeRequiredDescription(tool.modelDescription);
+    const userDescription = normalizeOptionalDescription(tool.userDescription);
 
     if (
       typeof name !== 'string'
       || typeof displayName !== 'string'
-      || typeof modelDescription !== 'string'
+      || modelDescription === undefined
     ) {
       throw new Error(`Invalid languageModelTools entry at index ${index}`);
     }
@@ -131,8 +143,11 @@ function getToolMetadata(
     };
   }
 
+  const description = normalizeOptionalDescription(manifestTool.userDescription)
+    ?? manifestTool.modelDescription.trim();
+
   return {
-    description: manifestTool.userDescription ?? manifestTool.modelDescription,
+    description,
     title: manifestTool.displayName,
   };
 }

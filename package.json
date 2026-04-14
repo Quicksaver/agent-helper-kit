@@ -514,7 +514,7 @@
         "displayName": "Get Shell Command",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(history)",
-        "userDescription": "Show the command for a shell run.",
+        "userDescription": "Get the command for a shell run.",
         "modelDescription": "Get the command that was run for a specific shell command id.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
@@ -536,7 +536,7 @@
         "displayName": "Get Last Shell Command",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(history)",
-        "userDescription": "Show the most recent shell command run.",
+        "userDescription": "Get the most recent shell command run.",
         "modelDescription": "Get the most recent command executed via run_in_shell.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {

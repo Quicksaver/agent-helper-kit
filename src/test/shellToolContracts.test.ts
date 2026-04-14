@@ -189,14 +189,20 @@ describe('shell tool contracts', () => {
         languageModelTools: [
           {
             displayName: 'Run Shell Command',
-            modelDescription: 'Detailed run description',
+            modelDescription: '  Detailed run description  ',
             name: 'run_in_shell',
           },
           {
             displayName: 'Send to Shell',
-            modelDescription: 'Detailed send description',
+            modelDescription: '  Detailed send description  ',
             name: 'send_to_shell',
             userDescription: '   ',
+          },
+          {
+            displayName: 'Get Shell Command',
+            modelDescription: '  Detailed get description  ',
+            name: 'get_shell_command',
+            userDescription: 42,
           },
         ],
       },
@@ -217,8 +223,15 @@ describe('shell tool contracts', () => {
       name: 'send_to_shell',
       userDescription: undefined,
     });
+    expect(contributedLanguageModelTools).toContainEqual({
+      displayName: 'Get Shell Command',
+      modelDescription: 'Detailed get description',
+      name: 'get_shell_command',
+      userDescription: undefined,
+    });
     expect(shellToolMetadata.runInShell.description).toBe('Detailed run description');
     expect(shellToolMetadata.sendToShell.description).toBe('Detailed send description');
+    expect(shellToolMetadata.getShellCommand.description).toBe('Detailed get description');
   });
 
   it('trims non-blank userDescription values from the manifest', async () => {

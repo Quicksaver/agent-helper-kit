@@ -23,9 +23,9 @@ export default defineConfig({
         // are always acceptable regardless of the task in progress. Lower thresholds are only acceptable with an
         // extremely good reason; i.e. a new feature contains code that is impossible to hit via automated tests alone.
         autoUpdate: true,
-        branches: 92.3,
-        functions: 98.71,
-        lines: 98.01,
+        branches: 92.31,
+        functions: 98.72,
+        lines: 98.02,
         statements: 97.96,
       },
     },
