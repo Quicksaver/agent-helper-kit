@@ -131,6 +131,12 @@ describe('uri helpers', () => {
     await expect(getWorkspaceRoot()).rejects.toThrow('No workspace found.');
   });
 
+  it('throws when the workspace folder list is empty', async () => {
+    const { getWorkspaceRoot } = await importUriModule({ workspaceFolders: [] });
+
+    await expect(getWorkspaceRoot()).rejects.toThrow('No workspace found.');
+  });
+
   it('builds a workspace-relative uri with an optional line fragment', async () => {
     const { toUri } = await importUriModule({
       workspaceFolders: [

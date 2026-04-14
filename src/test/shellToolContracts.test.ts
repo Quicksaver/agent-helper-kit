@@ -179,6 +179,27 @@ describe('shell tool contracts', () => {
     expect(shellToolMetadata.runInShell.description).toBe('');
   });
 
+  it('falls back cleanly when a language model tool entry has a blank modelDescription', async () => {
+    const { buildShellToolMetadata, getPackageVersionFromManifest } = await import('../shellToolContracts.js');
+    const manifest = {
+      contributes: {
+        languageModelTools: [
+          {
+            displayName: 'Run Shell Command',
+            modelDescription: '   ',
+            name: 'run_in_shell',
+          },
+        ],
+      },
+      version: '1.2.0',
+    };
+    const shellToolMetadata = buildShellToolMetadata(manifest);
+
+    expect(getPackageVersionFromManifest(manifest)).toBe('1.2.0');
+    expect(shellToolMetadata.runInShell.title).toBe('run_in_shell');
+    expect(shellToolMetadata.runInShell.description).toBe('');
+  });
+
   it('uses modelDescription when userDescription is missing or blank', async () => {
     const {
       buildShellToolMetadata,

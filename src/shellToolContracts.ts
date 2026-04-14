@@ -32,17 +32,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizeRequiredDescription(value: unknown): string | undefined {
-  return typeof value === 'string'
-    ? value.trim()
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const normalizedDescription = value.trim();
+
+  return normalizedDescription.length > 0
+    ? normalizedDescription
     : undefined;
 }
 
 function normalizeOptionalDescription(value: unknown): string | undefined {
-  const normalizedDescription = normalizeRequiredDescription(value);
-
-  return normalizedDescription && normalizedDescription.length > 0
-    ? normalizedDescription
-    : undefined;
+  return normalizeRequiredDescription(value);
 }
 
 let packageJsonManifestCache: unknown;
@@ -143,8 +145,7 @@ function getToolMetadata(
     };
   }
 
-  const description = normalizeOptionalDescription(manifestTool.userDescription)
-    ?? manifestTool.modelDescription.trim();
+  const description = manifestTool.userDescription ?? manifestTool.modelDescription;
 
   return {
     description,
