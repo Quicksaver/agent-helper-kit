@@ -98,7 +98,7 @@ export function getContributedLanguageModelToolsFromManifest(manifest: unknown):
     const { displayName } = tool;
     const { modelDescription } = tool;
     const userDescription = typeof tool.userDescription === 'string' && tool.userDescription.trim().length > 0
-      ? tool.userDescription
+      ? tool.userDescription.trim()
       : undefined;
 
     if (

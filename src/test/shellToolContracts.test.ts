@@ -221,6 +221,36 @@ describe('shell tool contracts', () => {
     expect(shellToolMetadata.sendToShell.description).toBe('Detailed send description');
   });
 
+  it('trims non-blank userDescription values from the manifest', async () => {
+    const {
+      buildShellToolMetadata,
+      getContributedLanguageModelToolsFromManifest,
+    } = await import('../shellToolContracts.js');
+    const manifest = {
+      contributes: {
+        languageModelTools: [
+          {
+            displayName: 'Run Shell Command',
+            modelDescription: 'Detailed run description',
+            name: 'run_in_shell',
+            userDescription: '  Friendly run description  ',
+          },
+        ],
+      },
+    };
+
+    const contributedLanguageModelTools = getContributedLanguageModelToolsFromManifest(manifest);
+    const shellToolMetadata = buildShellToolMetadata(manifest);
+
+    expect(contributedLanguageModelTools).toContainEqual({
+      displayName: 'Run Shell Command',
+      modelDescription: 'Detailed run description',
+      name: 'run_in_shell',
+      userDescription: 'Friendly run description',
+    });
+    expect(shellToolMetadata.runInShell.description).toBe('Friendly run description');
+  });
+
   it('validates async-style shell inputs without timeout', async () => {
     const { MAX_SHELL_COLUMNS } = await import('../shellColumns.js');
     const {
