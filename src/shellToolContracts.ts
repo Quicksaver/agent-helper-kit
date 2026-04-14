@@ -19,6 +19,7 @@ interface ContributedLanguageModelTool {
   displayName: string;
   modelDescription: string;
   name: string;
+  userDescription?: string;
 }
 
 interface ShellToolMetadataDescriptor {
@@ -96,6 +97,9 @@ export function getContributedLanguageModelToolsFromManifest(manifest: unknown):
     const { name } = tool;
     const { displayName } = tool;
     const { modelDescription } = tool;
+    const userDescription = typeof tool.userDescription === 'string' && tool.userDescription.trim().length > 0
+      ? tool.userDescription
+      : undefined;
 
     if (
       typeof name !== 'string'
@@ -109,6 +113,7 @@ export function getContributedLanguageModelToolsFromManifest(manifest: unknown):
       displayName,
       modelDescription,
       name,
+      userDescription,
     };
   });
 }
@@ -127,7 +132,7 @@ function getToolMetadata(
   }
 
   return {
-    description: manifestTool.modelDescription,
+    description: manifestTool.userDescription ?? manifestTool.modelDescription,
     title: manifestTool.displayName,
   };
 }

@@ -29,6 +29,7 @@ describe('shell tool contracts', () => {
           displayName: string;
           modelDescription: string;
           name: string;
+          userDescription?: string;
         }[];
       };
       version: string;
@@ -47,9 +48,10 @@ describe('shell tool contracts', () => {
       displayName: runTool?.displayName,
       modelDescription: runTool?.modelDescription,
       name: SHELL_TOOL_NAMES.runInShell,
+      userDescription: runTool?.userDescription,
     });
     expect(shellToolMetadata.runInShell.title).toBe(runTool?.displayName);
-    expect(shellToolMetadata.runInShell.description).toBe(runTool?.modelDescription);
+    expect(shellToolMetadata.runInShell.description).toBe(runTool?.userDescription);
     expect(SHELL_TOOL_METADATA.runInShell.title).toBe(runTool?.displayName);
     expect(shellToolMetadata.awaitShell.invocationMessage('abcd1234')).toBe('Waiting for shell command abcd1234');
     expect(shellToolMetadata.getLastShellCommand.invocationMessage).toBe('Reading most recent shell command');
@@ -62,7 +64,7 @@ describe('shell tool contracts', () => {
     expect(shellToolMetadata.runInShell.confirmationTitle).toBe('Run shell command?');
     expect(shellToolMetadata.runInShell.invocationMessage('echo ok')).toBe('Running shell command: echo ok');
     expect(shellToolMetadata.sendToShell.title).toBe(sendTool?.displayName);
-    expect(shellToolMetadata.sendToShell.description).toBe(sendTool?.modelDescription);
+    expect(shellToolMetadata.sendToShell.description).toBe(sendTool?.userDescription);
     expect(shellToolMetadata.sendToShell.confirmationMessage('abcd1234', 'yes')).toBe('Send input to shell command abcd1234: yes');
     expect(shellToolMetadata.sendToShell.confirmationMessage('abcd1234', '[hidden sensitive input]', { secret: true })).toBe('Send secret input to shell command abcd1234: [hidden sensitive input]');
     expect(shellToolMetadata.sendToShell.confirmationMessage('abcd1234')).toBe('Press Enter for shell command abcd1234');
@@ -175,6 +177,48 @@ describe('shell tool contracts', () => {
     expect(getPackageVersionFromManifest(manifest)).toBe('1.1.0');
     expect(shellToolMetadata.runInShell.title).toBe('run_in_shell');
     expect(shellToolMetadata.runInShell.description).toBe('');
+  });
+
+  it('uses modelDescription when userDescription is missing or blank', async () => {
+    const {
+      buildShellToolMetadata,
+      getContributedLanguageModelToolsFromManifest,
+    } = await import('../shellToolContracts.js');
+    const manifest = {
+      contributes: {
+        languageModelTools: [
+          {
+            displayName: 'Run Shell Command',
+            modelDescription: 'Detailed run description',
+            name: 'run_in_shell',
+          },
+          {
+            displayName: 'Send to Shell',
+            modelDescription: 'Detailed send description',
+            name: 'send_to_shell',
+            userDescription: '   ',
+          },
+        ],
+      },
+    };
+
+    const contributedLanguageModelTools = getContributedLanguageModelToolsFromManifest(manifest);
+    const shellToolMetadata = buildShellToolMetadata(manifest);
+
+    expect(contributedLanguageModelTools).toContainEqual({
+      displayName: 'Run Shell Command',
+      modelDescription: 'Detailed run description',
+      name: 'run_in_shell',
+      userDescription: undefined,
+    });
+    expect(contributedLanguageModelTools).toContainEqual({
+      displayName: 'Send to Shell',
+      modelDescription: 'Detailed send description',
+      name: 'send_to_shell',
+      userDescription: undefined,
+    });
+    expect(shellToolMetadata.runInShell.description).toBe('Detailed run description');
+    expect(shellToolMetadata.sendToShell.description).toBe('Detailed send description');
   });
 
   it('validates async-style shell inputs without timeout', async () => {

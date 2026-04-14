@@ -216,6 +216,7 @@
         "displayName": "Run Shell Command",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(terminal)",
+        "userDescription": "Run a shell command and return its status or output.",
         "modelDescription": "Run a shell command in a cwd, workspace root, or home if no workspace. Returns an id and status (shell, exitCode, terminationSignal if any SIG* sent); poll output via id after exit as needed, or include in response via full_output/last_lines/regex. Returns the id immediately for async polling when timeout is omitted, or when timeout is reached. If a running command is waiting for stdin, use send_to_shell to send exactly one answer, then call get_shell_output again. Compared with built-in run_in_terminal, pro: stable ids, deterministic status, unambiguous/filtered/streamed/full output, smaller context footprint when only success/failure is needed; con: not interactive, no persisted shell state, no PTY-backed prompts.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
@@ -368,6 +369,7 @@
         "displayName": "Send to Shell",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(terminal)",
+        "userDescription": "Send one line of input to a running shell command.",
         "modelDescription": "Send a single line of input text to the piped stdin of a running shell command started by run_in_shell. Sent text is logged into the shell run output as marked input entries so the interaction history stays visible. The command field may be empty or whitespace to press Enter. The tool appends Enter automatically, so send exactly one answer at a time, then call get_shell_output to inspect the next prompt or output. Use the optional secret property for secrets, API keys, credentials, or anything even slightly sensitive; when true, logs store a hidden placeholder instead of the actual input text. This is stdin-only and does not allocate a terminal or PTY, so terminal-bound prompts such as many SSH, sudo, or full-screen interactive programs may still not work.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
@@ -401,6 +403,7 @@
         "displayName": "Await Shell Command",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(clock)",
+        "userDescription": "Wait for a shell command to finish.",
         "modelDescription": "Wait for a shell command id from run_in_shell and return status (shell, exitCode, terminationSignal if any SIG* sent). If timeout is reached, can be re-polled as needed. Use this after starting without timeout or after run_in_shell or await_shell returns timedOut: true.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
@@ -428,6 +431,7 @@
         "displayName": "Get Shell Command Output",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(output)",
+        "userDescription": "Read output from a shell command.",
         "modelDescription": "Read output and status (shell, exitCode if finished, terminationSignal if any SIG* sent; isRunning if still running) for a command id from run_in_shell. For running commands, returns only new output since last read by default.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
@@ -488,6 +492,7 @@
         "displayName": "Stop Shell Command",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(close)",
+        "userDescription": "Stop a running shell command.",
         "modelDescription": "Stop a running shell command.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
@@ -509,6 +514,7 @@
         "displayName": "Get Shell Command",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(history)",
+        "userDescription": "Show the command for a shell run.",
         "modelDescription": "Get the command that was run for a specific shell command id.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
@@ -530,6 +536,7 @@
         "displayName": "Get Last Shell Command",
         "when": "config.agent-helper-kit.shellTools.enabled",
         "icon": "$(history)",
+        "userDescription": "Show the most recent shell command run.",
         "modelDescription": "Get the most recent command executed via run_in_shell.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
