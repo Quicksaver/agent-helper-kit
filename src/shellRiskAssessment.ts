@@ -17,6 +17,7 @@ const CLEAR_MODEL_PICK_ID = '__clearRiskAssessmentModel__';
 const DEFAULT_RISK_ASSESSMENT_TIMEOUT_MS = 8_000;
 const MAX_CONTEXT_FILES = 20;
 const MAX_CONTEXT_FILE_CHARACTERS = 12_000;
+const MAX_RISK_ASSESSMENT_LOG_CHARACTERS = 12_000;
 const MAX_TOTAL_CONTEXT_CHARACTERS = 60_000;
 const riskAssessmentResultCache = new Map<string, Promise<ShellRiskAssessmentModelResult>>();
 // Keep this shortlist intentionally small and revisit it when the validated
@@ -427,8 +428,22 @@ function summarizeError(error: unknown): string {
   return String(error);
 }
 
+function assertNever(value: never): never {
+  throw new Error(`Unexpected risk assessment result kind: ${JSON.stringify(value)}`);
+}
+
+function truncateRiskAssessmentLogText(text: string): string {
+  if (text.length <= MAX_RISK_ASSESSMENT_LOG_CHARACTERS) {
+    return text;
+  }
+
+  return `${text.slice(0, MAX_RISK_ASSESSMENT_LOG_CHARACTERS)}\n\n[... LOG OUTPUT TRUNCATED ...]`;
+}
+
 function formatRiskAssessmentResponseForLog(responseText: string): string {
-  return responseText.trim().length > 0 ? responseText : '(empty response)';
+  const normalizedResponse = responseText.trim().length > 0 ? responseText : '(empty response)';
+
+  return truncateRiskAssessmentLogText(normalizedResponse);
 }
 
 function logRiskAssessmentPrompt(modelId: string, timeoutMs: number, prompt: string): void {
@@ -437,7 +452,7 @@ function logRiskAssessmentPrompt(modelId: string, timeoutMs: number, prompt: str
     `Model: ${modelId}`,
     `Timeout: ${timeoutMs}ms`,
     'Prompt:',
-    prompt,
+    truncateRiskAssessmentLogText(prompt),
   ].join('\n'));
 }
 
@@ -450,26 +465,38 @@ function logRiskAssessmentResult(
 ): void {
   const lines = [ options.cached ? 'Shell risk assessment cached result:' : 'Shell risk assessment result:' ];
 
-  if (result.kind === 'disabled') {
-    lines.push('Kind: disabled');
-    lines.push('Reason: No risk assessment model is configured.');
-  }
-  else if (result.kind === 'error') {
-    lines.push('Kind: error');
-    lines.push(`Model: ${result.modelId}`);
-    lines.push(`Reason: ${result.reason}`);
-  }
-  else if (result.kind === 'timeout') {
-    lines.push('Kind: timeout');
-    lines.push(`Model: ${result.modelId}`);
-    lines.push(`Timeout: ${result.timeoutMs}ms`);
-    lines.push(`Reason: ${result.reason}`);
-  }
-  else {
-    lines.push('Kind: response');
-    lines.push(`Model: ${result.modelId}`);
-    lines.push(`Decision: ${result.decision}`);
-    lines.push(`Reason: ${result.reason}`);
+  switch (result.kind) {
+    case 'disabled': {
+      lines.push('Kind: disabled');
+      lines.push('Reason: No risk assessment model is configured.');
+      break;
+    }
+
+    case 'error': {
+      lines.push('Kind: error');
+      lines.push(`Model: ${result.modelId}`);
+      lines.push(`Reason: ${truncateRiskAssessmentLogText(result.reason)}`);
+      break;
+    }
+
+    case 'response': {
+      lines.push('Kind: response');
+      lines.push(`Model: ${result.modelId}`);
+      lines.push(`Decision: ${result.decision}`);
+      lines.push(`Reason: ${truncateRiskAssessmentLogText(result.reason)}`);
+      break;
+    }
+
+    case 'timeout': {
+      lines.push('Kind: timeout');
+      lines.push(`Model: ${result.modelId}`);
+      lines.push(`Timeout: ${result.timeoutMs}ms`);
+      lines.push(`Reason: ${truncateRiskAssessmentLogText(result.reason)}`);
+      break;
+    }
+
+    default:
+      assertNever(result);
   }
 
   if (options.rawResponseText !== undefined) {
@@ -732,7 +759,9 @@ Use the provided explanation, goal, risk pre-assessment, and context to decide w
 Any meaningful ambiguity or uncertainty must result in a request for user confirmation.
 If the command appears to rely on scripts, aliases, package-manager script definitions, generated shell fragments, or fetched/remote content and the provided context does not make it clear what will actually run or what data will be consumed, request user confirmation.
 Treat missing or incomplete script definitions, alias expansions, or fetched-content details as insufficient context for auto-approval.
-Only deny commands that are clearly malicious or outright destructive, beyond simply changing files, usage of chmod, or similar common operations that could be used in a safe or unsafe way depending on context; consider the default to ask for confirmation in these cases, except in explicitly malicious or catastrophic scenarios where a deny is logically warranted.
+Only deny commands that are clearly malicious or outright destructive.
+Operations such as changing files, using chmod, or similar common actions can be safe or unsafe depending on context.
+Default to requesting confirmation for those cases unless the scenario is explicitly malicious or catastrophic enough to warrant a deny.
 Only allow commands when they appear clearly safe to run without confirmation.
 <command>${escapePromptText(options.command)}</command>
 <cwd>${escapePromptText(options.cwd)}</cwd>
@@ -885,7 +914,7 @@ export async function assessShellCommandRisk(
 
           logRiskAssessmentResult(result, { rawResponseText: responseText });
           logWarn(
-            `Shell risk assessment model ${configuredModelId} returned an unrecognized response: ${responseText.trim() || '(empty response)'}`,
+            `Shell risk assessment model ${configuredModelId} returned an unrecognized response: ${formatRiskAssessmentResponseForLog(responseText)}`,
           );
 
           return result;
@@ -969,6 +998,7 @@ export const shellRiskAssessmentInternals = {
   isRecommendedModel,
   isUnsupportedModel,
   loadContextFiles,
+  logRiskAssessmentResult,
   normalizeRiskAssessmentContextEntries,
   parseRiskAssessmentResponse,
   resetShellRiskAssessmentCacheForTest,

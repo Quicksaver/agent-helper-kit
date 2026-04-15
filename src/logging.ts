@@ -4,6 +4,12 @@ const OUTPUT_CHANNEL_NAME = 'Agent Helper Kit';
 
 let outputChannel: undefined | vscode.OutputChannel;
 
+function getLogLines(message: string): string[] {
+  return message
+    .replace(/(?:\r?\n)+$/u, '')
+    .split(/\r?\n/u);
+}
+
 function getTimestamp(): string {
   return new Date().toISOString();
 }
@@ -20,7 +26,7 @@ export function logToExtensionChannel(level: 'ERROR' | 'INFO' | 'WARN', message:
   const channel = getExtensionOutputChannel();
   const prefix = `[${getTimestamp()}] [${level}] `;
 
-  for (const line of message.split(/\r?\n/u)) {
+  for (const line of getLogLines(message)) {
     channel.appendLine(`${prefix}${line}`);
   }
 }

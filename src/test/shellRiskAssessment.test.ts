@@ -616,6 +616,12 @@ describe('shell risk assessment', () => {
     });
   });
 
+  it('fails fast if logging sees an unknown assessment result kind', () => {
+    expect(() => {
+      shellRiskAssessmentInternals.logRiskAssessmentResult({ kind: 'unexpected' } as never);
+    }).toThrow('Unexpected risk assessment result kind');
+  });
+
   it('prompts the configured model with command, risk summary, and loaded file context', async () => {
     const sendRequest = vi.fn(async () => createResponseStream([ 'allow::safe enough after reviewing the script' ]));
 
@@ -652,6 +658,46 @@ describe('shell risk assessment', () => {
     expect(logInfo).toHaveBeenCalledWith(expect.stringContaining('Shell risk assessment result:\nKind: response\nModel: copilot:gpt-4.1\nDecision: allow'));
     expect(logInfo).toHaveBeenCalledWith(expect.stringContaining('Raw response:\nallow::safe enough after reviewing the script'));
     expect(sendRequest).toHaveBeenCalled();
+  });
+
+  it('truncates logged prompt and raw response audit bodies', async () => {
+    const inlineTailMarker = 'INLINE_TAIL_MARKER';
+    const responseTailMarker = 'RESPONSE_TAIL_MARKER';
+    const longInlineContext = `INLINE:${'x'.repeat(13_000)}${inlineTailMarker}`;
+    const longResponse = `allow::${'y'.repeat(13_000)}${responseTailMarker}`;
+
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === SHELL_TOOLS_RISK_ASSESSMENT_CHAT_MODEL_KEY) {
+        return 'copilot:gpt-4.1';
+      }
+
+      return undefined;
+    }));
+    mockSelectChatModels([
+      createModel({
+        id: 'gpt-4.1',
+        sendRequest: vi.fn(async () => createResponseStream([ longResponse ])),
+        vendor: 'copilot',
+      }),
+    ]);
+
+    await expect(assessShellCommandRisk({
+      command: 'node scripts/run.js',
+      cwd: '/workspace',
+      explanation: 'run the helper script',
+      goal: 'exercise audit logging truncation',
+      riskAssessment: 'This command reads a large amount of inline risk context.',
+      riskAssessmentContext: [ longInlineContext ],
+    }, {} as never)).resolves.toEqual({
+      decision: 'allow',
+      kind: 'response',
+      modelId: 'copilot:gpt-4.1',
+      reason: `${'y'.repeat(13_000)}${responseTailMarker}`,
+    });
+
+    expect(logInfo).toHaveBeenCalledWith(expect.stringContaining('[... LOG OUTPUT TRUNCATED ...]'));
+    expect(logInfo).not.toHaveBeenCalledWith(expect.stringContaining(inlineTailMarker));
+    expect(logInfo).not.toHaveBeenCalledWith(expect.stringContaining(responseTailMarker));
   });
 
   it('escapes prompt tag content and file path attributes before sending them to the model', async () => {

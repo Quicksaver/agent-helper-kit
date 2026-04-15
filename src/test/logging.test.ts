@@ -79,6 +79,22 @@ describe('logging', () => {
     }
   });
 
+  it('ignores trailing newline segments when logging', () => {
+    vi.useFakeTimers();
+
+    try {
+      vi.setSystemTime(new Date('2026-03-19T12:00:00.000Z'));
+
+      logInfo('hello\n');
+
+      expect(appendLine).toHaveBeenCalledTimes(1);
+      expect(appendLine).toHaveBeenNthCalledWith(1, '[2026-03-19T12:00:00.000Z] [INFO] hello');
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('disposes the cached channel when reset for tests is called', () => {
     const channel = getExtensionOutputChannel() as unknown as {
       dispose: ReturnType<typeof vi.fn>;
