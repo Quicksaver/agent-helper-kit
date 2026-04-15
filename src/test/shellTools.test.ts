@@ -10,6 +10,8 @@ import {
 import {
   getShellOutputDirectoryPath,
   getShellOutputFilePath,
+  listShellMetadataIds,
+  readShellCommandMetadata,
   SHELL_OUTPUT_DIR_ENV_VAR,
 } from '@/shellOutputStore';
 import { SHELL_COMMAND_ID_PREFIX } from '@/shellRuntime';
@@ -17,6 +19,7 @@ import {
   registerShellTools,
   resetShellRuntimeForTest,
 } from '@/shellTools';
+import { resetShellToolSecurityCaches } from '@/shellToolSecurity';
 import {
   createFakeProcess as createBaseFakeProcess,
   type FakeProcess,
@@ -445,9 +448,11 @@ describe('shell tools', () => {
     vi.clearAllMocks();
     resetShellRuntimeForTest();
     getConfiguration.mockReturnValue(createConfiguration());
+    resetShellToolSecurityCaches();
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     fs.rmSync(getShellOutputDirectoryPath(), { force: true, recursive: true });
 
     if (previousShellOutputDirectory === undefined) {
@@ -2174,6 +2179,111 @@ describe('shell tools', () => {
     });
   });
 
+  it('removes prepared pending-approval records when the prepare token is canceled', async () => {
+    registerShellTools();
+
+    const runTool = getRegisteredToolWithPrepare('run_in_shell');
+    const cancellationDisposable = {
+      dispose: vi.fn(),
+    };
+    let cancelPreparation: (() => void) | undefined;
+
+    await expect(runTool.prepareInvocation({
+      input: {
+        command: 'git checkout main',
+        explanation: 'switch branches',
+        goal: 'move to main',
+        riskAssessment: 'This may replace files in the working tree and discard staged state.',
+      },
+    }, {
+      isCancellationRequested: false,
+      onCancellationRequested: vi.fn((listener: () => void) => {
+        cancelPreparation = listener;
+
+        return cancellationDisposable;
+      }),
+    } as never)).resolves.toEqual({
+      confirmationMessages: {
+        message: 'Command: git checkout main\n\nCwd: /workspace\n\nExplanation: switch branches\n\nGoal: move to main\n\nRisk pre-assessment: This may replace files in the working tree and discard staged state.\n\nApproval note: Model is disabled via shellTools.riskAssessment.chatModel.',
+        title: 'Run shell command?',
+      },
+      invocationMessage: 'Running shell command: git checkout main',
+    });
+
+    expect(listShellMetadataIds()).toHaveLength(1);
+
+    cancelPreparation?.();
+
+    expect(cancellationDisposable.dispose).toHaveBeenCalledOnce();
+    expect(listShellMetadataIds()).toEqual([]);
+  });
+
+  it('drops already-canceled prepared records immediately', async () => {
+    registerShellTools();
+
+    const runTool = getRegisteredToolWithPrepare('run_in_shell');
+    const cancellationDisposable = {
+      dispose: vi.fn(),
+    };
+
+    await expect(runTool.prepareInvocation({
+      input: {
+        command: 'git checkout main',
+        explanation: 'switch branches',
+        goal: 'move to main',
+        riskAssessment: 'This may replace files in the working tree and discard staged state.',
+      },
+    }, {
+      isCancellationRequested: true,
+      onCancellationRequested: vi.fn(() => cancellationDisposable),
+    } as never)).resolves.toEqual({
+      confirmationMessages: {
+        message: 'Command: git checkout main\n\nCwd: /workspace\n\nExplanation: switch branches\n\nGoal: move to main\n\nRisk pre-assessment: This may replace files in the working tree and discard staged state.\n\nApproval note: Model is disabled via shellTools.riskAssessment.chatModel.',
+        title: 'Run shell command?',
+      },
+      invocationMessage: 'Running shell command: git checkout main',
+    });
+
+    expect(cancellationDisposable.dispose).toHaveBeenCalledOnce();
+    expect(listShellMetadataIds()).toEqual([]);
+  });
+
+  it('expires unclaimed prepared records after the reservation timeout', async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: Parameters<typeof setTimeout>[0]) => {
+      if (typeof callback === 'function') {
+        callback();
+      }
+
+      return 0 as unknown as ReturnType<typeof setTimeout>;
+    }) as typeof setTimeout);
+
+    try {
+      registerShellTools();
+
+      const runTool = getRegisteredToolWithPrepare('run_in_shell');
+
+      await expect(runTool.prepareInvocation({
+        input: {
+          command: 'git checkout main',
+          explanation: 'switch branches',
+          goal: 'move to main',
+          riskAssessment: 'This may replace files in the working tree and discard staged state.',
+        },
+      }, {})).resolves.toEqual({
+        confirmationMessages: {
+          message: 'Command: git checkout main\n\nCwd: /workspace\n\nExplanation: switch branches\n\nGoal: move to main\n\nRisk pre-assessment: This may replace files in the working tree and discard staged state.\n\nApproval note: Model is disabled via shellTools.riskAssessment.chatModel.',
+          title: 'Run shell command?',
+        },
+        invocationMessage: 'Running shell command: git checkout main',
+      });
+
+      expect(listShellMetadataIds()).toEqual([]);
+    }
+    finally {
+      setTimeoutSpy.mockRestore();
+    }
+  });
+
   it('denies commands matched by deny rules before prompting', async () => {
     registerShellTools();
 
@@ -2260,6 +2370,196 @@ describe('shell tools', () => {
     }, {})).resolves.toEqual({
       confirmationMessages: undefined,
       invocationMessage: 'Running shell command: git checkout main',
+    });
+  });
+
+  it('ignores stale cancellation callbacks after a prepared id has already been claimed', async () => {
+    const firstProcess = createFakeProcess();
+
+    spawn.mockReturnValueOnce(firstProcess);
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_shell');
+    const preparedRunTool = getRegisteredToolWithPrepare('run_in_shell');
+    const cancellationDisposable = {
+      dispose: vi.fn(),
+    };
+    let cancelPreparation: (() => void) | undefined;
+    const input = {
+      command: 'git checkout main',
+      explanation: 'switch branches',
+      goal: 'move to main',
+      riskAssessment: 'This may replace files in the working tree and discard staged state.',
+    };
+
+    await preparedRunTool.prepareInvocation({ input }, {
+      isCancellationRequested: false,
+      onCancellationRequested: vi.fn((listener: () => void) => {
+        cancelPreparation = listener;
+
+        return cancellationDisposable;
+      }),
+    } as never);
+
+    const firstPreparedId = listShellMetadataIds()[0];
+
+    await preparedRunTool.prepareInvocation({ input }, {});
+
+    expect(listShellMetadataIds()).toHaveLength(2);
+
+    const firstResult = getResultPayload(await runTool.invoke({
+      input,
+      toolInvocationToken: undefined,
+    }, {}));
+
+    expect(firstResult.id).toBe(firstPreparedId.slice(SHELL_COMMAND_ID_PREFIX.length));
+
+    cancelPreparation?.();
+
+    expect(cancellationDisposable.dispose).toHaveBeenCalledOnce();
+    expect(listShellMetadataIds()).toHaveLength(2);
+
+    firstProcess.emit('close', 0, null);
+  });
+
+  it('ignores stale cancellation callbacks after the reservation map is empty', async () => {
+    const fakeProcess = createFakeProcess();
+
+    spawn.mockReturnValueOnce(fakeProcess);
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_shell');
+    const preparedRunTool = getRegisteredToolWithPrepare('run_in_shell');
+    let cancelPreparation: (() => void) | undefined;
+    const input = {
+      command: 'git checkout main',
+      explanation: 'switch branches',
+      goal: 'move to main',
+      riskAssessment: 'This may replace files in the working tree and discard staged state.',
+    };
+
+    await preparedRunTool.prepareInvocation({ input }, {
+      isCancellationRequested: false,
+      onCancellationRequested: vi.fn((listener: () => void) => {
+        cancelPreparation = listener;
+
+        return {
+          dispose: vi.fn(),
+        };
+      }),
+    } as never);
+
+    const runResult = getResultPayload(await runTool.invoke({
+      input,
+      toolInvocationToken: undefined,
+    }, {}));
+
+    cancelPreparation?.();
+
+    expect(runResult.id).toBeDefined();
+    expect(listShellMetadataIds()).toHaveLength(1);
+
+    fakeProcess.emit('close', 0, null);
+  });
+
+  it('claims matching prepared command ids in FIFO order', async () => {
+    const firstProcess = createFakeProcess();
+    const secondProcess = createFakeProcess();
+
+    spawn.mockReturnValueOnce(firstProcess).mockReturnValueOnce(secondProcess);
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_shell');
+    const preparedRunTool = getRegisteredToolWithPrepare('run_in_shell');
+    const input = {
+      command: 'git checkout main',
+      explanation: 'switch branches',
+      goal: 'move to main',
+      riskAssessment: 'This may replace files in the working tree and discard staged state.',
+    };
+
+    await preparedRunTool.prepareInvocation({ input }, {});
+
+    const firstPreparedId = listShellMetadataIds()[0];
+
+    await preparedRunTool.prepareInvocation({ input }, {});
+
+    const secondPreparedId = listShellMetadataIds().find(id => id !== firstPreparedId);
+
+    expect(firstPreparedId).toBeDefined();
+    expect(secondPreparedId).toBeDefined();
+
+    const firstResult = getResultPayload(await runTool.invoke({
+      input,
+      toolInvocationToken: undefined,
+    }, {}));
+    const secondResult = getResultPayload(await runTool.invoke({
+      input,
+      toolInvocationToken: undefined,
+    }, {}));
+
+    if (secondPreparedId === undefined) {
+      throw new Error('Expected a second prepared shell command id.');
+    }
+
+    const expectedFirstId = firstPreparedId.slice(SHELL_COMMAND_ID_PREFIX.length);
+    const expectedSecondId = secondPreparedId.slice(SHELL_COMMAND_ID_PREFIX.length);
+
+    expect(firstResult.id).toBe(expectedFirstId);
+    expect(secondResult.id).toBe(expectedSecondId);
+
+    firstProcess.emit('close', 0, null);
+    secondProcess.emit('close', 0, null);
+  });
+
+  it('marks an already prepared record denied when invoke-time rules tighten', async () => {
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.approvalRules') {
+        return {
+          safe: 'allow',
+        };
+      }
+
+      return undefined;
+    }));
+    resetShellToolSecurityCaches();
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_shell');
+    const preparedRunTool = getRegisteredToolWithPrepare('run_in_shell');
+    const input = {
+      command: 'safe',
+      explanation: 'prepare a command before policy changes',
+      goal: 'exercise invoke-time deny handling',
+      riskAssessment: 'This only prints output and should not modify files.',
+    };
+
+    await preparedRunTool.prepareInvocation({ input }, {});
+
+    const preparedId = listShellMetadataIds()[0];
+
+    getConfiguration.mockReturnValue(createConfiguration(key => {
+      if (key === 'shellTools.approvalRules') {
+        return {
+          safe: 'deny',
+        };
+      }
+
+      return undefined;
+    }));
+    resetShellToolSecurityCaches();
+
+    await expect(runTool.invoke({
+      input,
+      toolInvocationToken: undefined,
+    }, {})).rejects.toThrow('The command `safe` is denied by the shell approval policy.');
+
+    expect(readShellCommandMetadata(preparedId)).toMatchObject({
+      approval: {
+        decision: 'deny',
+        source: 'rule',
+      },
+      phase: 'denied',
     });
   });
 

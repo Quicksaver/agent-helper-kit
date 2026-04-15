@@ -531,6 +531,32 @@ describe('ShellRuntime background execution', () => {
     });
   });
 
+  it('deletes non-running command records and keeps running ones', () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const plannedId = runtime.createPlannedCommandRecord('echo queued', {
+      cwd: '/workspace',
+      phase: 'queued',
+      shell: '/bin/bash',
+    });
+    const runningId = runtime.startBackgroundCommand('echo running', {
+      cwd: '/workspace',
+      shell: '/bin/bash',
+    });
+
+    expect(runtime.deleteCommandRecord('shell-missing')).toBe(false);
+    expect(runtime.deleteCommandRecord(runningId)).toBe(false);
+    expect(runtime.deleteCommandRecord(plannedId)).toBe(true);
+    expect(runtime.listCommands()).toEqual([
+      expect.objectContaining({
+        id: runningId,
+        phase: 'running',
+      }),
+    ]);
+  });
+
   it('marks planned records completed and ignores blank cwd and shell overrides', async () => {
     const runtime = new ShellRuntime({});
 

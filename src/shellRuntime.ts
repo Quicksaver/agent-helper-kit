@@ -473,10 +473,10 @@ export class ShellRuntime {
     return id;
   }
 
-  deleteCompletedCommand(id: string): boolean {
+  deleteCommandRecord(id: string): boolean {
     const state = this.backgroundProcesses.get(id);
 
-    if (!state || !this.isTerminalState(state)) {
+    if (!state || state.phase === 'running') {
       return false;
     }
 
@@ -485,6 +485,16 @@ export class ShellRuntime {
     this.emitCommandChange();
 
     return true;
+  }
+
+  deleteCompletedCommand(id: string): boolean {
+    const state = this.backgroundProcesses.get(id);
+
+    if (!state || !this.isTerminalState(state)) {
+      return false;
+    }
+
+    return this.deleteCommandRecord(id);
   }
 
   async getCommandDetails(id: string): Promise<ShellCommandDetails> {

@@ -227,10 +227,6 @@ function addOptionalCompletionMetadata(
 
 let shellRuntime: ShellRuntime | undefined;
 
-export function resetShellRuntimeForTest(): void {
-  shellRuntime = undefined;
-}
-
 /**
  * Lazily create the shared shell runtime so sync and async shell tools use the
  * same command lifecycle, output store, and panel backing state.
@@ -307,7 +303,14 @@ function getShellInputPreview(input: string, options?: {
   return trimmedInput.split('\n')[0];
 }
 
-const preparedRunInShellCommandIdsBySignature = new Map<string, string[]>();
+const PREPARED_RUN_IN_SHELL_RESERVATION_TTL_MS = 5 * 60 * 1000;
+
+type PreparedRunInShellReservation = {
+  dispose: () => void;
+  id: string;
+};
+
+const preparedRunInShellCommandIdsBySignature = new Map<string, PreparedRunInShellReservation[]>();
 
 function buildPreparedRunInShellSignature(input: RunInShellInput, resolvedCwd: string, selectedShell: string): string {
   return JSON.stringify({
@@ -321,22 +324,100 @@ function buildPreparedRunInShellSignature(input: RunInShellInput, resolvedCwd: s
   });
 }
 
-function claimPreparedRunInShellCommandId(signature: string): string | undefined {
-  const ids = preparedRunInShellCommandIdsBySignature.get(signature);
-  const id = ids?.pop();
+function clearPreparedRunInShellReservations(): void {
+  for (const reservations of preparedRunInShellCommandIdsBySignature.values()) {
+    for (const reservation of reservations) {
+      reservation.dispose();
+    }
+  }
 
-  if (!ids || ids.length === 0) {
+  preparedRunInShellCommandIdsBySignature.clear();
+}
+
+export function resetShellRuntimeForTest(): void {
+  clearPreparedRunInShellReservations();
+  shellRuntime = undefined;
+}
+
+function discardPreparedRunInShellCommandId(signature: string, id: string): boolean {
+  const reservations = preparedRunInShellCommandIdsBySignature.get(signature);
+
+  if (!reservations) {
+    return false;
+  }
+
+  const reservationIndex = reservations.findIndex(reservation => reservation.id === id);
+
+  if (reservationIndex < 0) {
+    return false;
+  }
+
+  const [ reservation ] = reservations.splice(reservationIndex, 1);
+  reservation.dispose();
+
+  if (reservations.length === 0) {
     preparedRunInShellCommandIdsBySignature.delete(signature);
   }
 
-  return id;
+  return true;
 }
 
-function queuePreparedRunInShellCommandId(signature: string, id: string): void {
-  const ids = preparedRunInShellCommandIdsBySignature.get(signature) ?? [];
+function claimPreparedRunInShellCommandId(signature: string): string | undefined {
+  const reservations = preparedRunInShellCommandIdsBySignature.get(signature);
+  const reservation = reservations?.shift();
 
-  ids.push(id);
-  preparedRunInShellCommandIdsBySignature.set(signature, ids);
+  reservation?.dispose();
+
+  if (!reservations || reservations.length === 0) {
+    preparedRunInShellCommandIdsBySignature.delete(signature);
+  }
+
+  return reservation?.id;
+}
+
+function queuePreparedRunInShellCommandId(
+  signature: string,
+  id: string,
+  options: {
+    onDiscard: () => void;
+    token: vscode.CancellationToken;
+  },
+): void {
+  let cancellationDisposable: undefined | vscode.Disposable;
+  let cleanupTimer: NodeJS.Timeout | undefined;
+  const reservation: PreparedRunInShellReservation = {
+    dispose: () => {
+      if (cleanupTimer) {
+        clearTimeout(cleanupTimer);
+        cleanupTimer = undefined;
+      }
+
+      cancellationDisposable?.dispose();
+      cancellationDisposable = undefined;
+    },
+    id,
+  };
+  const reservations = preparedRunInShellCommandIdsBySignature.get(signature) ?? [];
+
+  reservations.push(reservation);
+  preparedRunInShellCommandIdsBySignature.set(signature, reservations);
+
+  const discardReservation = () => {
+    if (!discardPreparedRunInShellCommandId(signature, id)) {
+      return;
+    }
+
+    options.onDiscard();
+  };
+
+  cleanupTimer = setTimeout(discardReservation, PREPARED_RUN_IN_SHELL_RESERVATION_TTL_MS);
+  cancellationDisposable = typeof options.token.onCancellationRequested === 'function'
+    ? options.token.onCancellationRequested(discardReservation)
+    : undefined;
+
+  if (options.token.isCancellationRequested) {
+    discardReservation();
+  }
 }
 
 function toShellCommandApprovalDetails(approvalDecision: ShellRunApprovalDecision) {
@@ -472,6 +553,7 @@ const runInShellTool: vscode.LanguageModelTool<RunInShellInput> = {
     const commandPreview = getShellInputPreview(input.command) ?? '(empty command)';
     const resolvedCwd = resolveCommandCwd(input.cwd);
     const selectedShell = getRequestedOrDefaultShell(input.shell);
+    const preparedSignature = buildPreparedRunInShellSignature(input, resolvedCwd, selectedShell);
     const shellRuntimeInstance = getShellRuntime();
     const commandRecordId = shellRuntimeInstance.createPlannedCommandRecord(input.command, {
       cwd: resolvedCwd,
@@ -508,8 +590,14 @@ const runInShellTool: vscode.LanguageModelTool<RunInShellInput> = {
     }
 
     queuePreparedRunInShellCommandId(
-      buildPreparedRunInShellSignature(input, resolvedCwd, selectedShell),
+      preparedSignature,
       commandRecordId,
+      {
+        onDiscard: () => {
+          shellRuntimeInstance.deleteCommandRecord(commandRecordId);
+        },
+        token,
+      },
     );
 
     return {
