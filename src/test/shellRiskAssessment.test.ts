@@ -20,6 +20,7 @@ const realpath = vi.hoisted(() => vi.fn(async (value: string) => value));
 const stat = vi.hoisted(() => vi.fn(async () => {
   throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
 }));
+const logInfo = vi.hoisted(() => vi.fn());
 const logWarn = vi.hoisted(() => vi.fn());
 const registerCommand = vi.hoisted(() => vi.fn(() => ({ dispose: vi.fn() })));
 const selectChatModels = vi.hoisted(() => vi.fn(async () => []));
@@ -116,6 +117,7 @@ vi.mock('node:fs/promises', () => ({
 }));
 
 vi.mock('@/logging', () => ({
+  logInfo,
   logWarn,
 }));
 
@@ -150,6 +152,8 @@ describe('shell risk assessment', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     shellRiskAssessmentInternals.resetShellRiskAssessmentCacheForTest();
+    logInfo.mockReset();
+    logWarn.mockReset();
     registerCommand.mockReset();
     selectChatModels.mockReset();
     showInformationMessage.mockReset();
@@ -494,6 +498,10 @@ describe('shell risk assessment', () => {
     }, {} as never);
 
     expect(sendRequest).toHaveBeenCalledTimes(1);
+    const infoMessages = logInfo.mock.calls.map(([ message ]) => message as string);
+
+    expect(infoMessages.filter(message => message.includes('Shell risk assessment prompt:'))).toHaveLength(1);
+    expect(infoMessages.some(message => message.includes('Shell risk assessment cached result:'))).toBe(true);
     expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('<file path="/workspace/scripts/run.js">'));
     expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('<context_item kind="inline">'));
     expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('alias expands to: node scripts/run.js --refresh'));
@@ -583,6 +591,7 @@ describe('shell risk assessment', () => {
       goal: 'read repo status',
       riskAssessment: 'Read-only command.',
     }, {} as never)).resolves.toEqual({ kind: 'disabled' });
+    expect(logInfo).toHaveBeenCalledWith(expect.stringContaining('Shell risk assessment result:\nKind: disabled'));
   });
 
   it('returns an error when the configured model cannot be found', async () => {
@@ -638,6 +647,10 @@ describe('shell risk assessment', () => {
     expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('<risk_assessment>This script may rewrite generated files under the workspace.</risk_assessment>'));
     expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('<file path="/workspace/scripts/run.js">'));
     expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('script-injection, prompt-injection, or fetched-content dangers'));
+    expect(logInfo).toHaveBeenCalledWith(expect.stringContaining('Shell risk assessment prompt:'));
+    expect(logInfo).toHaveBeenCalledWith(expect.stringContaining('<command>node scripts/run.js</command>'));
+    expect(logInfo).toHaveBeenCalledWith(expect.stringContaining('Shell risk assessment result:\nKind: response\nModel: copilot:gpt-4.1\nDecision: allow'));
+    expect(logInfo).toHaveBeenCalledWith(expect.stringContaining('Raw response:\nallow::safe enough after reviewing the script'));
     expect(sendRequest).toHaveBeenCalled();
   });
 
@@ -943,6 +956,7 @@ describe('shell risk assessment', () => {
     expect(logWarn).toHaveBeenCalledWith(
       'Shell risk assessment model copilot:gpt-4.1 returned an unrecognized response: not valid output',
     );
+    expect(logInfo).toHaveBeenCalledWith(expect.stringContaining('Raw response:\nnot valid output'));
   });
 
   it('returns an error when the model request throws', async () => {

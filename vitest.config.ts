@@ -24,9 +24,9 @@ export default defineConfig({
         // extremely good reason; i.e. a new feature contains code that is impossible to hit via automated tests alone.
         autoUpdate: true,
         branches: 92.37,
-        functions: 98.72,
-        lines: 98.02,
-        statements: 97.96,
+        functions: 98.73,
+        lines: 98.05,
+        statements: 98,
       },
     },
     globals: false,

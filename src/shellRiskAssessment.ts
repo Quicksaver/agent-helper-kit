@@ -3,7 +3,10 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
-import { logWarn } from '@/logging';
+import {
+  logInfo,
+  logWarn,
+} from '@/logging';
 import { EXTENSION_CONFIG_SECTION } from '@/reviewCommentConfig';
 
 export const SHELL_TOOLS_RISK_ASSESSMENT_CHAT_MODEL_KEY = 'shellTools.riskAssessment.chatModel';
@@ -424,6 +427,59 @@ function summarizeError(error: unknown): string {
   return String(error);
 }
 
+function formatRiskAssessmentResponseForLog(responseText: string): string {
+  return responseText.trim().length > 0 ? responseText : '(empty response)';
+}
+
+function logRiskAssessmentPrompt(modelId: string, timeoutMs: number, prompt: string): void {
+  logInfo([
+    'Shell risk assessment prompt:',
+    `Model: ${modelId}`,
+    `Timeout: ${timeoutMs}ms`,
+    'Prompt:',
+    prompt,
+  ].join('\n'));
+}
+
+function logRiskAssessmentResult(
+  result: ShellRiskAssessmentModelResult,
+  options: {
+    cached?: boolean;
+    rawResponseText?: string;
+  } = {},
+): void {
+  const lines = [ options.cached ? 'Shell risk assessment cached result:' : 'Shell risk assessment result:' ];
+
+  if (result.kind === 'disabled') {
+    lines.push('Kind: disabled');
+    lines.push('Reason: No risk assessment model is configured.');
+  }
+  else if (result.kind === 'error') {
+    lines.push('Kind: error');
+    lines.push(`Model: ${result.modelId}`);
+    lines.push(`Reason: ${result.reason}`);
+  }
+  else if (result.kind === 'timeout') {
+    lines.push('Kind: timeout');
+    lines.push(`Model: ${result.modelId}`);
+    lines.push(`Timeout: ${result.timeoutMs}ms`);
+    lines.push(`Reason: ${result.reason}`);
+  }
+  else {
+    lines.push('Kind: response');
+    lines.push(`Model: ${result.modelId}`);
+    lines.push(`Decision: ${result.decision}`);
+    lines.push(`Reason: ${result.reason}`);
+  }
+
+  if (options.rawResponseText !== undefined) {
+    lines.push('Raw response:');
+    lines.push(formatRiskAssessmentResponseForLog(options.rawResponseText));
+  }
+
+  logInfo(lines.join('\n'));
+}
+
 /** Normalize optional context file pointers by trimming, de-duplicating, and bounding them. */
 function normalizeRiskAssessmentContextPointers(pointers: string[] | undefined): string[] {
   if (!pointers) {
@@ -764,9 +820,13 @@ export async function assessShellCommandRisk(
   let cacheKey: string | undefined;
 
   if (configuredModelId.length === 0) {
-    return {
+    const result: ShellRiskAssessmentModelResult = {
       kind: 'disabled',
     };
+
+    logRiskAssessmentResult(result);
+
+    return result;
   }
 
   const timeoutMs = getConfiguredRiskAssessmentTimeoutMs();
@@ -786,7 +846,11 @@ export async function assessShellCommandRisk(
     const cachedResult = riskAssessmentResultCache.get(cacheKey);
 
     if (cachedResult) {
-      return cachedResult;
+      const result = await cachedResult;
+
+      logRiskAssessmentResult(result, { cached: true });
+
+      return result;
     }
 
     const selector = parseToSelector(configuredModelId);
@@ -796,57 +860,74 @@ export async function assessShellCommandRisk(
         const models = await vscode.lm.selectChatModels(selector);
 
         if (models.length === 0) {
-          return {
+          const result: ShellRiskAssessmentModelResult = {
             kind: 'error',
             modelId: configuredModelId,
             reason: `Configured risk assessment model \`${configuredModelId}\` is not available.`,
           };
+
+          logRiskAssessmentResult(result);
+
+          return result;
         }
 
         const model = models[0];
+        logRiskAssessmentPrompt(configuredModelId, timeoutMs, prompt);
         const responseText = await readResponseWithTimeout(model, prompt, token, timeoutMs);
         const parsedResponse = parseRiskAssessmentResponse(responseText);
 
         if (!parsedResponse) {
-          logWarn(
-            `Shell risk assessment model ${configuredModelId} returned an unrecognized response: ${responseText.trim() || '(empty response)'}`,
-          );
-
-          return {
+          const result: ShellRiskAssessmentModelResult = {
             kind: 'error',
             modelId: configuredModelId,
             reason: `Risk assessment model \`${configuredModelId}\` returned an unrecognized response.`,
           };
+
+          logRiskAssessmentResult(result, { rawResponseText: responseText });
+          logWarn(
+            `Shell risk assessment model ${configuredModelId} returned an unrecognized response: ${responseText.trim() || '(empty response)'}`,
+          );
+
+          return result;
         }
 
-        return {
+        const result: ShellRiskAssessmentModelResult = {
           decision: parsedResponse.decision,
           kind: 'response',
           modelId: configuredModelId,
           reason: parsedResponse.reason,
         };
+
+        logRiskAssessmentResult(result, { rawResponseText: responseText });
+
+        return result;
       }
       catch (error) {
         if (error instanceof ShellRiskAssessmentTimeoutError) {
-          logWarn(`Shell risk assessment timed out for model ${configuredModelId} after ${timeoutMs}ms.`);
-
-          return {
+          const result: ShellRiskAssessmentModelResult = {
             kind: 'timeout',
             modelId: configuredModelId,
             reason: `Risk assessment model \`${configuredModelId}\` timed out after ${timeoutMs}ms.`,
             timeoutMs,
           };
+
+          logRiskAssessmentResult(result);
+          logWarn(`Shell risk assessment timed out for model ${configuredModelId} after ${timeoutMs}ms.`);
+
+          return result;
         }
 
         const message = summarizeError(error);
-
-        logWarn(`Shell risk assessment failed for model ${configuredModelId}: ${message}`);
-
-        return {
+        const result: ShellRiskAssessmentModelResult = {
           kind: 'error',
           modelId: configuredModelId,
           reason: `Risk assessment model \`${configuredModelId}\` failed: ${message}`,
         };
+
+        logRiskAssessmentResult(result);
+        logWarn(`Shell risk assessment failed for model ${configuredModelId}: ${message}`);
+
+        return result;
       }
     })();
 
@@ -867,14 +948,16 @@ export async function assessShellCommandRisk(
     }
 
     const message = summarizeError(error);
-
-    logWarn(`Shell risk assessment failed for model ${configuredModelId}: ${message}`);
-
-    return {
+    const result: ShellRiskAssessmentModelResult = {
       kind: 'error',
       modelId: configuredModelId,
       reason: `Risk assessment model \`${configuredModelId}\` failed: ${message}`,
     };
+
+    logRiskAssessmentResult(result);
+    logWarn(`Shell risk assessment failed for model ${configuredModelId}: ${message}`);
+
+    return result;
   }
 }
 

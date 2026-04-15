@@ -63,6 +63,22 @@ describe('logging', () => {
     }
   });
 
+  it('prefixes each line when logging a multi-line message', () => {
+    vi.useFakeTimers();
+
+    try {
+      vi.setSystemTime(new Date('2026-03-19T12:00:00.000Z'));
+
+      logInfo('hello\nworld');
+
+      expect(appendLine).toHaveBeenNthCalledWith(1, '[2026-03-19T12:00:00.000Z] [INFO] hello');
+      expect(appendLine).toHaveBeenNthCalledWith(2, '[2026-03-19T12:00:00.000Z] [INFO] world');
+    }
+    finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('disposes the cached channel when reset for tests is called', () => {
     const channel = getExtensionOutputChannel() as unknown as {
       dispose: ReturnType<typeof vi.fn>;

@@ -17,7 +17,12 @@ export function getExtensionOutputChannel(): vscode.OutputChannel {
 }
 
 export function logToExtensionChannel(level: 'ERROR' | 'INFO' | 'WARN', message: string): void {
-  getExtensionOutputChannel().appendLine(`[${getTimestamp()}] [${level}] ${message}`);
+  const channel = getExtensionOutputChannel();
+  const prefix = `[${getTimestamp()}] [${level}] `;
+
+  for (const line of message.split(/\r?\n/u)) {
+    channel.appendLine(`${prefix}${line}`);
+  }
 }
 
 export function logError(message: string): void {
