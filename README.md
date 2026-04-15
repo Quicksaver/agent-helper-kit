@@ -61,6 +61,7 @@ Compared with built-in terminal tools, these extension tools are optimized for a
 - `agent-helper-kit.shellOutput.startupPurgeMaxAgeHours`: startup cleanup threshold for old persisted output.
 
 Use the Command Palette action `Select Shell Risk Assessment Model` to choose or clear the chat model behind `agent-helper-kit.shellTools.riskAssessment.chatModel`.
+For approval debugging, open the `Agent Helper Kit` output channel to inspect shell risk-assessment prompts, raw model responses, and cached results; large log entries are truncated for readability.
 
 When using `run_in_shell`, provide:
 

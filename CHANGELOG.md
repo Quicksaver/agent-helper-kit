@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed shell approval debugging that could leave model-based risk-assessment decisions opaque or flood the output channel with oversized entries; the `Agent Helper Kit` output now logs prompts, raw responses, and cached outcomes with truncation for readability.
+
 ## [1.3.1] - 2026-04-15
 
 ### Fixed
