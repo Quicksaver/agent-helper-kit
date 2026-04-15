@@ -112,15 +112,31 @@ function getShellLabel(shellPath: string): string {
 }
 
 function getCommandStatusClass(command: ShellCommandListItem): string {
-  if (command.isRunning) {
+  if (command.phase === 'running') {
     return 'running';
+  }
+
+  if (command.phase === 'evaluating') {
+    return 'evaluating';
+  }
+
+  if (command.phase === 'pending-approval') {
+    return 'pending';
+  }
+
+  if (command.phase === 'queued') {
+    return 'queued';
+  }
+
+  if (command.phase === 'denied') {
+    return 'denied';
   }
 
   if (command.killedByUser) {
     return 'killed';
   }
 
-  if (command.exitCode === 0) {
+  if (command.exitCode === 0 && !command.signal) {
     return 'success';
   }
 
@@ -132,6 +148,14 @@ function getCommandStatusIcon(command: ShellCommandListItem): string {
 
   if (statusClass === 'running') {
     return '<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M7.99909 3C10.7605 3 12.9991 5.23858 12.9991 8C12.9991 10.7614 10.7605 13 7.99909 13C5.39117 13 3.2491 11.003 3.0195 8.45512C2.99471 8.1801 2.75167 7.97723 2.47664 8.00202C2.20161 8.0268 1.99875 8.26985 2.02353 8.54488C2.29916 11.6035 4.86898 14 7.99909 14C11.3128 14 13.9991 11.3137 13.9991 8C13.9991 4.68629 11.3128 2 7.99909 2C6.20656 2 4.59815 2.78613 3.49909 4.03138V2.5C3.49909 2.22386 3.27524 2 2.99909 2C2.72295 2 2.49909 2.22386 2.49909 2.5V5.5C2.49909 5.77614 2.72295 6 2.99909 6H3.08812C3.09498 6.00014 3.10184 6.00014 3.10868 6H5.99909C6.27524 6 6.49909 5.77614 6.49909 5.5C6.49909 5.22386 6.27524 5 5.99909 5H3.99863C4.91128 3.78495 6.36382 3 7.99909 3ZM7.99909 5.5C7.99909 5.22386 7.77524 5 7.49909 5C7.22295 5 6.99909 5.22386 6.99909 5.5V8.5C6.99909 8.77614 7.22295 9 7.49909 9H9.49909C9.77524 9 9.99909 8.77614 9.99909 8.5C9.99909 8.22386 9.77524 8 9.49909 8H7.99909V5.5Z"/></svg>';
+  }
+
+  if (statusClass === 'evaluating' || statusClass === 'pending') {
+    return '<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M8 1.5A6.5 6.5 0 1 0 8 14.5A6.5 6.5 0 1 0 8 1.5ZM8 2.5A5.5 5.5 0 1 1 8 13.5A5.5 5.5 0 1 1 8 2.5ZM7.5 4.5C7.5 4.22386 7.72386 4 8 4C8.27614 4 8.5 4.22386 8.5 4.5V7.69141L10.3535 8.7627C10.5926 8.90075 10.6746 9.20653 10.5361 9.44531C10.3978 9.68402 10.0912 9.76595 9.85254 9.62793L7.75 8.41211C7.59512 8.32257 7.5 8.15718 7.5 7.97852V4.5Z"/></svg>';
+  }
+
+  if (statusClass === 'queued') {
+    return '<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M8 1.5A6.5 6.5 0 1 0 8 14.5A6.5 6.5 0 1 0 8 1.5ZM6.5 5.25C6.5 4.8575 6.92857 4.61708 7.26172 4.82031L10.7617 6.95703C11.0789 7.15067 11.0789 7.6091 10.7617 7.80273L7.26172 9.93945C6.92857 10.1427 6.5 9.90227 6.5 9.50977V5.25Z"/></svg>';
   }
 
   if (statusClass === 'success') {
@@ -185,18 +209,36 @@ function buildMetadataFieldMarkup(
 }
 
 function getMetadataStatusClass(details: ShellCommandDetails): string {
-  if (details.isRunning) {
+  const statusClass = getCommandStatusClass(details);
+
+  if (statusClass === 'running') {
     return 'metadata-item-running';
   }
 
-  if (details.killedByUser || details.signal || details.exitCode !== 0) {
+  if (statusClass === 'evaluating' || statusClass === 'queued') {
+    return 'metadata-item-queued';
+  }
+
+  if (statusClass === 'pending') {
+    return 'metadata-item-pending';
+  }
+
+  if (statusClass === 'success') {
+    return 'metadata-item-success';
+  }
+
+  if (statusClass === 'killed' || statusClass === 'error' || statusClass === 'denied') {
     return 'metadata-item-error';
   }
 
-  return 'metadata-item-success';
+  return '';
 }
 
 function getExitCodeLabel(details: ShellCommandDetails): string {
+  if (details.phase !== 'completed') {
+    return '--';
+  }
+
   if (details.signal && details.exitCode !== null) {
     return `${details.signal} (${String(details.exitCode)})`;
   }
@@ -213,7 +255,7 @@ function getExitCodeLabel(details: ShellCommandDetails): string {
 }
 
 function getCompletedLabel(details: ShellCommandDetails): string {
-  if (details.isRunning) {
+  if (details.phase !== 'completed' && details.phase !== 'denied') {
     return '--';
   }
 
@@ -599,19 +641,84 @@ function resolveCommandId(target: unknown): string | undefined {
   return undefined;
 }
 
+function getDisplayText(value: string | undefined): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return '(not provided)';
+  }
+
+  return value;
+}
+
+function buildDetailFieldMarkup(label: string, value: string, options?: {
+  multiline?: boolean;
+}): string {
+  return `
+    <div class="detail-label">${escapeHtml(label)}</div>
+    <div class="detail-value${options?.multiline === true ? ' detail-value-multiline' : ''}">${escapeHtml(value)}</div>
+  `;
+}
+
+function buildDetailSectionMarkup(title: string, body: string, options?: {
+  fieldId?: string;
+  open?: boolean;
+}): string {
+  const fieldId = options?.fieldId ? ` data-detail-section="${escapeHtml(options.fieldId)}"` : '';
+  const openAttribute = options?.open ? ' open' : '';
+
+  return `
+    <details class="detail-section"${fieldId}${openAttribute}>
+      <summary>${escapeHtml(title)}</summary>
+      <div class="detail-section-body">${body}</div>
+    </details>
+  `;
+}
+
 function buildDetailsMarkup(details: ShellCommandDetails | undefined): string {
   if (!details) {
     return '<div id="metadata-block" class="metadata-block"></div><div class="details-empty"></div><div id="output-block" class="output-block"></div>';
   }
 
   const publicCommandId = toPublicCommandId(details.id);
+  const riskAssessmentContextText = details.request?.riskAssessmentContext
+    ? details.request.riskAssessmentContext.join('\n')
+    : '(not provided)';
+  const requestDetailsMarkup = buildDetailSectionMarkup('Request Details', [
+    buildDetailFieldMarkup('Explanation', getDisplayText(details.request?.explanation), {
+      multiline: true,
+    }),
+    buildDetailFieldMarkup('Goal', getDisplayText(details.request?.goal), {
+      multiline: true,
+    }),
+    buildDetailFieldMarkup('Risk Assessment', getDisplayText(details.request?.riskAssessment), {
+      multiline: true,
+    }),
+    buildDetailFieldMarkup(
+      'Risk Context',
+      riskAssessmentContextText,
+      { multiline: true },
+    ),
+  ].join(''), {
+    fieldId: 'request-details',
+  });
+  const approvalMarkup = buildDetailSectionMarkup('Approval', [
+    buildDetailFieldMarkup('Decision', details.approval?.decision ?? '(not available)'),
+    buildDetailFieldMarkup('Source', details.approval?.source ?? '(not available)'),
+    buildDetailFieldMarkup('Reason', getDisplayText(details.approval?.reason), {
+      multiline: true,
+    }),
+    buildDetailFieldMarkup('Assessment', getDisplayText(details.approval?.modelAssessment), {
+      multiline: true,
+    }),
+  ].join(''), {
+    fieldId: 'approval-details',
+  });
   const metadataFields = [
     buildMetadataFieldMarkup('Exit Code', getExitCodeLabel(details), {
       emphasized: true,
       fieldId: 'exit-code',
       statusClass: getMetadataStatusClass(details),
     }),
-    buildMetadataFieldMarkup('Shell', details.shell, {
+    buildMetadataFieldMarkup('Shell', details.shell.trim().length > 0 ? details.shell : 'unknown', {
       fieldId: 'shell',
       truncateFromStart: true,
     }),
@@ -636,6 +743,10 @@ function buildDetailsMarkup(details: ShellCommandDetails | undefined): string {
 
   return `
     <div id="metadata-block" class="metadata-block">${metadataFields}</div>
+    <div class="detail-sections">
+      ${requestDetailsMarkup}
+      ${approvalMarkup}
+    </div>
     <div class="command-header">
       <pre class="command-block">${escapeHtml(details.command)}</pre>
       <div class="command-actions">
@@ -667,9 +778,30 @@ function buildCommandItemsMarkup(
     const shellLabel = getShellLabel(command.shell);
     const publicCommandId = toPublicCommandId(command.id);
     const selectedClass = command.id === selectedCommandId ? 'selected' : '';
-    const rowAction = command.isRunning ? 'kill' : 'delete';
-    const rowActionIcon = command.isRunning ? '■' : '✕';
-    const rowActionTitle = command.isRunning ? 'Kill' : 'Delete';
+    let rowActionMarkup = '';
+
+    if (command.phase === 'running') {
+      rowActionMarkup = `
+        <button
+          class="icon-action row-action"
+          data-action="kill"
+          data-id="${escapeHtml(command.id)}"
+          title="Kill"
+          aria-label="Kill"
+        >■</button>
+      `;
+    }
+    else if (command.phase === 'completed' || command.phase === 'denied') {
+      rowActionMarkup = `
+          <button
+            class="icon-action row-action"
+            data-action="delete"
+            data-id="${escapeHtml(command.id)}"
+            title="Delete"
+            aria-label="Delete"
+          >✕</button>
+        `;
+    }
 
     return `
       <div
@@ -685,13 +817,7 @@ function buildCommandItemsMarkup(
         <span class="status-indicator ${getCommandStatusClass(command)}">${getCommandStatusIcon(command)}</span>
         <span class="command-preview">${escapeHtml(commandPreview)}</span>
         <span class="command-shell">${escapeHtml(shellLabel)}</span>
-        <button
-          class="icon-action row-action"
-          data-action="${rowAction}"
-          data-id="${escapeHtml(command.id)}"
-          title="${rowActionTitle}"
-          aria-label="${rowActionTitle}"
-        >${rowActionIcon}</button>
+        ${rowActionMarkup}
       </div>
     `;
   }).join('');

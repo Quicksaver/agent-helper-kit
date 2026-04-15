@@ -4,6 +4,7 @@ import * as path from 'node:path';
 
 import { logError } from './logging.js';
 import { SHELL_OUTPUT_DIR_ENV_VAR } from './shellOutputConstants.js';
+import type { ShellRiskAssessmentModelResult } from './shellRiskAssessment.js';
 
 export { SHELL_OUTPUT_DIR_ENV_VAR } from './shellOutputConstants.js';
 
@@ -15,6 +16,25 @@ const METADATA_FILE_SUFFIX = '.json';
 const DEFAULT_STARTUP_PURGE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 type NodeErrorWithCode = NodeJS.ErrnoException;
+
+type StoredShellCommandPhase = 'completed' | 'denied' | 'evaluating' | 'pending-approval' | 'queued' | 'running';
+
+type StoredShellRunApprovalSource = 'risk-assessment' | 'rule' | 'yolo';
+
+interface StoredShellCommandRequestDetails {
+  explanation?: string;
+  goal?: string;
+  riskAssessment?: string;
+  riskAssessmentContext?: string[];
+}
+
+interface StoredShellCommandApprovalDetails {
+  decision: 'allow' | 'ask' | 'deny';
+  modelAssessment?: string;
+  reason?: string;
+  riskAssessmentResult?: ShellRiskAssessmentModelResult;
+  source: StoredShellRunApprovalSource;
+}
 
 function isNodeErrorWithCode(error: unknown, code?: string): error is NodeErrorWithCode & { code: string } {
   if (
@@ -30,15 +50,79 @@ function isNodeErrorWithCode(error: unknown, code?: string): error is NodeErrorW
 }
 
 export interface ShellCommandMetadata {
+  approval?: StoredShellCommandApprovalDetails;
   command: string;
   completedAt: null | string;
   cwd: string;
   exitCode: null | number;
   id: string;
   killedByUser: boolean;
+  phase?: StoredShellCommandPhase;
+  request?: StoredShellCommandRequestDetails;
   shell: string;
   signal: NodeJS.Signals | null;
   startedAt: string;
+}
+
+function isRiskAssessmentResult(value: unknown): value is ShellRiskAssessmentModelResult {
+  if (typeof value !== 'object' || value === null || !('kind' in value) || typeof value.kind !== 'string') {
+    return false;
+  }
+
+  if (value.kind === 'disabled') {
+    return true;
+  }
+
+  if (!('modelId' in value) || typeof value.modelId !== 'string' || !('reason' in value) || typeof value.reason !== 'string') {
+    return false;
+  }
+
+  if (value.kind === 'error') {
+    return true;
+  }
+
+  if (value.kind === 'timeout') {
+    return 'timeoutMs' in value && typeof value.timeoutMs === 'number';
+  }
+
+  if (value.kind !== 'response' || !('decision' in value) || typeof value.decision !== 'string') {
+    return false;
+  }
+
+  return value.decision === 'allow' || value.decision === 'deny' || value.decision === 'request';
+}
+
+function isStoredApprovalDetails(value: unknown): value is StoredShellCommandApprovalDetails {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const candidate = value as Partial<StoredShellCommandApprovalDetails>;
+
+  return (candidate.decision === 'allow' || candidate.decision === 'ask' || candidate.decision === 'deny')
+    && (candidate.modelAssessment === undefined || typeof candidate.modelAssessment === 'string')
+    && (candidate.reason === undefined || typeof candidate.reason === 'string')
+    && (candidate.riskAssessmentResult === undefined || isRiskAssessmentResult(candidate.riskAssessmentResult))
+    && (candidate.source === 'risk-assessment' || candidate.source === 'rule' || candidate.source === 'yolo');
+}
+
+function isStoredRequestDetails(value: unknown): value is StoredShellCommandRequestDetails {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const candidate = value as Partial<StoredShellCommandRequestDetails>;
+
+  return (candidate.explanation === undefined || typeof candidate.explanation === 'string')
+    && (candidate.goal === undefined || typeof candidate.goal === 'string')
+    && (candidate.riskAssessment === undefined || typeof candidate.riskAssessment === 'string')
+    && (
+      candidate.riskAssessmentContext === undefined
+      || (
+        Array.isArray(candidate.riskAssessmentContext)
+        && candidate.riskAssessmentContext.every(entry => typeof entry === 'string')
+      )
+    );
 }
 
 function getOutputDirectoryPath(): string {
@@ -360,10 +444,13 @@ export function readShellCommandMetadata(shellId: string): ShellCommandMetadata 
     if (
       typeof candidate.id !== 'string'
       || typeof candidate.command !== 'string'
+      || (candidate.approval !== undefined && !isStoredApprovalDetails(candidate.approval))
       || (candidate.cwd !== undefined && typeof candidate.cwd !== 'string')
       || typeof candidate.startedAt !== 'string'
       || (candidate.completedAt !== null && typeof candidate.completedAt !== 'string')
       || (candidate.exitCode !== null && typeof candidate.exitCode !== 'number')
+      || (candidate.phase !== undefined && ![ 'completed', 'denied', 'evaluating', 'pending-approval', 'queued', 'running' ].includes(candidate.phase))
+      || (candidate.request !== undefined && !isStoredRequestDetails(candidate.request))
       || (candidate.signal !== null && typeof candidate.signal !== 'string')
       || typeof candidate.killedByUser !== 'boolean'
     ) {
@@ -371,12 +458,15 @@ export function readShellCommandMetadata(shellId: string): ShellCommandMetadata 
     }
 
     return {
+      approval: candidate.approval,
       command: candidate.command,
       completedAt: candidate.completedAt,
       cwd: typeof candidate.cwd === 'string' ? candidate.cwd : os.homedir(),
       exitCode: candidate.exitCode,
       id: candidate.id,
       killedByUser: candidate.killedByUser,
+      phase: candidate.phase,
+      request: candidate.request,
       shell: typeof candidate.shell === 'string' ? candidate.shell : '',
       signal: candidate.signal,
       startedAt: candidate.startedAt,

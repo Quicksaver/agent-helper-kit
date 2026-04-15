@@ -235,6 +235,40 @@ describe('ShellRuntime session command list', () => {
     ]);
     expect(runtime.deleteCompletedCommand(completedId)).toBe(false);
   });
+
+  it('treats denied planned commands as terminal records for listing and clearing', () => {
+    const runtime = new ShellRuntime({});
+
+    const id = runtime.createPlannedCommandRecord('git checkout main', {
+      approval: {
+        decision: 'deny',
+        reason: 'The shell approval policy denied this command.',
+        source: 'rule',
+      },
+      cwd: '/workspace',
+      phase: 'denied',
+      request: {
+        explanation: 'switch branches',
+        goal: 'move to main',
+        riskAssessment: 'This may replace files in the working tree.',
+      },
+      shell: '/bin/bash',
+    });
+
+    const deniedCommand = runtime.listCommands()[0];
+
+    expect(deniedCommand).toMatchObject({
+      id,
+      isRunning: false,
+      phase: 'denied',
+    });
+    expect(deniedCommand.approval).toMatchObject({
+      decision: 'deny',
+      source: 'rule',
+    });
+    expect(runtime.clearCompletedCommands()).toBe(1);
+    expect(runtime.listCommands()).toEqual([]);
+  });
 });
 
 describe('ShellRuntime shell id generation', () => {
@@ -392,6 +426,190 @@ describe('ShellRuntime shell id generation', () => {
 });
 
 describe('ShellRuntime background execution', () => {
+  it('reuses a planned command record when the shell process starts after approval', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const plannedId = runtime.createPlannedCommandRecord('git checkout main', {
+      approval: {
+        decision: 'ask',
+        reason: 'Explicit approval is required.',
+        source: 'risk-assessment',
+      },
+      cwd: '/workspace',
+      phase: 'pending-approval',
+      request: {
+        explanation: 'switch branches',
+        goal: 'move to main',
+        riskAssessment: 'This may replace files in the working tree.',
+      },
+      shell: '/bin/bash',
+    });
+
+    const runningId = runtime.startBackgroundCommand('git checkout main', {
+      cwd: '/workspace',
+      id: plannedId,
+      shell: '/bin/bash',
+    });
+
+    expect(runningId).toBe(plannedId);
+    const runningCommand = runtime.listCommands()[0];
+
+    expect(runningCommand).toMatchObject({
+      id: plannedId,
+      isRunning: true,
+      phase: 'running',
+    });
+    expect(runningCommand.approval).toMatchObject({
+      decision: 'ask',
+      source: 'risk-assessment',
+    });
+    expect(runningCommand.request).toMatchObject({
+      explanation: 'switch branches',
+    });
+
+    fakeProcess.emit('close', 0, null);
+
+    await expect(runtime.awaitBackgroundCommand({
+      id: plannedId,
+      timeout: 0,
+    })).resolves.toMatchObject({
+      exitCode: 0,
+      timedOut: false,
+    });
+    await expect(runtime.getCommandDetails(plannedId)).resolves.toMatchObject({
+      isRunning: false,
+      phase: 'completed',
+    });
+  });
+
+  it('updates nonterminal planned records and handles unknown ids', async () => {
+    const runtime = new ShellRuntime({});
+
+    expect(runtime.updateCommandRecord('shell-missing', {
+      phase: 'queued',
+    })).toBe(false);
+
+    const plannedId = runtime.createPlannedCommandRecord('echo queued', {
+      cwd: '/workspace',
+      phase: 'evaluating',
+      shell: '/bin/bash',
+    });
+
+    expect(runtime.updateCommandRecord(plannedId, {
+      approval: {
+        decision: 'allow',
+        reason: 'Every parsed subcommand matched an allow rule.',
+        source: 'rule',
+      },
+      completedAt: '2026-03-10T00:01:00.000Z',
+      cwd: '/workspace/project',
+      request: {
+        goal: 'inspect the repository',
+      },
+      shell: '/bin/zsh',
+    })).toBe(true);
+    expect(runtime.updateCommandRecord(plannedId, {
+      phase: 'queued',
+    })).toBe(true);
+
+    const updatedDetails = await runtime.getCommandDetails(plannedId);
+
+    expect(updatedDetails).toMatchObject({
+      completedAt: null,
+      cwd: '/workspace/project',
+      phase: 'queued',
+      request: {
+        goal: 'inspect the repository',
+      },
+      shell: '/bin/zsh',
+    });
+    expect(updatedDetails.approval).toMatchObject({
+      decision: 'allow',
+      source: 'rule',
+    });
+  });
+
+  it('marks planned records completed and ignores blank cwd and shell overrides', async () => {
+    const runtime = new ShellRuntime({});
+
+    const plannedId = runtime.createPlannedCommandRecord('echo done', {
+      cwd: '/workspace',
+      phase: 'queued',
+      shell: '/bin/bash',
+    });
+
+    expect(runtime.updateCommandRecord(plannedId, {
+      completedAt: '2026-03-10T00:01:00.000Z',
+      cwd: '   ',
+      phase: 'completed',
+      shell: '   ',
+    })).toBe(true);
+
+    await expect(runtime.awaitBackgroundCommand({
+      id: plannedId,
+      timeout: 0,
+    })).resolves.toMatchObject({
+      exitCode: null,
+      shell: '/bin/bash',
+      timedOut: false,
+    });
+    await expect(runtime.getCommandDetails(plannedId)).resolves.toMatchObject({
+      completedAt: '2026-03-10T00:01:00.000Z',
+      cwd: '/workspace',
+      phase: 'completed',
+      shell: '/bin/bash',
+    });
+  });
+
+  it('starts a new runtime entry when the requested planned id is already terminal', async () => {
+    const fakeProcess = createFakeProcess();
+    spawn.mockReturnValue(fakeProcess);
+    const runtime = new ShellRuntime({});
+
+    const deniedId = runtime.createPlannedCommandRecord('rm -rf build', {
+      approval: {
+        decision: 'deny',
+        reason: 'The shell approval policy denied this command.',
+        source: 'rule',
+      },
+      cwd: '/workspace',
+      phase: 'denied',
+      shell: '/bin/bash',
+    });
+
+    const runningId = runtime.startBackgroundCommand('echo separate', {
+      cwd: '/workspace',
+      id: deniedId,
+      shell: '/bin/bash',
+    });
+
+    expect(runningId).not.toBe(deniedId);
+    expect(runtime.listCommands()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: deniedId,
+        isRunning: false,
+        phase: 'denied',
+      }),
+      expect.objectContaining({
+        id: runningId,
+        isRunning: true,
+        phase: 'running',
+      }),
+    ]));
+
+    fakeProcess.emit('close', 0, null);
+
+    await expect(runtime.awaitBackgroundCommand({
+      id: runningId,
+      timeout: 0,
+    })).resolves.toMatchObject({
+      exitCode: 0,
+      timedOut: false,
+    });
+  });
+
   it('returns timedOut when awaiting a command that is still running after the timeout', async () => {
     const fakeProcess = createFakeProcess();
     spawn.mockReturnValue(fakeProcess);

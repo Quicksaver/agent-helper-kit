@@ -17,6 +17,8 @@ import type {
   ShellRuntime,
 } from '@/shellRuntime';
 
+const logError = vi.hoisted(() => vi.fn());
+
 type MessageHandler = (message: unknown) => Promise<void> | void;
 
 const capturedProviders: unknown[] = [];
@@ -48,6 +50,18 @@ const vscode = vi.hoisted(() => ({
       writeText: vi.fn(async () => undefined),
     },
   },
+  Uri: {
+    joinPath: vi.fn((base: { fsPath?: string; path?: string }, ...segments: string[]) => {
+      const basePath = base.fsPath ?? base.path ?? '';
+      const joinedPath = path.posix.join(basePath, ...segments);
+
+      return {
+        fsPath: joinedPath,
+        path: joinedPath,
+        toString: () => joinedPath,
+      };
+    }),
+  },
   window: {
     registerWebviewViewProvider: vi.fn((viewId: string, provider: unknown) => {
       capturedProviders.push(provider);
@@ -59,16 +73,20 @@ const vscode = vi.hoisted(() => ({
 }));
 
 vi.mock('vscode', () => vscode);
+vi.mock('@/logging', () => ({ logError }));
 
 function createCommand(overrides: Partial<ShellCommandListItem> = {}): ShellCommandListItem {
+  const isRunning = overrides.isRunning ?? true;
+
   return {
     command: 'printf test',
     completedAt: null,
     cwd: '/workspace/project',
     exitCode: null,
     id: 'shell-1234abcd',
-    isRunning: true,
+    isRunning,
     killedByUser: false,
+    phase: isRunning ? 'running' : 'completed',
     shell: '/bin/zsh',
     signal: null,
     startedAt: '2026-03-10T00:00:00.000Z',
@@ -77,8 +95,13 @@ function createCommand(overrides: Partial<ShellCommandListItem> = {}): ShellComm
 }
 
 function createDetails(overrides: Partial<ShellCommandDetails> = {}): ShellCommandDetails {
+  const isRunning = overrides.isRunning ?? true;
+
   return {
-    ...createCommand(),
+    ...createCommand({
+      isRunning,
+      phase: overrides.phase ?? (isRunning ? 'running' : 'completed'),
+    }),
     output: 'first line\n',
     ...overrides,
   };
@@ -92,11 +115,17 @@ function createRuntime(detailsRef: { current: ShellCommandDetails }): ShellRunti
     killBackgroundCommand: vi.fn(() => true),
     listCommands: vi.fn(() => [
       createCommand({
+        approval: detailsRef.current.approval,
+        command: detailsRef.current.command,
         completedAt: detailsRef.current.completedAt,
+        cwd: detailsRef.current.cwd,
         exitCode: detailsRef.current.exitCode,
         id: detailsRef.current.id,
         isRunning: detailsRef.current.isRunning,
         killedByUser: detailsRef.current.killedByUser,
+        phase: detailsRef.current.phase,
+        request: detailsRef.current.request,
+        shell: detailsRef.current.shell,
         signal: detailsRef.current.signal,
       }),
     ]),
@@ -202,6 +231,51 @@ describe('ShellCommandsPanelProvider polling', () => {
     expect(postMessage).not.toHaveBeenCalled();
   });
 
+  it('resolves webview asset URIs from the extension URI when available', async () => {
+    const detailsRef = {
+      current: createDetails({ isRunning: false, phase: 'completed' }),
+    };
+    const runtime = createRuntime(detailsRef);
+    const extensionUri = {
+      fsPath: '/extension-root',
+      path: '/extension-root',
+      toString: () => '/extension-root',
+    } as unknown as import('vscode').Uri;
+
+    registerShellCommandsPanel(() => runtime, extensionUri);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const asWebviewUri = vi.fn((uri: { fsPath?: string; path?: string; toString: () => string }) => ({
+      toString: () => `webview:${uri.fsPath ?? uri.path ?? uri.toString()}`,
+    }));
+
+    Object.assign(rawWebviewView.webview, {
+      asWebviewUri,
+      cspSource: 'vscode-webview-source',
+    });
+
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    expect(vscode.Uri.joinPath).toHaveBeenCalledWith(extensionUri, 'dist', 'webviews');
+    expect(vscode.Uri.joinPath).toHaveBeenCalledWith(extensionUri, 'dist', 'webviews', 'shellCommandsPanelWebview.js');
+    expect(vscode.Uri.joinPath).toHaveBeenCalledWith(extensionUri, 'dist', 'webviews', 'shellCommandsPanelWebview.css');
+    expect(asWebviewUri).toHaveBeenCalledTimes(2);
+    expect(rawWebviewView.webview.options).toEqual({
+      enableScripts: true,
+      localResourceRoots: [
+        expect.objectContaining({ fsPath: '/extension-root/dist/webviews' }),
+      ],
+    });
+    expect(rawWebviewView.webview.html).toContain('style-src vscode-webview-source; script-src vscode-webview-source;');
+    expect(rawWebviewView.webview.html).toContain('href="webview:/extension-root/dist/webviews/shellCommandsPanelWebview.css"');
+    expect(rawWebviewView.webview.html).toContain('src="webview:/extension-root/dist/webviews/shellCommandsPanelWebview.js"');
+  });
+
   it('posts only an output update when new output arrives for the selected running command', async () => {
     const detailsRef = {
       current: createDetails(),
@@ -245,6 +319,38 @@ describe('ShellCommandsPanelProvider polling', () => {
       type: 'replaceOutput',
     }));
     expect(firstMessage?.outputHtml).toEqual(expect.stringContaining('second line'));
+  });
+
+  it('logs polling errors when output updates fail to post to the webview', async () => {
+    const detailsRef = {
+      current: createDetails(),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const {
+      getMessageHandler,
+      postMessage,
+      webviewView: rawWebviewView,
+    } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+    await getMessageHandler()?.({ type: 'ready' });
+    await flushWebviewMessageMicrotasks();
+    postMessage.mockClear();
+
+    detailsRef.current = createDetails({ output: 'first line\nsecond line\n' });
+    postMessage.mockRejectedValueOnce(new Error('webview unavailable'));
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await flushWebviewMessageMicrotasks();
+
+    expect(logError).toHaveBeenCalledWith('Failed to refresh running shell command output: Error: webview unavailable');
   });
 
   it('escapes shell output and uses inline styles for non-palette ANSI colors', async () => {
@@ -468,6 +574,7 @@ describe('ShellCommandsPanelProvider polling', () => {
     expect(rawWebviewView.webview.html).toContain('>1234abcd<');
     expect(rawWebviewView.webview.html).toContain('data-copy-field="cwd"');
     expect(rawWebviewView.webview.html).toContain('data-copy-field="id"');
+    expect(rawWebviewView.webview.html).not.toContain('data-metadata-field="status"');
     expect(rawWebviewView.webview.html).toContain('data-metadata-field="shell"');
     expect(rawWebviewView.webview.html).toContain('data-metadata-field="cwd"');
     expect(rawWebviewView.webview.html).toContain('data-truncate-from-start="true"');
@@ -500,9 +607,192 @@ describe('ShellCommandsPanelProvider polling', () => {
 
     expect(rawWebviewView.webview.html).toContain('>--<');
     expect(rawWebviewView.webview.html.match(/>--</g)?.length).toBe(2);
-    expect(rawWebviewView.webview.html).not.toContain('>Running...<');
-    expect(rawWebviewView.webview.html).toContain('data-metadata-field="exit-code"');
+    expect(rawWebviewView.webview.html).not.toContain('data-metadata-field="status"');
     expect(rawWebviewView.webview.html).toContain('data-metadata-status="running"');
+  });
+
+  it('renders pending approval request details without the raw risk assessment result section', async () => {
+    const detailsRef = {
+      current: createDetails({
+        approval: {
+          decision: 'ask',
+          modelAssessment: 'The command may overwrite checked out files.',
+          reason: 'Risk assessment requested explicit approval before running this command.',
+          riskAssessmentResult: {
+            decision: 'request',
+            kind: 'response',
+            modelId: 'copilot:gpt-4.1',
+            reason: 'The command may overwrite checked out files.',
+          },
+          source: 'risk-assessment',
+        },
+        command: 'git checkout main',
+        completedAt: null,
+        exitCode: null,
+        isRunning: false,
+        output: '',
+        phase: 'pending-approval',
+        request: {
+          explanation: 'switch branches',
+          goal: 'move to main',
+          riskAssessment: 'This may replace files in the working tree.',
+          riskAssessmentContext: [ 'git checkout main', 'src/shellTools.ts' ],
+        },
+      }),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    expect(rawWebviewView.webview.html).toContain('data-detail-section="request-details"');
+    expect(rawWebviewView.webview.html).toContain('switch branches');
+    expect(rawWebviewView.webview.html).toContain('git checkout main');
+    expect(rawWebviewView.webview.html).toContain('src/shellTools.ts');
+    expect(rawWebviewView.webview.html).toContain('data-detail-section="approval-details"');
+    expect(rawWebviewView.webview.html).toContain('risk-assessment');
+    expect(rawWebviewView.webview.html).not.toContain('data-detail-section="risk-assessment-result"');
+    expect(rawWebviewView.webview.html).not.toContain('data-metadata-field="status"');
+    expect(rawWebviewView.webview.html).toContain('data-metadata-status="pending"');
+    expect(rawWebviewView.webview.html).toContain('class="status-indicator pending"');
+    expect(rawWebviewView.webview.html).not.toContain('class="icon-action row-action"');
+  });
+
+  it('renders evaluating, queued, and denied command states in the list and details pane', async () => {
+    const evaluatingCommand = createCommand({
+      command: 'echo evaluate',
+      id: 'shell-evaluating',
+      isRunning: false,
+      phase: 'evaluating',
+    });
+    const queuedCommand = createCommand({
+      command: 'echo queued',
+      id: 'shell-queued',
+      isRunning: false,
+      phase: 'queued',
+    });
+    const deniedCommand = createCommand({
+      command: 'rm -rf build',
+      completedAt: '2026-03-10T00:01:00.000Z',
+      id: 'shell-denied',
+      isRunning: false,
+      phase: 'denied',
+    });
+    const runtime = {
+      clearCompletedCommands: vi.fn(() => 0),
+      deleteCompletedCommand: vi.fn(() => false),
+      getCommandDetails: vi.fn(async (commandId: string) => {
+        if (commandId === queuedCommand.id) {
+          return createDetails({
+            approval: {
+              decision: 'allow',
+              reason: 'Every parsed subcommand matched an allow rule.',
+              source: 'rule',
+            },
+            command: queuedCommand.command,
+            id: queuedCommand.id,
+            isRunning: false,
+            output: '',
+            phase: 'queued',
+          });
+        }
+
+        throw new Error('unexpected command');
+      }),
+      killBackgroundCommand: vi.fn(() => true),
+      listCommands: vi.fn(() => [ queuedCommand, evaluatingCommand, deniedCommand ]),
+      onDidChangeCommands: vi.fn(() => () => undefined),
+    } as unknown as ShellRuntime;
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    expect(rawWebviewView.webview.html).toContain('class="status-indicator queued"');
+    expect(rawWebviewView.webview.html).toContain('class="status-indicator evaluating"');
+    expect(rawWebviewView.webview.html).toContain('class="status-indicator denied"');
+    expect(rawWebviewView.webview.html).toContain('data-action="delete"');
+  });
+
+  it('renders denied details with terminal status metadata and a completion timestamp', async () => {
+    const detailsRef = {
+      current: createDetails({
+        approval: {
+          decision: 'deny',
+          reason: 'The shell approval policy denied this command.',
+          source: 'rule',
+        },
+        command: 'rm -rf build',
+        completedAt: '2026-03-10T00:01:00.000Z',
+        id: 'shell-denied-selected',
+        isRunning: false,
+        output: '',
+        phase: 'denied',
+      }),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    expect(rawWebviewView.webview.html).not.toContain('data-metadata-field="status"');
+    expect(rawWebviewView.webview.html).toContain('data-metadata-status="error"');
+    expect(rawWebviewView.webview.html).toContain('data-metadata-field="completed"');
+    expect(rawWebviewView.webview.html).toContain('The shell approval policy denied this command.');
+    expect(rawWebviewView.webview.html).toContain('class="status-indicator denied"');
+    expect(rawWebviewView.webview.html).toContain('data-action="delete"');
+  });
+
+  it('renders evaluating details without a risk assessment result section', async () => {
+    const detailsRef = {
+      current: createDetails({
+        command: 'git status',
+        id: 'shell-evaluating-selected',
+        isRunning: false,
+        output: '',
+        phase: 'evaluating',
+        request: {
+          explanation: '',
+        },
+      }),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    expect(rawWebviewView.webview.html).not.toContain('data-metadata-field="status"');
+    expect(rawWebviewView.webview.html).toContain('data-metadata-status="queued"');
+    expect(rawWebviewView.webview.html).toContain('(not provided)');
+    expect(rawWebviewView.webview.html).toContain('class="status-indicator evaluating"');
+    expect(rawWebviewView.webview.html).not.toContain('data-detail-section="risk-assessment-result"');
   });
 
   it('copies the public id and cwd from metadata actions', async () => {
@@ -1189,6 +1479,35 @@ describe('ShellCommandsPanelProvider polling', () => {
     expect(html).toContain('>unknown<');
     expect(html).toContain('>SIGINT<');
     expect(html).toContain('>not-a-date<');
+  });
+
+  it('renders placeholder exit codes for completed commands without an exit code', async () => {
+    const detailsRef = {
+      current: createDetails({
+        command: 'printf no-exit',
+        completedAt: '2026-03-10T00:01:00.000Z',
+        exitCode: null,
+        id: 'shell-no-exit',
+        isRunning: false,
+        output: '',
+        phase: 'completed',
+        signal: null,
+      }),
+    };
+    const runtime = createRuntime(detailsRef);
+
+    registerShellCommandsPanel(() => runtime);
+
+    const provider = capturedProviders[0] as {
+      resolveWebviewView: (view: import('vscode').WebviewView) => Promise<void>;
+    };
+    const { webviewView: rawWebviewView } = createWebviewView();
+    const webviewView = rawWebviewView as unknown as import('vscode').WebviewView;
+
+    await provider.resolveWebviewView(webviewView);
+
+    expect(rawWebviewView.webview.html).toContain('data-metadata-field="exit-code"');
+    expect(rawWebviewView.webview.html).toContain('>--<');
   });
 
   it('copies the command text when copyField is omitted', async () => {

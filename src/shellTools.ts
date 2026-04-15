@@ -36,6 +36,7 @@ import {
   analyzeShellRunRuleDisposition,
   buildShellRunConfirmationMessage,
   decideShellRunApproval,
+  type ShellRunApprovalDecision,
 } from '@/shellToolSecurity';
 
 const DEFAULT_MEMORY_OUTPUT_LIMIT_KIB = 512;
@@ -306,11 +307,66 @@ function getShellInputPreview(input: string, options?: {
   return trimmedInput.split('\n')[0];
 }
 
+const preparedRunInShellCommandIdsBySignature = new Map<string, string[]>();
+
+function buildPreparedRunInShellSignature(input: RunInShellInput, resolvedCwd: string, selectedShell: string): string {
+  return JSON.stringify({
+    command: input.command,
+    cwd: resolvedCwd,
+    explanation: input.explanation,
+    goal: input.goal,
+    riskAssessment: input.riskAssessment,
+    riskAssessmentContext: input.riskAssessmentContext ?? [],
+    shell: selectedShell,
+  });
+}
+
+function claimPreparedRunInShellCommandId(signature: string): string | undefined {
+  const ids = preparedRunInShellCommandIdsBySignature.get(signature);
+  const id = ids?.pop();
+
+  if (!ids || ids.length === 0) {
+    preparedRunInShellCommandIdsBySignature.delete(signature);
+  }
+
+  return id;
+}
+
+function queuePreparedRunInShellCommandId(signature: string, id: string): void {
+  const ids = preparedRunInShellCommandIdsBySignature.get(signature) ?? [];
+
+  ids.push(id);
+  preparedRunInShellCommandIdsBySignature.set(signature, ids);
+}
+
+function toShellCommandApprovalDetails(approvalDecision: ShellRunApprovalDecision) {
+  return {
+    decision: approvalDecision.decision,
+    modelAssessment: approvalDecision.modelAssessment,
+    reason: approvalDecision.reason,
+    riskAssessmentResult: approvalDecision.riskAssessmentResult,
+    source: approvalDecision.source,
+  } as const;
+}
+
+function toShellCommandRequestDetails(input: RunInShellInput) {
+  return {
+    explanation: input.explanation,
+    goal: input.goal,
+    riskAssessment: input.riskAssessment,
+    riskAssessmentContext: input.riskAssessmentContext,
+  } as const;
+}
+
 const runInShellTool: vscode.LanguageModelTool<RunInShellInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<RunInShellInput>,
   ): Promise<vscode.LanguageModelToolResult> {
     const input = validateRunInShellInput(options.input);
+    const resolvedCwd = resolveCommandCwd(input.cwd);
+    const selectedShell = getRequestedOrDefaultShell(input.shell);
+    const preparedSignature = buildPreparedRunInShellSignature(input, resolvedCwd, selectedShell);
+    const preparedCommandId = claimPreparedRunInShellCommandId(preparedSignature);
     // Re-check only hard deny rules here as defense in depth in case policy
     // changes between prepare and invoke. Model-based ask/allow decisions are
     // intentionally resolved during prepareInvocation and, when needed, by the
@@ -318,15 +374,36 @@ const runInShellTool: vscode.LanguageModelTool<RunInShellInput> = {
     const ruleDisposition = analyzeShellRunRuleDisposition(input.command);
 
     if (ruleDisposition.decision === 'deny') {
+      const deniedApproval = {
+        decision: 'deny',
+        reason: ruleDisposition.reason ?? 'The shell approval policy denied this command.',
+        source: 'rule',
+      } as const;
+
+      if (preparedCommandId) {
+        getShellRuntime().updateCommandRecord(preparedCommandId, {
+          approval: deniedApproval,
+          phase: 'denied',
+        });
+      }
+      else {
+        getShellRuntime().createPlannedCommandRecord(input.command, {
+          approval: deniedApproval,
+          cwd: resolvedCwd,
+          phase: 'denied',
+          request: toShellCommandRequestDetails(input),
+          shell: selectedShell,
+        });
+      }
+
       throw new Error(ruleDisposition.reason ?? 'The shell approval policy denied this command.');
     }
 
-    const resolvedCwd = resolveCommandCwd(input.cwd);
     const shellRuntimeInstance = getShellRuntime();
-    const selectedShell = getRequestedOrDefaultShell(input.shell);
     const id = shellRuntimeInstance.startBackgroundCommand(input.command, {
       columns: input.columns,
       cwd: resolvedCwd,
+      id: preparedCommandId,
       shell: selectedShell,
     });
 
@@ -391,20 +468,49 @@ const runInShellTool: vscode.LanguageModelTool<RunInShellInput> = {
     options: vscode.LanguageModelToolInvocationPrepareOptions<RunInShellInput>,
     token: vscode.CancellationToken,
   ): Promise<vscode.PreparedToolInvocation> {
-    const commandPreview = getShellInputPreview(options.input.command) ?? '(empty command)';
-    const resolvedCwd = resolveCommandCwd(options.input.cwd);
-    const approvalDecision = await decideShellRunApproval({
-      command: options.input.command,
+    const input = validateRunInShellInput(options.input);
+    const commandPreview = getShellInputPreview(input.command) ?? '(empty command)';
+    const resolvedCwd = resolveCommandCwd(input.cwd);
+    const selectedShell = getRequestedOrDefaultShell(input.shell);
+    const shellRuntimeInstance = getShellRuntime();
+    const commandRecordId = shellRuntimeInstance.createPlannedCommandRecord(input.command, {
       cwd: resolvedCwd,
-      explanation: options.input.explanation,
-      goal: options.input.goal,
-      riskAssessment: options.input.riskAssessment,
-      riskAssessmentContext: options.input.riskAssessmentContext,
+      phase: 'evaluating',
+      request: toShellCommandRequestDetails(input),
+      shell: selectedShell,
+    });
+    const approvalDecision = await decideShellRunApproval({
+      command: input.command,
+      cwd: resolvedCwd,
+      explanation: input.explanation,
+      goal: input.goal,
+      riskAssessment: input.riskAssessment,
+      riskAssessmentContext: input.riskAssessmentContext,
     }, token);
+
+    shellRuntimeInstance.updateCommandRecord(commandRecordId, {
+      approval: toShellCommandApprovalDetails(approvalDecision),
+      phase: (() => {
+        if (approvalDecision.decision === 'allow') {
+          return 'queued' as const;
+        }
+
+        if (approvalDecision.decision === 'ask') {
+          return 'pending-approval' as const;
+        }
+
+        return 'denied' as const;
+      })(),
+    });
 
     if (approvalDecision.decision === 'deny') {
       throw new Error(approvalDecision.reason ?? 'The shell approval policy denied this command.');
     }
+
+    queuePreparedRunInShellCommandId(
+      buildPreparedRunInShellSignature(input, resolvedCwd, selectedShell),
+      commandRecordId,
+    );
 
     return {
       confirmationMessages: approvalDecision.decision === 'allow'
@@ -412,12 +518,12 @@ const runInShellTool: vscode.LanguageModelTool<RunInShellInput> = {
         : {
           message: buildShellRunConfirmationMessage({
             approvalDecision,
-            command: options.input.command,
+            command: input.command,
             cwd: resolvedCwd,
-            explanation: options.input.explanation,
-            goal: options.input.goal,
-            riskAssessment: options.input.riskAssessment,
-            riskAssessmentContext: options.input.riskAssessmentContext,
+            explanation: input.explanation,
+            goal: input.goal,
+            riskAssessment: input.riskAssessment,
+            riskAssessmentContext: input.riskAssessmentContext,
           }),
           title: SHELL_TOOL_METADATA.runInShell.confirmationTitle,
         },

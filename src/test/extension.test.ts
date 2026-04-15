@@ -140,7 +140,7 @@ describe('Extension', () => {
       'agent-helper-kit.reviewCommentToChat',
       reviewCommentToChat,
     );
-    expect(vscode.window.createOutputChannel).toHaveBeenCalledWith('Agent Helper Kit');
+    expect(vscode.window.createOutputChannel).toHaveBeenCalledWith('Agent Helper Kit', { log: true });
   });
 
   it('registers the chat participant on activation', () => {

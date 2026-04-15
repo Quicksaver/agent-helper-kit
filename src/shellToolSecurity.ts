@@ -9,10 +9,13 @@ import { EXTENSION_CONFIG_SECTION } from '@/reviewCommentConfig';
 import {
   assessShellCommandRisk,
   SHELL_TOOLS_RISK_ASSESSMENT_CHAT_MODEL_KEY,
+  type ShellRiskAssessmentModelResult,
 } from '@/shellRiskAssessment';
 
 export const SHELL_TOOLS_APPROVAL_RULES_KEY = 'shellTools.approvalRules';
 export const SHELL_TOOLS_AUTO_APPROVE_POTENTIALLY_DESTRUCTIVE_COMMANDS_KEY = 'shellTools.autoApprovePotentiallyDestructiveCommands';
+
+export type ShellRunApprovalSource = 'risk-assessment' | 'rule' | 'yolo';
 
 export type ApprovalRuleValue = 'allow' | 'ask' | 'deny';
 
@@ -75,6 +78,8 @@ export type ShellRunApprovalDecision = {
   decision: 'allow' | 'ask' | 'deny';
   modelAssessment?: string;
   reason?: string;
+  riskAssessmentResult?: ShellRiskAssessmentModelResult;
+  source: ShellRunApprovalSource;
 };
 
 const DEFAULT_APPROVAL_RULES: ApprovalRuleMap = {
@@ -1254,6 +1259,7 @@ export async function decideShellRunApproval(options: {
     return {
       decision: 'allow',
       reason: ruleDisposition.reason,
+      source: 'rule',
     };
   }
 
@@ -1261,6 +1267,7 @@ export async function decideShellRunApproval(options: {
     return {
       decision: 'ask',
       reason: ruleDisposition.reason,
+      source: 'rule',
     };
   }
 
@@ -1268,6 +1275,7 @@ export async function decideShellRunApproval(options: {
     return {
       decision: 'deny',
       reason: ruleDisposition.reason,
+      source: 'rule',
     };
   }
 
@@ -1278,6 +1286,7 @@ export async function decideShellRunApproval(options: {
     return {
       decision: 'allow',
       reason: 'The YOLO override is enabled, so unresolved commands run without risk-assessment prompting.',
+      source: 'yolo',
     };
   }
 
@@ -1293,7 +1302,8 @@ export async function decideShellRunApproval(options: {
   if (modelResult.kind === 'disabled') {
     return {
       decision: 'ask',
-      reason: `Risk assessment model is disabled via ${SHELL_TOOLS_RISK_ASSESSMENT_CHAT_MODEL_KEY}, so explicit approval is required.`,
+      reason: `Model is disabled via ${SHELL_TOOLS_RISK_ASSESSMENT_CHAT_MODEL_KEY}.`,
+      source: 'risk-assessment',
     };
   }
 
@@ -1301,7 +1311,9 @@ export async function decideShellRunApproval(options: {
     return {
       decision: 'ask',
       modelAssessment: modelResult.reason,
-      reason: 'Risk assessment could not determine that this command is safe enough to run without approval.',
+      reason: `Model ${modelResult.modelId} failed to assess the command.`,
+      riskAssessmentResult: modelResult,
+      source: 'risk-assessment',
     };
   }
 
@@ -1309,7 +1321,9 @@ export async function decideShellRunApproval(options: {
     return {
       decision: 'ask',
       modelAssessment: modelResult.reason,
-      reason: 'Risk assessment timed out, so explicit approval is required.',
+      reason: `Model ${modelResult.modelId} timed out.`,
+      riskAssessmentResult: modelResult,
+      source: 'risk-assessment',
     };
   }
 
@@ -1317,7 +1331,9 @@ export async function decideShellRunApproval(options: {
     return {
       decision: 'allow',
       modelAssessment: modelResult.reason,
-      reason: `Risk assessment model ${modelResult.modelId} allowed the command to run without explicit approval.`,
+      reason: `Model ${modelResult.modelId} allowed the command.`,
+      riskAssessmentResult: modelResult,
+      source: 'risk-assessment',
     };
   }
 
@@ -1325,14 +1341,18 @@ export async function decideShellRunApproval(options: {
     return {
       decision: 'deny',
       modelAssessment: modelResult.reason,
-      reason: `Risk assessment model ${modelResult.modelId} denied the command because it appears clearly malicious or outright destructive.`,
+      reason: `Model ${modelResult.modelId} denied the command.`,
+      riskAssessmentResult: modelResult,
+      source: 'risk-assessment',
     };
   }
 
   return {
     decision: 'ask',
     modelAssessment: modelResult.reason,
-    reason: 'Risk assessment requested explicit approval before running this command.',
+    reason: `Model ${modelResult.modelId} requested explicit approval.`,
+    riskAssessmentResult: modelResult,
+    source: 'risk-assessment',
   };
 }
 

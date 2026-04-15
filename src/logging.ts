@@ -2,7 +2,9 @@ import * as vscode from 'vscode';
 
 const OUTPUT_CHANNEL_NAME = 'Agent Helper Kit';
 
-let outputChannel: undefined | vscode.OutputChannel;
+type LogLevel = 'ERROR' | 'INFO' | 'WARN';
+
+let outputChannel: undefined | vscode.LogOutputChannel;
 
 function getLogLines(message: string): string[] {
   return message
@@ -10,24 +12,38 @@ function getLogLines(message: string): string[] {
     .split(/\r?\n/u);
 }
 
-function getTimestamp(): string {
-  return new Date().toISOString();
+function writeLogLine(channel: vscode.LogOutputChannel, level: LogLevel, line: string): void {
+  if (typeof channel.appendLine === 'function' && typeof channel.info !== 'function') {
+    channel.appendLine(line);
+    return;
+  }
+
+  if (level === 'ERROR') {
+    channel.error(line);
+    return;
+  }
+
+  if (level === 'WARN') {
+    channel.warn(line);
+    return;
+  }
+
+  channel.info(line);
 }
 
-export function getExtensionOutputChannel(): vscode.OutputChannel {
+export function getExtensionOutputChannel(): vscode.LogOutputChannel {
   if (!outputChannel) {
-    outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
+    outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME, { log: true });
   }
 
   return outputChannel;
 }
 
-export function logToExtensionChannel(level: 'ERROR' | 'INFO' | 'WARN', message: string): void {
+export function logToExtensionChannel(level: LogLevel, message: string): void {
   const channel = getExtensionOutputChannel();
-  const prefix = `[${getTimestamp()}] [${level}] `;
 
   for (const line of getLogLines(message)) {
-    channel.appendLine(`${prefix}${line}`);
+    writeLogLine(channel, level, line);
   }
 }
 

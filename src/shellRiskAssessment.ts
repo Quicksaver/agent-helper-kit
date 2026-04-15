@@ -446,52 +446,60 @@ function formatRiskAssessmentResponseForLog(responseText: string): string {
   return truncateRiskAssessmentLogText(normalizedResponse);
 }
 
-function logRiskAssessmentPrompt(modelId: string, timeoutMs: number, prompt: string): void {
-  logInfo([
-    'Shell risk assessment prompt:',
-    `Model: ${modelId}`,
-    `Timeout: ${timeoutMs}ms`,
-    'Prompt:',
-    truncateRiskAssessmentLogText(prompt),
-  ].join('\n'));
+function formatInlineRiskAssessmentLogValue(value: string): string {
+  return truncateRiskAssessmentLogText(value)
+    .replaceAll(/\r?\n/gu, '\\n')
+    .replaceAll(/\s+/gu, ' ')
+    .trim();
+}
+
+function logRiskAssessmentPrompt(modelId: string, timeoutMs: number, command: string): void {
+  logInfo(`[Shell risk assessment] prompt model=${modelId} timeout=${String(timeoutMs)}ms command=${formatInlineRiskAssessmentLogValue(command)}`);
 }
 
 function logRiskAssessmentResult(
   result: ShellRiskAssessmentModelResult,
   options: {
     cached?: boolean;
+    omitModel?: boolean;
     rawResponseText?: string;
   } = {},
 ): void {
-  const lines = [ options.cached ? 'Shell risk assessment cached result:' : 'Shell risk assessment result:' ];
+  const segments = [ '[Shell risk assessment]' ];
+
+  if (options.cached) {
+    segments.push('cached');
+  }
+
+  segments.push(`kind=${result.kind}`);
 
   switch (result.kind) {
     case 'disabled': {
-      lines.push('Kind: disabled');
-      lines.push('Reason: No risk assessment model is configured.');
       break;
     }
 
     case 'error': {
-      lines.push('Kind: error');
-      lines.push(`Model: ${result.modelId}`);
-      lines.push(`Reason: ${truncateRiskAssessmentLogText(result.reason)}`);
+      if (!options.omitModel) {
+        segments.push(`model=${result.modelId}`);
+      }
+
       break;
     }
 
     case 'response': {
-      lines.push('Kind: response');
-      lines.push(`Model: ${result.modelId}`);
-      lines.push(`Decision: ${result.decision}`);
-      lines.push(`Reason: ${truncateRiskAssessmentLogText(result.reason)}`);
+      if (!options.omitModel) {
+        segments.push(`model=${result.modelId}`);
+      }
+
       break;
     }
 
     case 'timeout': {
-      lines.push('Kind: timeout');
-      lines.push(`Model: ${result.modelId}`);
-      lines.push(`Timeout: ${result.timeoutMs}ms`);
-      lines.push(`Reason: ${truncateRiskAssessmentLogText(result.reason)}`);
+      if (!options.omitModel) {
+        segments.push(`model=${result.modelId}`);
+      }
+
+      segments.push(`timeout=${String(result.timeoutMs)}ms`);
       break;
     }
 
@@ -500,11 +508,10 @@ function logRiskAssessmentResult(
   }
 
   if (options.rawResponseText !== undefined) {
-    lines.push('Raw response:');
-    lines.push(formatRiskAssessmentResponseForLog(options.rawResponseText));
+    segments.push(`raw_response=${formatInlineRiskAssessmentLogValue(formatRiskAssessmentResponseForLog(options.rawResponseText))}`);
   }
 
-  logInfo(lines.join('\n'));
+  logInfo(segments.join(' '));
 }
 
 /** Normalize optional context file pointers by trimming, de-duplicating, and bounding them. */
@@ -901,7 +908,7 @@ export async function assessShellCommandRisk(
         }
 
         const model = models[0];
-        logRiskAssessmentPrompt(configuredModelId, timeoutMs, prompt);
+        logRiskAssessmentPrompt(configuredModelId, timeoutMs, options.command);
         const responseText = await readResponseWithTimeout(model, prompt, token, timeoutMs);
         const parsedResponse = parseRiskAssessmentResponse(responseText);
 
@@ -912,7 +919,7 @@ export async function assessShellCommandRisk(
             reason: `Risk assessment model \`${configuredModelId}\` returned an unrecognized response.`,
           };
 
-          logRiskAssessmentResult(result, { rawResponseText: responseText });
+          logRiskAssessmentResult(result, { omitModel: true, rawResponseText: responseText });
           logWarn(
             `Shell risk assessment model ${configuredModelId} returned an unrecognized response: ${formatRiskAssessmentResponseForLog(responseText)}`,
           );
@@ -927,7 +934,7 @@ export async function assessShellCommandRisk(
           reason: parsedResponse.reason,
         };
 
-        logRiskAssessmentResult(result, { rawResponseText: responseText });
+        logRiskAssessmentResult(result, { omitModel: true, rawResponseText: responseText });
 
         return result;
       }

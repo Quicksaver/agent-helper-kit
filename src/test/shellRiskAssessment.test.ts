@@ -500,8 +500,8 @@ describe('shell risk assessment', () => {
     expect(sendRequest).toHaveBeenCalledTimes(1);
     const infoMessages = logInfo.mock.calls.map(([ message ]) => message as string);
 
-    expect(infoMessages.filter(message => message.includes('Shell risk assessment prompt:'))).toHaveLength(1);
-    expect(infoMessages.some(message => message.includes('Shell risk assessment cached result:'))).toBe(true);
+    expect(infoMessages.filter(message => message.includes('[Shell risk assessment] prompt model=copilot:gpt-4.1 timeout=8000ms command=npm run alias-task'))).toHaveLength(1);
+    expect(infoMessages.some(message => message.includes('[Shell risk assessment] cached kind=response model=copilot:gpt-4.1'))).toBe(true);
     expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('<file path="/workspace/scripts/run.js">'));
     expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('<context_item kind="inline">'));
     expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('alias expands to: node scripts/run.js --refresh'));
@@ -591,7 +591,7 @@ describe('shell risk assessment', () => {
       goal: 'read repo status',
       riskAssessment: 'Read-only command.',
     }, {} as never)).resolves.toEqual({ kind: 'disabled' });
-    expect(logInfo).toHaveBeenCalledWith(expect.stringContaining('Shell risk assessment result:\nKind: disabled'));
+    expect(logInfo).toHaveBeenCalledWith('[Shell risk assessment] kind=disabled');
   });
 
   it('returns an error when the configured model cannot be found', async () => {
@@ -653,10 +653,8 @@ describe('shell risk assessment', () => {
     expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('<risk_assessment>This script may rewrite generated files under the workspace.</risk_assessment>'));
     expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('<file path="/workspace/scripts/run.js">'));
     expect(userMessage).toHaveBeenCalledWith(expect.stringContaining('script-injection, prompt-injection, or fetched-content dangers'));
-    expect(logInfo).toHaveBeenCalledWith(expect.stringContaining('Shell risk assessment prompt:'));
-    expect(logInfo).toHaveBeenCalledWith(expect.stringContaining('<command>node scripts/run.js</command>'));
-    expect(logInfo).toHaveBeenCalledWith(expect.stringContaining('Shell risk assessment result:\nKind: response\nModel: copilot:gpt-4.1\nDecision: allow'));
-    expect(logInfo).toHaveBeenCalledWith(expect.stringContaining('Raw response:\nallow::safe enough after reviewing the script'));
+    expect(logInfo).toHaveBeenCalledWith('[Shell risk assessment] prompt model=copilot:gpt-4.1 timeout=8000ms command=node scripts/run.js');
+    expect(logInfo).toHaveBeenCalledWith('[Shell risk assessment] kind=response raw_response=allow::safe enough after reviewing the script');
     expect(sendRequest).toHaveBeenCalled();
   });
 
@@ -1002,7 +1000,7 @@ describe('shell risk assessment', () => {
     expect(logWarn).toHaveBeenCalledWith(
       'Shell risk assessment model copilot:gpt-4.1 returned an unrecognized response: not valid output',
     );
-    expect(logInfo).toHaveBeenCalledWith(expect.stringContaining('Raw response:\nnot valid output'));
+    expect(logInfo).toHaveBeenCalledWith('[Shell risk assessment] kind=error raw_response=not valid output');
   });
 
   it('returns an error when the model request throws', async () => {

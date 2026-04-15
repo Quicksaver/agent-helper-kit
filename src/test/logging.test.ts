@@ -14,13 +14,18 @@ import {
   resetExtensionOutputChannelForTest,
 } from '@/logging';
 
-const appendLine = vi.hoisted(() => vi.fn());
+const error = vi.hoisted(() => vi.fn());
+const info = vi.hoisted(() => vi.fn());
+const warn = vi.hoisted(() => vi.fn());
 const createOutputChannel = vi.hoisted(() => vi.fn(() => ({
   append: vi.fn(),
-  appendLine,
+  appendLine: vi.fn(),
   clear: vi.fn(),
   dispose: vi.fn(),
+  error,
+  info,
   show: vi.fn(),
+  warn,
 })));
 
 vi.mock('vscode', () => ({
@@ -41,58 +46,31 @@ describe('logging', () => {
 
     expect(firstChannel).toBe(secondChannel);
     expect(createOutputChannel).toHaveBeenCalledTimes(1);
-    expect(createOutputChannel).toHaveBeenCalledWith('Agent Helper Kit');
+    expect(createOutputChannel).toHaveBeenCalledWith('Agent Helper Kit', { log: true });
   });
 
-  it('writes formatted error, info, and warning messages to the channel', () => {
-    vi.useFakeTimers();
+  it('writes error, info, and warning messages with the log channel methods', () => {
+    logError('first problem');
+    logInfo('hello');
+    logWarn('careful');
 
-    try {
-      vi.setSystemTime(new Date('2026-03-19T12:00:00.000Z'));
-
-      logError('first problem');
-      logInfo('hello');
-      logWarn('careful');
-
-      expect(appendLine).toHaveBeenNthCalledWith(1, '[2026-03-19T12:00:00.000Z] [ERROR] first problem');
-      expect(appendLine).toHaveBeenNthCalledWith(2, '[2026-03-19T12:00:00.000Z] [INFO] hello');
-      expect(appendLine).toHaveBeenNthCalledWith(3, '[2026-03-19T12:00:00.000Z] [WARN] careful');
-    }
-    finally {
-      vi.useRealTimers();
-    }
+    expect(error).toHaveBeenNthCalledWith(1, 'first problem');
+    expect(info).toHaveBeenNthCalledWith(1, 'hello');
+    expect(warn).toHaveBeenNthCalledWith(1, 'careful');
   });
 
   it('prefixes each line when logging a multi-line message', () => {
-    vi.useFakeTimers();
+    logInfo('hello\nworld');
 
-    try {
-      vi.setSystemTime(new Date('2026-03-19T12:00:00.000Z'));
-
-      logInfo('hello\nworld');
-
-      expect(appendLine).toHaveBeenNthCalledWith(1, '[2026-03-19T12:00:00.000Z] [INFO] hello');
-      expect(appendLine).toHaveBeenNthCalledWith(2, '[2026-03-19T12:00:00.000Z] [INFO] world');
-    }
-    finally {
-      vi.useRealTimers();
-    }
+    expect(info).toHaveBeenNthCalledWith(1, 'hello');
+    expect(info).toHaveBeenNthCalledWith(2, 'world');
   });
 
   it('ignores trailing newline segments when logging', () => {
-    vi.useFakeTimers();
+    logInfo('hello\n');
 
-    try {
-      vi.setSystemTime(new Date('2026-03-19T12:00:00.000Z'));
-
-      logInfo('hello\n');
-
-      expect(appendLine).toHaveBeenCalledTimes(1);
-      expect(appendLine).toHaveBeenNthCalledWith(1, '[2026-03-19T12:00:00.000Z] [INFO] hello');
-    }
-    finally {
-      vi.useRealTimers();
-    }
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenNthCalledWith(1, 'hello');
   });
 
   it('disposes the cached channel when reset for tests is called', () => {

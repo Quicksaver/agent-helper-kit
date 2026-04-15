@@ -24,7 +24,9 @@ import {
   removeShellOutputFile,
   writeShellCommandMetadata,
 } from '@/shellOutputStore';
+import type { ShellRiskAssessmentModelResult } from '@/shellRiskAssessment';
 import { HIDDEN_SHELL_INPUT_LOG_PLACEHOLDER } from '@/shellToolContracts';
+import type { ShellRunApprovalSource } from '@/shellToolSecurity';
 
 const DEFAULT_OUTPUT_LIMIT_BYTES = 512 * 1024;
 const DEFAULT_MEMORY_TO_FILE_DELAY_MS = 2 * 60 * 1000;
@@ -58,6 +60,7 @@ export function toPublicCommandId(id: string): string {
 }
 
 interface BackgroundProcessState {
+  approval?: ShellCommandApprovalDetails;
   childProc?: childProcess.ChildProcessWithoutNullStreams;
   command: string;
   completed: boolean;
@@ -74,14 +77,34 @@ interface BackgroundProcessState {
   outputBytes: number;
   outputInFile: boolean;
   pendingExit: CompletionInfo | undefined;
+  phase: ShellCommandPhase;
   readsSinceCompletion: number;
+  request?: ShellCommandRequestDetails;
   resolveCompletion: () => void;
   shell: string;
   signal: NodeJS.Signals | null;
   startedAt: string;
 }
 
+export type ShellCommandPhase = 'completed' | 'denied' | 'evaluating' | 'pending-approval' | 'queued' | 'running';
+
+export interface ShellCommandRequestDetails {
+  explanation?: string;
+  goal?: string;
+  riskAssessment?: string;
+  riskAssessmentContext?: string[];
+}
+
+export interface ShellCommandApprovalDetails {
+  decision: 'allow' | 'ask' | 'deny';
+  modelAssessment?: string;
+  reason?: string;
+  riskAssessmentResult?: ShellRiskAssessmentModelResult;
+  source: ShellRunApprovalSource;
+}
+
 export interface ShellCommandListItem {
+  approval?: ShellCommandApprovalDetails;
   command: string;
   completedAt: null | string;
   cwd: string;
@@ -89,6 +112,8 @@ export interface ShellCommandListItem {
   id: string;
   isRunning: boolean;
   killedByUser: boolean;
+  phase: ShellCommandPhase;
+  request?: ShellCommandRequestDetails;
   shell: string;
   signal: NodeJS.Signals | null;
   startedAt: string;
@@ -115,6 +140,24 @@ interface ShellInvocation {
 export interface StartBackgroundCommandOptions {
   columns?: number;
   cwd?: string;
+  id?: string;
+  shell?: string;
+}
+
+export interface CreatePlannedCommandOptions {
+  approval?: ShellCommandApprovalDetails;
+  cwd?: string;
+  phase?: Exclude<ShellCommandPhase, 'completed' | 'running'>;
+  request?: ShellCommandRequestDetails;
+  shell?: string;
+}
+
+export interface UpdateCommandRecordOptions {
+  approval?: ShellCommandApprovalDetails;
+  completedAt?: null | string;
+  cwd?: string;
+  phase?: ShellCommandPhase;
+  request?: ShellCommandRequestDetails;
   shell?: string;
 }
 
@@ -257,6 +300,21 @@ function formatShellInputLogEntry(command: string, secret?: boolean): string {
   return `${SHELL_INPUT_LOG_PREFIX}${command}\n`;
 }
 
+function createDeferredCompletion(): {
+  completion: Promise<void>;
+  resolveCompletion: () => void;
+} {
+  let resolveCompletion!: () => void;
+  const completion = new Promise<void>(resolve => {
+    resolveCompletion = resolve;
+  });
+
+  return {
+    completion,
+    resolveCompletion,
+  };
+}
+
 /**
  * Manage shell command execution and history for both LM tools and the Shell
  * Runs panel. Output stays in memory until size or time thresholds push it to
@@ -306,7 +364,7 @@ export class ShellRuntime {
     let removedCount = 0;
 
     for (const [ id, state ] of this.backgroundProcesses.entries()) {
-      if (!state.completed) {
+      if (!this.isTerminalState(state)) {
         continue;
       }
 
@@ -347,6 +405,7 @@ export class ShellRuntime {
       outputBytes,
       outputInFile: false,
       pendingExit: undefined,
+      phase: 'completed',
       readsSinceCompletion: READS_SINCE_COMPLETION_FOR_SYNC_RECORD,
       resolveCompletion: () => undefined,
       shell: this.resolveShellExecutable(shell ?? result.shell),
@@ -365,10 +424,59 @@ export class ShellRuntime {
     return id;
   }
 
+  createPlannedCommandRecord(command: string, options: CreatePlannedCommandOptions = {}): string {
+    const id = this.createUniqueShellId();
+    const now = new Date().toISOString();
+    const phase = options.phase ?? 'evaluating';
+    const isTerminalPhase = phase === 'denied';
+    const commandCwd = typeof options.cwd === 'string' && options.cwd.trim().length > 0
+      ? options.cwd
+      : os.homedir();
+    const {
+      completion,
+      resolveCompletion,
+    } = createDeferredCompletion();
+    const state: BackgroundProcessState = {
+      approval: options.approval,
+      command,
+      completed: isTerminalPhase,
+      completedAt: isTerminalPhase ? now : null,
+      completion,
+      completionTimer: undefined,
+      cwd: commandCwd,
+      exitCode: null,
+      killedByUser: false,
+      lastReadCursor: 0,
+      memoryToFileRetryCount: 0,
+      memoryToFileTimer: undefined,
+      output: '',
+      outputBytes: 0,
+      outputInFile: false,
+      pendingExit: undefined,
+      phase,
+      readsSinceCompletion: 0,
+      request: options.request,
+      resolveCompletion,
+      shell: this.resolveShellExecutable(options.shell),
+      signal: null,
+      startedAt: now,
+    };
+
+    if (isTerminalPhase) {
+      state.resolveCompletion();
+    }
+
+    this.backgroundProcesses.set(id, state);
+    this.persistCommandMetadata(id, state);
+    this.emitCommandChange();
+
+    return id;
+  }
+
   deleteCompletedCommand(id: string): boolean {
     const state = this.backgroundProcesses.get(id);
 
-    if (!state?.completed) {
+    if (!state || !this.isTerminalState(state)) {
       return false;
     }
 
@@ -478,7 +586,7 @@ export class ShellRuntime {
 
     return {
       exitCode: state.completed ? state.exitCode : null,
-      isRunning: !state.completed,
+      isRunning: state.phase === 'running',
       output,
       shell: state.shell,
       terminationSignal: state.completed ? state.signal : null,
@@ -519,7 +627,7 @@ export class ShellRuntime {
 
     if (stdin.destroyed || !stdin.writable || stdin.writableEnded) {
       return {
-        isRunning: !state.completed,
+        isRunning: state.phase === 'running',
         reason: 'shell stdin is not writable',
         sent: false,
         shell: state.shell,
@@ -565,7 +673,7 @@ export class ShellRuntime {
       this.removeTrailingBackgroundOutput(resolvedId, state, logEntry);
 
       return {
-        isRunning: !state.completed,
+        isRunning: state.phase === 'running',
         reason: 'shell stdin is not writable',
         sent: false,
         shell: state.shell,
@@ -573,7 +681,7 @@ export class ShellRuntime {
     }
 
     return {
-      isRunning: !state.completed,
+      isRunning: state.phase === 'running',
       sent: true,
       shell: state.shell,
     };
@@ -587,10 +695,23 @@ export class ShellRuntime {
     this.lastCommand = command;
 
     const shellInvocation = this.createShellInvocation(command, options.shell);
-    const id = this.createUniqueShellId();
     const commandCwd = typeof options.cwd === 'string' && options.cwd.trim().length > 0
       ? options.cwd
       : os.homedir();
+    const requestedId = typeof options.id === 'string' && options.id.length > 0
+      ? options.id
+      : undefined;
+    const existingState = requestedId
+      ? this.backgroundProcesses.get(requestedId)
+      : undefined;
+    const canReuseExistingState = existingState !== undefined
+      && existingState.childProc === undefined
+      && !existingState.completed
+      && existingState.phase !== 'running';
+    const reusableState = canReuseExistingState ? existingState : undefined;
+    const id = canReuseExistingState
+      ? requestedId ?? this.createUniqueShellId()
+      : this.createUniqueShellId();
     const childProc = childProcess.spawn(
       shellInvocation.shell,
       [ ...shellInvocation.shellArgs, shellInvocation.command ],
@@ -599,34 +720,50 @@ export class ShellRuntime {
         env: this.buildShellEnv(options.columns),
       },
     );
-    let resolveCompletion!: () => void;
-    const completion = new Promise<void>(resolve => {
-      resolveCompletion = resolve;
-    });
+    const state = reusableState || (() => {
+      const {
+        completion,
+        resolveCompletion,
+      } = createDeferredCompletion();
 
-    const state: BackgroundProcessState = {
-      childProc,
-      command,
-      completed: false,
-      completedAt: null,
-      completion,
-      completionTimer: undefined,
-      cwd: commandCwd,
-      exitCode: null,
-      killedByUser: false,
-      lastReadCursor: 0,
-      memoryToFileRetryCount: 0,
-      memoryToFileTimer: undefined,
-      output: '',
-      outputBytes: 0,
-      outputInFile: false,
-      pendingExit: undefined,
-      readsSinceCompletion: 0,
-      resolveCompletion,
-      shell: shellInvocation.shell,
-      signal: null,
-      startedAt: new Date().toISOString(),
-    };
+      return {
+        childProc,
+        command,
+        completed: false,
+        completedAt: null,
+        completion,
+        completionTimer: undefined,
+        cwd: commandCwd,
+        exitCode: null,
+        killedByUser: false,
+        lastReadCursor: 0,
+        memoryToFileRetryCount: 0,
+        memoryToFileTimer: undefined,
+        output: '',
+        outputBytes: 0,
+        outputInFile: false,
+        pendingExit: undefined,
+        phase: 'running' as const,
+        readsSinceCompletion: 0,
+        resolveCompletion,
+        shell: shellInvocation.shell,
+        signal: null,
+        startedAt: new Date().toISOString(),
+      } satisfies BackgroundProcessState;
+    })();
+
+    state.childProc = childProc;
+    state.command = command;
+    state.completed = false;
+    state.completedAt = null;
+    state.cwd = commandCwd;
+    state.exitCode = null;
+    state.killedByUser = false;
+    state.pendingExit = undefined;
+    state.phase = 'running';
+    state.readsSinceCompletion = 0;
+    state.shell = shellInvocation.shell;
+    state.signal = null;
 
     this.scheduleMemoryToFileSpill(id, state);
     this.backgroundProcesses.set(id, state);
@@ -657,6 +794,54 @@ export class ShellRuntime {
     });
 
     return id;
+  }
+
+  updateCommandRecord(id: string, options: UpdateCommandRecordOptions): boolean {
+    const state = this.backgroundProcesses.get(id);
+
+    if (!state) {
+      return false;
+    }
+
+    if (options.approval) {
+      state.approval = options.approval;
+    }
+
+    if (options.cwd !== undefined && options.cwd.trim().length > 0) {
+      state.cwd = options.cwd;
+    }
+
+    if (options.request) {
+      state.request = options.request;
+    }
+
+    if (options.shell !== undefined && options.shell.trim().length > 0) {
+      state.shell = options.shell.trim();
+    }
+
+    if (options.phase) {
+      state.phase = options.phase;
+
+      if (options.phase === 'denied' || options.phase === 'completed') {
+        state.completed = true;
+        state.completedAt = options.completedAt ?? state.completedAt ?? new Date().toISOString();
+        state.childProc = undefined;
+        state.pendingExit = undefined;
+        state.resolveCompletion();
+      }
+      else {
+        state.completed = false;
+        state.completedAt = options.completedAt ?? null;
+      }
+    }
+    else if (options.completedAt !== undefined) {
+      state.completedAt = options.completedAt;
+    }
+
+    this.persistCommandMetadata(id, state);
+    this.emitCommandChange();
+
+    return true;
   }
 
   private appendBackgroundOutput(id: string, state: BackgroundProcessState, chunk: string): void {
@@ -784,6 +969,7 @@ export class ShellRuntime {
     state.completedAt = new Date().toISOString();
     state.exitCode = exitCode;
     state.pendingExit = undefined;
+    state.phase = 'completed';
     state.readsSinceCompletion = 0;
     state.signal = signal;
 
@@ -930,14 +1116,21 @@ export class ShellRuntime {
     return path.basename(shell).toLowerCase().replace(/\.(bat|cmd|exe)$/u, '');
   }
 
+  private isTerminalState(state: BackgroundProcessState): boolean {
+    return state.phase === 'completed' || state.phase === 'denied';
+  }
+
   private persistCommandMetadata(id: string, state: BackgroundProcessState): void {
     writeShellCommandMetadata({
+      approval: state.approval,
       command: state.command,
       completedAt: state.completedAt,
       cwd: state.cwd,
       exitCode: state.exitCode,
       id,
       killedByUser: state.killedByUser,
+      phase: state.phase,
+      request: state.request,
       shell: state.shell,
       signal: state.signal,
       startedAt: state.startedAt,
@@ -1102,13 +1295,16 @@ export class ShellRuntime {
 
   private toCommandListItem(id: string, state: BackgroundProcessState): ShellCommandListItem {
     return {
+      approval: state.approval,
       command: state.command,
       completedAt: state.completedAt,
       cwd: state.cwd,
       exitCode: state.exitCode,
       id,
-      isRunning: !state.completed,
+      isRunning: state.phase === 'running',
       killedByUser: state.killedByUser,
+      phase: state.phase,
+      request: state.request,
       shell: state.shell,
       signal: state.signal,
       startedAt: state.startedAt,

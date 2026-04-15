@@ -89,6 +89,7 @@ describe('shell tool security', () => {
         decision: 'ask',
         modelAssessment: 'The command may delete files under the workspace.',
         reason: 'Risk assessment requested explicit approval before running this command.',
+        source: 'risk-assessment',
       },
       command: 'node scripts/danger.js',
       cwd: 'packages/api',
@@ -107,6 +108,7 @@ describe('shell tool security', () => {
     expect(buildShellRunConfirmationMessage({
       approvalDecision: {
         decision: 'allow',
+        source: 'rule',
       },
       command: '',
       cwd: ' ',
@@ -874,7 +876,8 @@ describe('shell tool security', () => {
       riskAssessment: 'This changes the working tree and may replace uncommitted files.',
     }, {} as never)).resolves.toEqual({
       decision: 'ask',
-      reason: 'Risk assessment model is disabled via shellTools.riskAssessment.chatModel, so explicit approval is required.',
+      reason: 'Model is disabled via shellTools.riskAssessment.chatModel.',
+      source: 'risk-assessment',
     });
   });
 
@@ -896,6 +899,7 @@ describe('shell tool security', () => {
     }, {} as never)).resolves.toEqual({
       decision: 'allow',
       reason: 'The YOLO override is enabled, so unresolved commands run without risk-assessment prompting.',
+      source: 'yolo',
     });
     expect(assessShellCommandRisk).not.toHaveBeenCalled();
   });
@@ -918,6 +922,7 @@ describe('shell tool security', () => {
     }, {} as never)).resolves.toEqual({
       decision: 'allow',
       reason: 'The YOLO override is enabled, so unresolved commands run without risk-assessment prompting.',
+      source: 'yolo',
     });
     expect(assessShellCommandRisk).not.toHaveBeenCalled();
   });
@@ -939,7 +944,14 @@ describe('shell tool security', () => {
     }, {} as never)).resolves.toEqual({
       decision: 'ask',
       modelAssessment: 'The command may overwrite checked out files and should be reviewed.',
-      reason: 'Risk assessment requested explicit approval before running this command.',
+      reason: 'Model copilot:gpt-4.1 requested explicit approval.',
+      riskAssessmentResult: {
+        decision: 'request',
+        kind: 'response',
+        modelId: 'copilot:gpt-4.1',
+        reason: 'The command may overwrite checked out files and should be reviewed.',
+      },
+      source: 'risk-assessment',
     });
   });
 
@@ -951,6 +963,7 @@ describe('shell tool security', () => {
     }, {} as never)).resolves.toEqual({
       decision: 'allow',
       reason: 'Every parsed subcommand matched an allow rule.',
+      source: 'rule',
     });
     await expect(decideShellRunApproval({
       command: 'rm -rf build',
@@ -959,6 +972,7 @@ describe('shell tool security', () => {
     }, {} as never)).resolves.toEqual({
       decision: 'deny',
       reason: 'The command `rm` is denied by the shell approval policy.',
+      source: 'rule',
     });
     expect(assessShellCommandRisk).not.toHaveBeenCalled();
   });
@@ -977,7 +991,13 @@ describe('shell tool security', () => {
     }, {} as never)).resolves.toEqual({
       decision: 'ask',
       modelAssessment: 'The configured model could not be reached.',
-      reason: 'Risk assessment could not determine that this command is safe enough to run without approval.',
+      reason: 'Model copilot:gpt-4.1 failed to assess the command.',
+      riskAssessmentResult: {
+        kind: 'error',
+        modelId: 'copilot:gpt-4.1',
+        reason: 'The configured model could not be reached.',
+      },
+      source: 'risk-assessment',
     });
   });
 
@@ -996,7 +1016,14 @@ describe('shell tool security', () => {
     }, {} as never)).resolves.toEqual({
       decision: 'ask',
       modelAssessment: 'Risk assessment model `copilot:gpt-4.1` timed out after 8000ms.',
-      reason: 'Risk assessment timed out, so explicit approval is required.',
+      reason: 'Model copilot:gpt-4.1 timed out.',
+      riskAssessmentResult: {
+        kind: 'timeout',
+        modelId: 'copilot:gpt-4.1',
+        reason: 'Risk assessment model `copilot:gpt-4.1` timed out after 8000ms.',
+        timeoutMs: 8000,
+      },
+      source: 'risk-assessment',
     });
   });
 
@@ -1015,7 +1042,14 @@ describe('shell tool security', () => {
     }, {} as never)).resolves.toEqual({
       decision: 'allow',
       modelAssessment: 'The command is read-only and limited to repository metadata.',
-      reason: 'Risk assessment model copilot:gpt-4.1 allowed the command to run without explicit approval.',
+      reason: 'Model copilot:gpt-4.1 allowed the command.',
+      riskAssessmentResult: {
+        decision: 'allow',
+        kind: 'response',
+        modelId: 'copilot:gpt-4.1',
+        reason: 'The command is read-only and limited to repository metadata.',
+      },
+      source: 'risk-assessment',
     });
   });
 
@@ -1036,7 +1070,14 @@ describe('shell tool security', () => {
     }, {} as never)).resolves.toEqual({
       decision: 'deny',
       modelAssessment: 'This is a catastrophic root-level deletion command.',
-      reason: 'Risk assessment model copilot:gpt-4.1 denied the command because it appears clearly malicious or outright destructive.',
+      reason: 'Model copilot:gpt-4.1 denied the command.',
+      riskAssessmentResult: {
+        decision: 'deny',
+        kind: 'response',
+        modelId: 'copilot:gpt-4.1',
+        reason: 'This is a catastrophic root-level deletion command.',
+      },
+      source: 'risk-assessment',
     });
   });
 
@@ -1056,6 +1097,7 @@ describe('shell tool security', () => {
     }, {} as never)).resolves.toEqual({
       decision: 'ask',
       reason: 'The command line could not be parsed safely for approval rules, so explicit approval is required.',
+      source: 'rule',
     });
 
     await expect(decideShellRunApproval({
@@ -1065,6 +1107,7 @@ describe('shell tool security', () => {
     }, {} as never)).resolves.toEqual({
       decision: 'deny',
       reason: 'The command `rm` is denied by the shell approval policy.',
+      source: 'rule',
     });
 
     expect(assessShellCommandRisk).not.toHaveBeenCalled();
@@ -1088,6 +1131,7 @@ describe('shell tool security', () => {
     }, {} as never)).resolves.toEqual({
       decision: 'ask',
       reason: 'The command `pwd` is configured to always request approval.',
+      source: 'rule',
     });
     await expect(decideShellRunApproval({
       command: 'FOO=bar rm -rf build',
@@ -1096,6 +1140,7 @@ describe('shell tool security', () => {
     }, {} as never)).resolves.toEqual({
       decision: 'deny',
       reason: 'The command `rm` is denied by the shell approval policy.',
+      source: 'rule',
     });
 
     expect(assessShellCommandRisk).not.toHaveBeenCalled();

@@ -2041,7 +2041,7 @@ describe('shell tools', () => {
       },
     }, {})).resolves.toEqual({
       confirmationMessages: {
-        message: 'Command: \nsecond line\n\nCwd: /workspace\n\nExplanation: describe empty command preview\n\nGoal: show confirmation details\n\nRisk pre-assessment: This command only prints output and should not change files.\n\nApproval note: Risk assessment model is disabled via shellTools.riskAssessment.chatModel, so explicit approval is required.',
+        message: 'Command: \nsecond line\n\nCwd: /workspace\n\nExplanation: describe empty command preview\n\nGoal: show confirmation details\n\nRisk pre-assessment: This command only prints output and should not change files.\n\nApproval note: Model is disabled via shellTools.riskAssessment.chatModel.',
         title: 'Run shell command?',
       },
       invocationMessage: 'Running shell command: second line',
@@ -2069,7 +2069,7 @@ describe('shell tools', () => {
       },
     }, {})).resolves.toEqual({
       confirmationMessages: {
-        message: 'Command: echo ok\nnext\n\nCwd: /workspace\n\nExplanation: run a multi-line command preview\n\nGoal: show sync confirmation details\n\nRisk pre-assessment: This command only prints text and should not modify files.\n\nApproval note: Risk assessment model is disabled via shellTools.riskAssessment.chatModel, so explicit approval is required.',
+        message: 'Command: echo ok\nnext\n\nCwd: /workspace\n\nExplanation: run a multi-line command preview\n\nGoal: show sync confirmation details\n\nRisk pre-assessment: This command only prints text and should not modify files.\n\nApproval note: Model is disabled via shellTools.riskAssessment.chatModel.',
         title: 'Run shell command?',
       },
       invocationMessage: 'Running shell command: echo ok',
@@ -2167,7 +2167,7 @@ describe('shell tools', () => {
       },
     }, {})).resolves.toEqual({
       confirmationMessages: {
-        message: 'Command: git checkout main\n\nCwd: /workspace\n\nExplanation: switch branches\n\nGoal: move to main\n\nRisk pre-assessment: This may replace files in the working tree and discard staged state.\n\nApproval note: Risk assessment model is disabled via shellTools.riskAssessment.chatModel, so explicit approval is required.',
+        message: 'Command: git checkout main\n\nCwd: /workspace\n\nExplanation: switch branches\n\nGoal: move to main\n\nRisk pre-assessment: This may replace files in the working tree and discard staged state.\n\nApproval note: Model is disabled via shellTools.riskAssessment.chatModel.',
         title: 'Run shell command?',
       },
       invocationMessage: 'Running shell command: git checkout main',

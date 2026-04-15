@@ -223,6 +223,160 @@ describe('shell output store startup purge', () => {
     });
   });
 
+  it('reads expanded approval, phase, and request metadata payloads', () => {
+    const shellId = 'shell-expanded';
+    const metadataPath = path.join(getShellOutputDirectoryPath(), `metadata-${shellId}.json`);
+
+    fs.mkdirSync(getShellOutputDirectoryPath(), { recursive: true });
+    fs.writeFileSync(metadataPath, JSON.stringify({
+      approval: {
+        decision: 'ask',
+        modelAssessment: 'The command may overwrite checked out files.',
+        reason: 'Risk assessment requested explicit approval before running this command.',
+        riskAssessmentResult: {
+          decision: 'request',
+          kind: 'response',
+          modelId: 'copilot:gpt-4.1',
+          reason: 'The command may overwrite checked out files.',
+        },
+        source: 'risk-assessment',
+      },
+      command: 'git checkout main',
+      completedAt: null,
+      cwd: '/tmp/project',
+      exitCode: null,
+      id: shellId,
+      killedByUser: false,
+      phase: 'pending-approval',
+      request: {
+        explanation: 'switch branches',
+        goal: 'move to main',
+        riskAssessment: 'This may replace files in the working tree.',
+        riskAssessmentContext: [ 'git checkout main', 'src/shellTools.ts' ],
+      },
+      shell: '/bin/bash',
+      signal: null,
+      startedAt: '2026-03-19T00:00:00.000Z',
+    }), { encoding: 'utf8' });
+
+    expect(readShellCommandMetadata(shellId)).toMatchObject({
+      approval: {
+        decision: 'ask',
+        riskAssessmentResult: {
+          decision: 'request',
+          kind: 'response',
+          modelId: 'copilot:gpt-4.1',
+        },
+        source: 'risk-assessment',
+      },
+      phase: 'pending-approval',
+      request: {
+        explanation: 'switch branches',
+        goal: 'move to main',
+        riskAssessmentContext: [ 'git checkout main', 'src/shellTools.ts' ],
+      },
+    });
+  });
+
+  it('accepts disabled, error, and timeout risk assessment result payloads', () => {
+    const shellId = 'shell-risk-kinds';
+    const metadataPath = path.join(getShellOutputDirectoryPath(), `metadata-${shellId}.json`);
+
+    fs.mkdirSync(getShellOutputDirectoryPath(), { recursive: true });
+
+    for (const riskAssessmentResult of [
+      { kind: 'disabled' },
+      {
+        kind: 'error',
+        modelId: 'copilot:gpt-4.1',
+        reason: 'The configured model could not be reached.',
+      },
+      {
+        kind: 'timeout',
+        modelId: 'copilot:gpt-4.1',
+        reason: 'Risk assessment timed out.',
+        timeoutMs: 8000,
+      },
+    ]) {
+      fs.writeFileSync(metadataPath, JSON.stringify({
+        approval: {
+          decision: 'ask',
+          riskAssessmentResult,
+          source: 'risk-assessment',
+        },
+        command: 'git checkout main',
+        completedAt: null,
+        cwd: '/tmp/project',
+        exitCode: null,
+        id: shellId,
+        killedByUser: false,
+        shell: '/bin/bash',
+        signal: null,
+        startedAt: '2026-03-19T00:00:00.000Z',
+      }), { encoding: 'utf8' });
+
+      expect(readShellCommandMetadata(shellId)?.approval?.riskAssessmentResult).toEqual(riskAssessmentResult);
+    }
+  });
+
+  it('accepts response decision variants and yolo approval metadata', () => {
+    const shellId = 'shell-response-variants';
+    const metadataPath = path.join(getShellOutputDirectoryPath(), `metadata-${shellId}.json`);
+
+    fs.mkdirSync(getShellOutputDirectoryPath(), { recursive: true });
+
+    fs.writeFileSync(metadataPath, JSON.stringify({
+      approval: {
+        decision: 'allow',
+        riskAssessmentResult: {
+          decision: 'deny',
+          kind: 'response',
+          modelId: 'copilot:gpt-4.1',
+          reason: 'This command appears destructive.',
+        },
+        source: 'risk-assessment',
+      },
+      command: 'python scripts/nuke.py',
+      completedAt: null,
+      cwd: '/tmp/project',
+      exitCode: null,
+      id: shellId,
+      killedByUser: false,
+      shell: '/bin/bash',
+      signal: null,
+      startedAt: '2026-03-19T00:00:00.000Z',
+    }), { encoding: 'utf8' });
+
+    expect(readShellCommandMetadata(shellId)?.approval).toMatchObject({
+      riskAssessmentResult: {
+        decision: 'deny',
+        kind: 'response',
+      },
+      source: 'risk-assessment',
+    });
+
+    fs.writeFileSync(metadataPath, JSON.stringify({
+      approval: {
+        decision: 'allow',
+        source: 'yolo',
+      },
+      command: 'git checkout main',
+      completedAt: null,
+      cwd: '/tmp/project',
+      exitCode: null,
+      id: shellId,
+      killedByUser: false,
+      shell: '/bin/bash',
+      signal: null,
+      startedAt: '2026-03-19T00:00:00.000Z',
+    }), { encoding: 'utf8' });
+
+    expect(readShellCommandMetadata(shellId)?.approval).toMatchObject({
+      decision: 'allow',
+      source: 'yolo',
+    });
+  });
+
   it('returns undefined for malformed metadata payloads', () => {
     const shellId = 'shell-invalid';
     const metadataPath = path.join(getShellOutputDirectoryPath(), `metadata-${shellId}.json`);
@@ -239,6 +393,162 @@ describe('shell output store startup purge', () => {
     }), { encoding: 'utf8' });
 
     expect(readShellCommandMetadata(shellId)).toBeUndefined();
+  });
+
+  it('returns undefined for invalid approval and request metadata payloads', () => {
+    const shellId = 'shell-invalid-expanded';
+    const metadataPath = path.join(getShellOutputDirectoryPath(), `metadata-${shellId}.json`);
+
+    fs.mkdirSync(getShellOutputDirectoryPath(), { recursive: true });
+    fs.writeFileSync(metadataPath, JSON.stringify({
+      approval: {
+        decision: 'ask',
+        source: 'unknown-source',
+      },
+      command: 'git checkout main',
+      completedAt: null,
+      cwd: '/tmp/project',
+      exitCode: null,
+      id: shellId,
+      killedByUser: false,
+      phase: 'pending-approval',
+      request: {
+        explanation: 'switch branches',
+        riskAssessmentContext: [ 42 ],
+      },
+      shell: '/bin/bash',
+      signal: null,
+      startedAt: '2026-03-19T00:00:00.000Z',
+    }), { encoding: 'utf8' });
+
+    expect(readShellCommandMetadata(shellId)).toBeUndefined();
+  });
+
+  it('returns undefined for invalid phase, risk result, and request variants', () => {
+    const shellId = 'shell-invalid-variants';
+    const metadataPath = path.join(getShellOutputDirectoryPath(), `metadata-${shellId}.json`);
+
+    fs.mkdirSync(getShellOutputDirectoryPath(), { recursive: true });
+
+    for (const invalidPayload of [
+      {
+        approval: {
+          decision: 'ask',
+          riskAssessmentResult: {
+            kind: 'timeout',
+            modelId: 'copilot:gpt-4.1',
+            reason: 'Risk assessment timed out.',
+            timeoutMs: '8000',
+          },
+          source: 'risk-assessment',
+        },
+      },
+      {
+        approval: {
+          decision: 'ask',
+          riskAssessmentResult: {
+            decision: 'maybe',
+            kind: 'response',
+            modelId: 'copilot:gpt-4.1',
+            reason: 'The model was inconclusive.',
+          },
+          source: 'risk-assessment',
+        },
+      },
+      {
+        approval: {
+          decision: 'allow',
+          source: 'rule',
+        },
+        phase: 'paused',
+      },
+      {
+        approval: {
+          decision: 'allow',
+          source: 'rule',
+        },
+        request: {
+          riskAssessmentContext: 'git checkout main',
+        },
+      },
+    ]) {
+      fs.writeFileSync(metadataPath, JSON.stringify({
+        ...invalidPayload,
+        command: 'git checkout main',
+        completedAt: null,
+        cwd: '/tmp/project',
+        exitCode: null,
+        id: shellId,
+        killedByUser: false,
+        shell: '/bin/bash',
+        signal: null,
+        startedAt: '2026-03-19T00:00:00.000Z',
+      }), { encoding: 'utf8' });
+
+      expect(readShellCommandMetadata(shellId)).toBeUndefined();
+    }
+  });
+
+  it('returns undefined for non-object approval and request payloads and malformed risk results', () => {
+    const shellId = 'shell-invalid-shapes';
+    const metadataPath = path.join(getShellOutputDirectoryPath(), `metadata-${shellId}.json`);
+
+    fs.mkdirSync(getShellOutputDirectoryPath(), { recursive: true });
+
+    for (const invalidPayload of [
+      {
+        approval: null,
+      },
+      {
+        approval: {
+          decision: 'ask',
+          riskAssessmentResult: null,
+          source: 'risk-assessment',
+        },
+      },
+      {
+        approval: {
+          decision: 'ask',
+          riskAssessmentResult: {
+            kind: 'error',
+          },
+          source: 'risk-assessment',
+        },
+      },
+      {
+        approval: {
+          decision: 'ask',
+          riskAssessmentResult: {
+            kind: 'unknown-kind',
+            modelId: 'copilot:gpt-4.1',
+            reason: 'Unexpected payload.',
+          },
+          source: 'risk-assessment',
+        },
+      },
+      {
+        approval: {
+          decision: 'allow',
+          source: 'rule',
+        },
+        request: null,
+      },
+    ]) {
+      fs.writeFileSync(metadataPath, JSON.stringify({
+        ...invalidPayload,
+        command: 'git checkout main',
+        completedAt: null,
+        cwd: '/tmp/project',
+        exitCode: null,
+        id: shellId,
+        killedByUser: false,
+        shell: '/bin/bash',
+        signal: null,
+        startedAt: '2026-03-19T00:00:00.000Z',
+      }), { encoding: 'utf8' });
+
+      expect(readShellCommandMetadata(shellId)).toBeUndefined();
+    }
   });
 
   it('returns undefined for invalid metadata json', () => {

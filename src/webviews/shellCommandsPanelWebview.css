@@ -91,6 +91,19 @@ body {
   color: var(--vscode-terminal-ansiYellow);
 }
 
+.status-indicator.evaluating,
+.status-indicator.queued {
+  color: var(--vscode-terminal-ansiBlue);
+}
+
+.status-indicator.pending {
+  color: var(--vscode-terminal-ansiYellow);
+}
+
+.status-indicator.denied {
+  color: var(--vscode-terminal-ansiRed);
+}
+
 .status-indicator.success {
   color: var(--vscode-terminal-ansiGreen);
 }
@@ -230,6 +243,14 @@ body {
   color: var(--vscode-terminal-ansiYellow);
 }
 
+.metadata-item-queued .metadata-value {
+  color: var(--vscode-terminal-ansiBlue);
+}
+
+.metadata-item-pending .metadata-value {
+  color: var(--vscode-terminal-ansiYellow);
+}
+
 .metadata-item-success .metadata-value {
   color: var(--vscode-terminal-ansiGreen);
 }
@@ -266,6 +287,54 @@ body {
 .details-empty {
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.detail-sections {
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(rgba(127, 127, 127, 0.12), rgba(127, 127, 127, 0.12)), var(--vscode-editor-background);
+}
+
+.detail-section {
+  border-bottom: 1px solid var(--vscode-editorWidget-border);
+  background: linear-gradient(rgba(127, 127, 127, 0.12), rgba(127, 127, 127, 0.12)), var(--vscode-editor-background);
+  overflow: hidden;
+}
+
+.detail-section summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  font-weight: 600;
+  user-select: none;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.detail-section-body {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-auto-rows: auto;
+  gap: 8px;
+  padding: 0 8px 8px;
+  align-items: baseline;
+}
+
+.detail-label {
+  color: var(--vscode-descriptionForeground);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.detail-value {
+  min-width: 0;
+  overflow-wrap: break-word;
+  user-select: text;
+}
+
+.detail-value-multiline {
+  white-space: pre-wrap;
 }
 
 .output-block {
