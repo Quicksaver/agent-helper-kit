@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-04-15
+
 ### Fixed
 
 - Fixed shell tools showing long agent-facing descriptions in VS Code user-facing tool lists, which made them harder to scan; they now use short user descriptions instead.
