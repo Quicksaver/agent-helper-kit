@@ -24,14 +24,6 @@ This file provides context for AI agents working in this codebase.
 - **Tests:** Vitest (`src/**/*.test.ts`)
 - **Package manager:** Yarn 4 (`yarn.lock` present)
 
-## Available Skills
-
-Agent Skills are in `.github/skills/`, **activate** as many as fit the nature of your given task:
-
-| Skill    | Use When                                                                                |
-| -------- | --------------------------------------------------------------------------------------- |
-| `vitest` | Writing unit and integration tests with Vitest, including test structure and assertions |
-
 ## Conventions and Constraints
 
 - Use path alias `@/*` for imports from `src/*`.
