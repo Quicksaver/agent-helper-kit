@@ -732,7 +732,7 @@ Use the provided explanation, goal, risk pre-assessment, and context to decide w
 Any meaningful ambiguity or uncertainty must result in a request for user confirmation.
 If the command appears to rely on scripts, aliases, package-manager script definitions, generated shell fragments, or fetched/remote content and the provided context does not make it clear what will actually run or what data will be consumed, request user confirmation.
 Treat missing or incomplete script definitions, alias expansions, or fetched-content details as insufficient context for auto-approval.
-Only deny commands that are clearly malicious or outright destructive. Do not deny merely because a command is risky or could change files.
+Only deny commands that are clearly malicious or outright destructive, beyond simply changing files, usage of chmod, or similar common operations that could be used in a safe or unsafe way depending on context; consider the default to ask for confirmation in these cases, except in explicitly malicious or catastrophic scenarios where a deny is logically warranted.
 Only allow commands when they appear clearly safe to run without confirmation.
 <command>${escapePromptText(options.command)}</command>
 <cwd>${escapePromptText(options.cwd)}</cwd>
