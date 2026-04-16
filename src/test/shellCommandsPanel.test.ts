@@ -656,7 +656,6 @@ describe('ShellCommandsPanelProvider polling', () => {
     expect(rawWebviewView.webview.html).toContain('switch branches');
     expect(rawWebviewView.webview.html).toContain('git checkout main');
     expect(rawWebviewView.webview.html).toContain('src/shellTools.ts');
-    expect(rawWebviewView.webview.html).toContain('data-detail-section="approval-details"');
     expect(rawWebviewView.webview.html).toContain('risk-assessment');
     expect(rawWebviewView.webview.html).not.toContain('data-detail-section="risk-assessment-result"');
     expect(rawWebviewView.webview.html).not.toContain('data-metadata-field="status"');

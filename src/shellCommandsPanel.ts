@@ -682,7 +682,7 @@ function buildDetailsMarkup(details: ShellCommandDetails | undefined): string {
   const riskAssessmentContextText = details.request?.riskAssessmentContext
     ? details.request.riskAssessmentContext.join('\n')
     : '(not provided)';
-  const requestDetailsMarkup = buildDetailSectionMarkup('Request Details', [
+  const requestDetailsMarkup = buildDetailSectionMarkup('Tool Call Details', [
     buildDetailFieldMarkup('Explanation', getDisplayText(details.request?.explanation), {
       multiline: true,
     }),
@@ -697,20 +697,16 @@ function buildDetailsMarkup(details: ShellCommandDetails | undefined): string {
       riskAssessmentContextText,
       { multiline: true },
     ),
+    buildDetailFieldMarkup('Approval Decision', details.approval?.decision ?? '(not available)'),
+    buildDetailFieldMarkup('Approval Source', details.approval?.source ?? '(not available)'),
+    buildDetailFieldMarkup('Decision Reason', getDisplayText(details.approval?.reason), {
+      multiline: true,
+    }),
+    buildDetailFieldMarkup('Model Assessment', getDisplayText(details.approval?.modelAssessment), {
+      multiline: true,
+    }),
   ].join(''), {
     fieldId: 'request-details',
-  });
-  const approvalMarkup = buildDetailSectionMarkup('Approval', [
-    buildDetailFieldMarkup('Decision', details.approval?.decision ?? '(not available)'),
-    buildDetailFieldMarkup('Source', details.approval?.source ?? '(not available)'),
-    buildDetailFieldMarkup('Reason', getDisplayText(details.approval?.reason), {
-      multiline: true,
-    }),
-    buildDetailFieldMarkup('Assessment', getDisplayText(details.approval?.modelAssessment), {
-      multiline: true,
-    }),
-  ].join(''), {
-    fieldId: 'approval-details',
   });
   const metadataFields = [
     buildMetadataFieldMarkup('Exit Code', getExitCodeLabel(details), {
@@ -745,7 +741,6 @@ function buildDetailsMarkup(details: ShellCommandDetails | undefined): string {
     <div id="metadata-block" class="metadata-block">${metadataFields}</div>
     <div class="detail-sections">
       ${requestDetailsMarkup}
-      ${approvalMarkup}
     </div>
     <div class="command-header">
       <pre class="command-block">${escapeHtml(details.command)}</pre>
