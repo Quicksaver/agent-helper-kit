@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-04-16
+
 ### Added
 
 - Show Tool Call Details in the Shell Runs panel when a `run_in_shell` command is selected, including the explanation, goal, risk assessment, approval decision and reason for decision.
