@@ -793,14 +793,14 @@ function buildCommandItemsMarkup(
     }
     else if (command.phase === 'completed' || command.phase === 'denied') {
       rowActionMarkup = `
-          <button
-            class="icon-action row-action"
-            data-action="delete"
-            data-id="${escapeHtml(command.id)}"
-            title="Delete"
-            aria-label="Delete"
-          >✕</button>
-        `;
+        <button
+          class="icon-action row-action"
+          data-action="delete"
+          data-id="${escapeHtml(command.id)}"
+          title="Delete"
+          aria-label="Delete"
+        >✕</button>
+      `;
     }
 
     return `

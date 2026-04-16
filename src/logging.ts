@@ -13,11 +13,6 @@ function getLogLines(message: string): string[] {
 }
 
 function writeLogLine(channel: vscode.LogOutputChannel, level: LogLevel, line: string): void {
-  if (typeof channel.appendLine === 'function' && typeof channel.info !== 'function') {
-    channel.appendLine(line);
-    return;
-  }
-
   if (level === 'ERROR') {
     channel.error(line);
     return;

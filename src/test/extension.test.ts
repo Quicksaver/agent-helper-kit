@@ -96,7 +96,10 @@ const vscode = vi.hoisted(() => {
         appendLine: vi.fn(),
         clear: vi.fn(),
         dispose: vi.fn(),
+        error: vi.fn(),
+        info: vi.fn(),
         show: vi.fn(),
+        warn: vi.fn(),
       })),
       createTreeView: vi.fn(() => ({
         dispose: vi.fn(),

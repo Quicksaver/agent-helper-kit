@@ -473,6 +473,10 @@ export class ShellRuntime {
     return id;
   }
 
+  /**
+   * Internal cleanup helper for terminal records and pre-run reservations.
+   * User-facing deletion should go through deleteCompletedCommand instead.
+   */
   deleteCommandRecord(id: string): boolean {
     const state = this.backgroundProcesses.get(id);
 
@@ -774,6 +778,7 @@ export class ShellRuntime {
     state.readsSinceCompletion = 0;
     state.shell = shellInvocation.shell;
     state.signal = null;
+    state.startedAt = new Date().toISOString();
 
     this.scheduleMemoryToFileSpill(id, state);
     this.backgroundProcesses.set(id, state);

@@ -42,7 +42,10 @@ const vscode = vi.hoisted(() => ({
       appendLine: vi.fn(),
       clear: vi.fn(),
       dispose: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
       show: vi.fn(),
+      warn: vi.fn(),
     })),
   },
 }));
@@ -482,6 +485,39 @@ describe('ShellRuntime background execution', () => {
       isRunning: false,
       phase: 'completed',
     });
+  });
+
+  it('refreshes startedAt when a planned command record becomes a running process', () => {
+    vi.useFakeTimers();
+
+    try {
+      const fakeProcess = createFakeProcess();
+      spawn.mockReturnValue(fakeProcess);
+      const runtime = new ShellRuntime({});
+
+      vi.setSystemTime(new Date('2026-03-10T00:00:00.000Z'));
+      const plannedId = runtime.createPlannedCommandRecord('git checkout main', {
+        cwd: '/workspace',
+        phase: 'pending-approval',
+        shell: '/bin/bash',
+      });
+
+      vi.setSystemTime(new Date('2026-03-10T00:00:05.000Z'));
+      runtime.startBackgroundCommand('git checkout main', {
+        cwd: '/workspace',
+        id: plannedId,
+        shell: '/bin/bash',
+      });
+
+      expect(runtime.listCommands()[0]).toMatchObject({
+        id: plannedId,
+        phase: 'running',
+        startedAt: '2026-03-10T00:00:05.000Z',
+      });
+    }
+    finally {
+      vi.useRealTimers();
+    }
   });
 
   it('updates nonterminal planned records and handles unknown ids', async () => {

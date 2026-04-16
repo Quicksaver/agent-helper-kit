@@ -19,7 +19,7 @@ import {
   registerShellTools,
   resetShellRuntimeForTest,
 } from '@/shellTools';
-import { resetShellToolSecurityCaches } from '@/shellToolSecurity';
+import * as shellToolSecurity from '@/shellToolSecurity';
 import {
   createFakeProcess as createBaseFakeProcess,
   type FakeProcess,
@@ -193,7 +193,10 @@ const vscode = vi.hoisted(() => {
         appendLine: vi.fn(),
         clear: vi.fn(),
         dispose: vi.fn(),
+        error: vi.fn(),
+        info: vi.fn(),
         show: vi.fn(),
+        warn: vi.fn(),
       })),
       createTreeView: vi.fn(() => ({
         dispose: vi.fn(),
@@ -448,7 +451,7 @@ describe('shell tools', () => {
     vi.clearAllMocks();
     resetShellRuntimeForTest();
     getConfiguration.mockReturnValue(createConfiguration());
-    resetShellToolSecurityCaches();
+    shellToolSecurity.resetShellToolSecurityCaches();
   });
 
   afterEach(() => {
@@ -2179,6 +2182,43 @@ describe('shell tools', () => {
     });
   });
 
+  it('removes evaluating records when prepareInvocation fails before approval is recorded', async () => {
+    vi.resetModules();
+    vi.doMock('@/shellToolSecurity', async () => {
+      const actual = await vi.importActual<typeof import('../shellToolSecurity.js')>('../shellToolSecurity.js');
+
+      return {
+        ...actual,
+        decideShellRunApproval: vi.fn(async () => {
+          throw new Error('approval failed');
+        }),
+      };
+    });
+
+    try {
+      const { registerShellTools: registerShellToolsWithThrow } = await import('../shellTools.js');
+
+      registerShellToolsWithThrow();
+
+      const runTool = getRegisteredToolWithPrepare('run_in_shell');
+
+      await expect(runTool.prepareInvocation({
+        input: {
+          command: 'git checkout main',
+          explanation: 'switch branches',
+          goal: 'move to main',
+          riskAssessment: 'This may replace files in the working tree and discard staged state.',
+        },
+      }, {})).rejects.toThrow('approval failed');
+
+      expect(listShellMetadataIds()).toEqual([]);
+    }
+    finally {
+      vi.doUnmock('@/shellToolSecurity');
+      vi.resetModules();
+    }
+  });
+
   it('removes prepared pending-approval records when the prepare token is canceled', async () => {
     registerShellTools();
 
@@ -2512,6 +2552,59 @@ describe('shell tools', () => {
     secondProcess.emit('close', 0, null);
   });
 
+  it('keeps prepared command ids distinct when only columns differ', async () => {
+    const fakeProcess = createFakeProcess();
+
+    spawn.mockReturnValueOnce(fakeProcess);
+    registerShellTools();
+
+    const runTool = getRegisteredTool('run_in_shell');
+    const preparedRunTool = getRegisteredToolWithPrepare('run_in_shell');
+    const input = {
+      command: 'git checkout main',
+      explanation: 'switch branches',
+      goal: 'move to main',
+      riskAssessment: 'This may replace files in the working tree and discard staged state.',
+    };
+
+    await preparedRunTool.prepareInvocation({
+      input: {
+        ...input,
+        columns: 120,
+      },
+    }, {});
+
+    const firstPreparedId = listShellMetadataIds()[0];
+
+    await preparedRunTool.prepareInvocation({
+      input: {
+        ...input,
+        columns: 320,
+      },
+    }, {});
+
+    const secondPreparedId = listShellMetadataIds().find(id => id !== firstPreparedId);
+
+    const result = getResultPayload(await runTool.invoke({
+      input: {
+        ...input,
+        columns: 320,
+      },
+      toolInvocationToken: undefined,
+    }, {}));
+
+    expect(secondPreparedId).toBeDefined();
+
+    if (secondPreparedId === undefined) {
+      throw new Error('Expected a prepared shell command id for the second columns override.');
+    }
+
+    expect(result.id).toBe(secondPreparedId.slice(SHELL_COMMAND_ID_PREFIX.length));
+    expect(getLastSpawnInvocation().options.env?.COLUMNS).toBe('320');
+
+    fakeProcess.emit('close', 0, null);
+  });
+
   it('marks an already prepared record denied when invoke-time rules tighten', async () => {
     getConfiguration.mockReturnValue(createConfiguration(key => {
       if (key === 'shellTools.approvalRules') {
@@ -2522,7 +2615,7 @@ describe('shell tools', () => {
 
       return undefined;
     }));
-    resetShellToolSecurityCaches();
+    shellToolSecurity.resetShellToolSecurityCaches();
     registerShellTools();
 
     const runTool = getRegisteredTool('run_in_shell');
@@ -2547,7 +2640,7 @@ describe('shell tools', () => {
 
       return undefined;
     }));
-    resetShellToolSecurityCaches();
+    shellToolSecurity.resetShellToolSecurityCaches();
 
     await expect(runTool.invoke({
       input,

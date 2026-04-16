@@ -40,7 +40,10 @@ const vscode = vi.hoisted(() => ({
       appendLine: vi.fn(),
       clear: vi.fn(),
       dispose: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
       show: vi.fn(),
+      warn: vi.fn(),
     })),
   },
 }));
@@ -57,7 +60,10 @@ type MockOutputChannel = {
   appendLine: ReturnType<typeof vi.fn>;
   clear: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
+  error: ReturnType<typeof vi.fn>;
+  info: ReturnType<typeof vi.fn>;
   show: ReturnType<typeof vi.fn>;
+  warn: ReturnType<typeof vi.fn>;
 };
 
 function removeShellOutputDirectory(): void {

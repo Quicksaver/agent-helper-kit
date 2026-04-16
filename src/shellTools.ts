@@ -314,6 +314,7 @@ const preparedRunInShellCommandIdsBySignature = new Map<string, PreparedRunInShe
 
 function buildPreparedRunInShellSignature(input: RunInShellInput, resolvedCwd: string, selectedShell: string): string {
   return JSON.stringify({
+    columns: input.columns ?? null,
     command: input.command,
     cwd: resolvedCwd,
     explanation: input.explanation,
@@ -439,6 +440,18 @@ function toShellCommandRequestDetails(input: RunInShellInput) {
   } as const;
 }
 
+function getApprovalDecisionPhase(approvalDecision: ShellRunApprovalDecision): 'denied' | 'pending-approval' | 'queued' {
+  if (approvalDecision.decision === 'allow') {
+    return 'queued';
+  }
+
+  if (approvalDecision.decision === 'ask') {
+    return 'pending-approval';
+  }
+
+  return 'denied';
+}
+
 const runInShellTool: vscode.LanguageModelTool<RunInShellInput> = {
   async invoke(
     options: vscode.LanguageModelToolInvocationOptions<RunInShellInput>,
@@ -561,62 +574,65 @@ const runInShellTool: vscode.LanguageModelTool<RunInShellInput> = {
       request: toShellCommandRequestDetails(input),
       shell: selectedShell,
     });
-    const approvalDecision = await decideShellRunApproval({
-      command: input.command,
-      cwd: resolvedCwd,
-      explanation: input.explanation,
-      goal: input.goal,
-      riskAssessment: input.riskAssessment,
-      riskAssessmentContext: input.riskAssessmentContext,
-    }, token);
+    let preserveCommandRecord = false;
 
-    shellRuntimeInstance.updateCommandRecord(commandRecordId, {
-      approval: toShellCommandApprovalDetails(approvalDecision),
-      phase: (() => {
-        if (approvalDecision.decision === 'allow') {
-          return 'queued' as const;
-        }
+    try {
+      const approvalDecision = await decideShellRunApproval({
+        command: input.command,
+        cwd: resolvedCwd,
+        explanation: input.explanation,
+        goal: input.goal,
+        riskAssessment: input.riskAssessment,
+        riskAssessmentContext: input.riskAssessmentContext,
+      }, token);
 
-        if (approvalDecision.decision === 'ask') {
-          return 'pending-approval' as const;
-        }
+      shellRuntimeInstance.updateCommandRecord(commandRecordId, {
+        approval: toShellCommandApprovalDetails(approvalDecision),
+        phase: getApprovalDecisionPhase(approvalDecision),
+      });
 
-        return 'denied' as const;
-      })(),
-    });
+      if (approvalDecision.decision === 'deny') {
+        preserveCommandRecord = true;
+        throw new Error(approvalDecision.reason ?? 'The shell approval policy denied this command.');
+      }
 
-    if (approvalDecision.decision === 'deny') {
-      throw new Error(approvalDecision.reason ?? 'The shell approval policy denied this command.');
+      queuePreparedRunInShellCommandId(
+        preparedSignature,
+        commandRecordId,
+        {
+          onDiscard: () => {
+            shellRuntimeInstance.deleteCommandRecord(commandRecordId);
+          },
+          token,
+        },
+      );
+      preserveCommandRecord = true;
+
+      return {
+        confirmationMessages: approvalDecision.decision === 'allow'
+          ? undefined
+          : {
+            message: buildShellRunConfirmationMessage({
+              approvalDecision,
+              command: input.command,
+              cwd: resolvedCwd,
+              explanation: input.explanation,
+              goal: input.goal,
+              riskAssessment: input.riskAssessment,
+              riskAssessmentContext: input.riskAssessmentContext,
+            }),
+            title: SHELL_TOOL_METADATA.runInShell.confirmationTitle,
+          },
+        invocationMessage: SHELL_TOOL_METADATA.runInShell.invocationMessage(commandPreview),
+      };
     }
+    catch (error) {
+      if (!preserveCommandRecord) {
+        shellRuntimeInstance.deleteCommandRecord(commandRecordId);
+      }
 
-    queuePreparedRunInShellCommandId(
-      preparedSignature,
-      commandRecordId,
-      {
-        onDiscard: () => {
-          shellRuntimeInstance.deleteCommandRecord(commandRecordId);
-        },
-        token,
-      },
-    );
-
-    return {
-      confirmationMessages: approvalDecision.decision === 'allow'
-        ? undefined
-        : {
-          message: buildShellRunConfirmationMessage({
-            approvalDecision,
-            command: input.command,
-            cwd: resolvedCwd,
-            explanation: input.explanation,
-            goal: input.goal,
-            riskAssessment: input.riskAssessment,
-            riskAssessmentContext: input.riskAssessmentContext,
-          }),
-          title: SHELL_TOOL_METADATA.runInShell.confirmationTitle,
-        },
-      invocationMessage: SHELL_TOOL_METADATA.runInShell.invocationMessage(commandPreview),
-    };
+      throw error;
+    }
   },
 };
 
