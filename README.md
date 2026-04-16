@@ -31,6 +31,7 @@ Compared with built-in terminal tools, these extension tools are optimized for a
 - Deterministic command lifecycle with stable IDs you can await, poll, and kill.
 - Structured metadata (`exitCode`, `terminationSignal`, `timedOut`, `shell`) that is easier to automate against.
 - Output controls (`full_output`, `last_lines`, `regex`) to reduce context noise in chat.
+- Shell Runs keeps one row visible from approval through execution, showing queued, evaluating, pending approval, denied, running, and completed states instead of appearing only after launch.
 - Approval flow that combines explicit allow/ask/deny rules with optional model-based risk assessment, while treating transient env-var prefixes and detected file-target output redirections conservatively.
 - `run_in_shell` is optimal for both deterministic commands, and long-running detached jobs: omit `timeout` to start immediately and poll later, or provide `timeout` to wait for completion up to that many milliseconds.
 - If that wait times out, the tool returns `timedOut: true` with the command id and leaves the process running until it exits naturally or you call `kill_shell`.
