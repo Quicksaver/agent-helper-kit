@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Show Tool Call Details in the Shell Runs panel when a `run_in_shell` command is selected, including the explanation, goal, risk assessment, approval decision and reason for decision.
+
 ### Fixed
 
 - Fixed Shell Runs rows for `run_in_shell` appearing only after execution started and sometimes leaving stale pending entries after approval was cancelled; the panel now keeps a single row visible through evaluation, approval, denial, and execution.
